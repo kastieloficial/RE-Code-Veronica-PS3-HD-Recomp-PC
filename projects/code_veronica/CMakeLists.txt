@@ -863,6 +863,12 @@ endif()
 add_custom_command(TARGET MyGameRecomp POST_BUILD
  COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/hud-weapons" "$<TARGET_FILE_DIR:MyGameRecomp>/assets/hud-weapons")
 
+# PT-BR translation: the launcher reads it from assets/ beside bin/, where the
+# release package puts localization/ (tools/empacotar_release.py). Mirror that
+# for a build run in place, so the Portuguese text works without packaging.
+add_custom_command(TARGET MyGameRecomp POST_BUILD
+ COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/localization" "$<TARGET_FILE_DIR:MyGameRecomp>/../assets")
+
 # Regression for the HUD/inventory Caution mismatch, independent of a game dump.
 add_executable(code_veronica_hud_health_tests EXCLUDE_FROM_ALL tests/test_hud_health.cpp)
 target_include_directories(code_veronica_hud_health_tests PRIVATE "${PS3RECOMP_DIR}/libs/video")
