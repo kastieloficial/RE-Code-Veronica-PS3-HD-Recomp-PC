@@ -52,8 +52,8 @@ extern "C" void cv_pc_settings_quick_read(void);
  * passthrough to <windows.h>; off Windows the toolkit's shim supplies the same
  * names over pthreads and mmap, so the call sites below are written once. */
 #include "win32_compat.h"
-#include "D:\ps3recomp\libs/video/rsx_fifo_idle.h"
-#include "D:\ps3recomp\libs/video/rsx_fifo_probe.h"
+#include "rsx_fifo_idle.h"
+#include "rsx_fifo_probe.h"
 #include "host_thread_name.h"
 
 #include <stdint.h>

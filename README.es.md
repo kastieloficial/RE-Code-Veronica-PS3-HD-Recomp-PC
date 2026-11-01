@@ -322,16 +322,40 @@ El port sigue en desarrollo. Todavía pueden aparecer fallos gráficos y de ilum
 
 Solo hace falta compilar para trabajar en el port. Necesitas tu propio juego descifrado, porque el código recompilado del juego se genera en tu equipo y **nunca se sube al repositorio**.
 
-**Herramientas:** Visual Studio 2022 o posterior (o Build Tools) con la carga de trabajo de C++, **LLVM/clang-cl**, CMake 3.20+, Ninja, Python 3.12 y las DLL de FFmpeg 7.1 (`avcodec-61`, `avutil-59`, `swscale-8`, `swresample-5`) en `third_party/ffmpeg/bin/`.
+**Herramientas:** Visual Studio 2022 o posterior (o Build Tools) con la carga de trabajo de C++, **LLVM/clang-cl**, CMake 3.20+, Ninja, Python 3.12. Las DLL de FFmpeg 7.1 (`avcodec-61`, `avutil-59`, `swscale-8`, `swresample-5`, LGPL) ya vienen en `third_party/ffmpeg/bin/`.
 
-1. **Genera el código del juego.** Sigue [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) y [docs/SPU_LIFTER.md](docs/SPU_LIFTER.md) para generar el código PPU en `src/recomp/` (EU), `src/recomp_us/` (US) y `src/recomp_jp/` (JP), y las imágenes SPU en `projects/code_veronica/spu/`. Por ejemplo, para la japonesa:
+Para instalar todas las herramientas de una vez, abre una terminal (PowerShell o Símbolo del sistema) y ejecuta estas líneas. Windows descarga e instala cada programa; la primera instala Visual Studio Build Tools ya con el paquete de C++:
+
+```
+winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--passive --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+winget install --id LLVM.LLVM
+winget install --id Kitware.CMake
+winget install --id Ninja-build.Ninja
+winget install --id Python.Python.3.12
+```
+
+Luego cierra y vuelve a abrir la terminal, entra en la carpeta del proyecto e instala los paquetes de Python:
+
+```
+pip install -r requirements.txt
+```
+Estas herramientas solo hacen falta para compilar. Para solo jugar, descarga el zip de la Release.
+
+Sigue los pasos en este orden:
+
+1. **Genera el código PPU** con `ppu_loader` y `ppu_lifter` en `src/recomp/` (EU), `src/recomp_us/` (US) y `src/recomp_jp/` (JP). Consulta [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md). Por ejemplo, para la japonesa:
    ```
    python tools/ppu_loader.py <NPJB00135>/USRDIR/EBOOT.elf -o out_jp/
    python tools/ppu_lifter.py <NPJB00135>/USRDIR/EBOOT.elf --functions out_jp/EBOOT.functions.json --hle-stubs out_jp/EBOOT.imports.json --patches projects/code_veronica/patches.json -o src/recomp_jp
    ```
-2. **Compila.** Ejecuta `projects/code_veronica/build-release.cmd` (Europa). Define `CV_BUILD_JP=1` y/o `CV_BUILD_US=1` para compilar las otras regiones en la misma ejecución, o usa `build-release-jp.cmd` solo para la japonesa. Los scripts tienen las rutas del autor (Visual Studio, LLVM y `D:/ps3recomp`); ajústalas a tu equipo.
-3. Los ejecutables quedan en `projects/code_veronica/build-release/bin/`. Usa siempre la compilación Release: la Debug es demasiado lenta para el código recompilado.
-4. `projects/code_veronica/empacotar-release.cmd` crea el ZIP de lanzamiento (solo los archivos del port, nunca datos del juego).
+2. **Genera la carpeta SPU** con un solo comando, a partir del EBOOT europeo (NPEB00553):
+   ```
+   python tools/cv_make_spu.py <NPEB00553>/USRDIR/EBOOT.elf
+   ```
+   Crea toda la carpeta `projects/code_veronica/spu/`: las 25 imágenes SPU integradas, los tres jobs SPURS y el plug-in de sonido que la búsqueda automática no encuentra, y `spu_workloads.c`, que los registra todos. Compara los bytes leídos con hashes conocidos y se detiene con un error si el EBOOT es de otra versión. Sin esta carpeta el juego se queda en pantalla negra al arrancar. Detalles en [docs/SPU_LIFTER.md](docs/SPU_LIFTER.md).
+3. **Compila.** Ejecuta `projects/code_veronica/build-release.cmd` (Europa). Define `CV_BUILD_JP=1` y/o `CV_BUILD_US=1` para compilar las otras regiones en la misma ejecución, o usa `build-release-jp.cmd` solo para la japonesa. Los scripts encuentran el repositorio desde su propia carpeta, así que el clon puede estar en cualquier sitio; solo las rutas de Visual Studio y LLVM son las del autor, ajústalas a tu equipo. Una carpeta `build-release*` creada antes de este cambio todavía guarda las rutas antiguas `D:/ps3recomp` (los scripts solo configuran cuando falta `CMakeCache.txt`): bórrala una vez y vuelve a ejecutar el script.
+4. Los ejecutables quedan en `projects/code_veronica/build-release/bin/`. Usa siempre la compilación Release: la Debug es demasiado lenta para el código recompilado.
+5. `projects/code_veronica/empacotar-release.cmd` crea el ZIP de lanzamiento (solo los archivos del port, nunca datos del juego).
 
 ## Ejecutar las pruebas
 

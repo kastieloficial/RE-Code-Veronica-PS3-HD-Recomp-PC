@@ -325,16 +325,40 @@ The port is a work in progress. Graphics and lighting glitches can still appear,
 
 Building is only needed if you want to work on the port. It requires your own decrypted game, because the recompiled game code is generated on your machine and is **never committed**.
 
-**Tools:** Visual Studio 2022 or newer (or Build Tools) with the C++ workload, **LLVM/clang-cl**, CMake 3.20+, Ninja, Python 3.12, and the FFmpeg 7.1 shared DLLs (`avcodec-61`, `avutil-59`, `swscale-8`, `swresample-5`) in `third_party/ffmpeg/bin/`.
+**Tools:** Visual Studio 2022 or newer (or Build Tools) with the C++ workload, **LLVM/clang-cl**, CMake 3.20+, Ninja, Python 3.12. The FFmpeg 7.1 shared DLLs (`avcodec-61`, `avutil-59`, `swscale-8`, `swresample-5`, LGPL) are included in `third_party/ffmpeg/bin/`.
 
-1. **Lift the game.** Follow [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) and [docs/SPU_LIFTER.md](docs/SPU_LIFTER.md) to generate the PPU code in `src/recomp/` (EU), `src/recomp_us/` (US) and `src/recomp_jp/` (JP), and the SPU images in `projects/code_veronica/spu/`. For example, for Japan:
+To install all the tools at once, open a terminal (PowerShell or Command Prompt) and run these lines. Windows downloads and installs each program; the first one installs Visual Studio Build Tools with the C++ package already selected:
+
+```
+winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--passive --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+winget install --id LLVM.LLVM
+winget install --id Kitware.CMake
+winget install --id Ninja-build.Ninja
+winget install --id Python.Python.3.12
+```
+
+Then close and reopen the terminal, go to the project folder and install the Python packages:
+
+```
+pip install -r requirements.txt
+```
+You only need these tools to build. To just play, download the Release zip instead.
+
+Run the steps in this order:
+
+1. **Lift the PPU code** with `ppu_loader` and `ppu_lifter` into `src/recomp/` (EU), `src/recomp_us/` (US) and `src/recomp_jp/` (JP). See [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md). For example, for Japan:
    ```
    python tools/ppu_loader.py <NPJB00135>/USRDIR/EBOOT.elf -o out_jp/
    python tools/ppu_lifter.py <NPJB00135>/USRDIR/EBOOT.elf --functions out_jp/EBOOT.functions.json --hle-stubs out_jp/EBOOT.imports.json --patches projects/code_veronica/patches.json -o src/recomp_jp
    ```
-2. **Build.** Run `projects/code_veronica/build-release.cmd` (Europe). Set `CV_BUILD_JP=1` and/or `CV_BUILD_US=1` to build the other regions in the same run, or use `build-release-jp.cmd` for Japan alone. The scripts contain the author's paths (Visual Studio, LLVM and `D:/ps3recomp`); adjust them to your machine.
-3. The executables are written to `projects/code_veronica/build-release/bin/`. Always use the Release build: the Debug build is far too slow for the recompiled code.
-4. `projects/code_veronica/empacotar-release.cmd` builds the release ZIP (port files only, never game data).
+2. **Generate the SPU folder** with one command, from the European EBOOT (NPEB00553):
+   ```
+   python tools/cv_make_spu.py <NPEB00553>/USRDIR/EBOOT.elf
+   ```
+   It writes the whole `projects/code_veronica/spu/` folder: the 25 embedded SPU images, the three SPURS jobs and the sound plug-in that the automatic scan cannot find, and `spu_workloads.c`, which registers all of them. It checks the bytes it reads against known hashes and stops with an error if the EBOOT is a different version. Without this folder the game stays on a black screen at boot. Details in [docs/SPU_LIFTER.md](docs/SPU_LIFTER.md).
+3. **Build.** Run `projects/code_veronica/build-release.cmd` (Europe). Set `CV_BUILD_JP=1` and/or `CV_BUILD_US=1` to build the other regions in the same run, or use `build-release-jp.cmd` for Japan alone. The scripts find the repository from their own folder, so the clone can be anywhere; only the Visual Studio and LLVM paths are the author's, adjust those to your machine. A `build-release*` folder made before this change still holds the old `D:/ps3recomp` paths (the scripts only configure when `CMakeCache.txt` is missing): delete it once and run the script again.
+4. The executables are written to `projects/code_veronica/build-release/bin/`. Always use the Release build: the Debug build is far too slow for the recompiled code.
+5. `projects/code_veronica/empacotar-release.cmd` builds the release ZIP (port files only, never game data).
 
 ## Running the tests
 

@@ -16,8 +16,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-#include "D:\ps3recomp\runtime/platform/win32_compat.h"   /* GetTickCount64 on POSIX */
-#include "D:\ps3recomp\runtime/ppu/ppu_memory.h"   /* GUEST_PTR, vm_write*: guest EA -> host */
+#include "../../runtime/platform/win32_compat.h"   /* GetTickCount64 on POSIX */
+#include "../../runtime/ppu/ppu_memory.h"   /* GUEST_PTR, vm_write*: guest EA -> host */
 #include "pad_phys.h"
 #include "pad_map.h"
 #include "analog_bindings.h"

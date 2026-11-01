@@ -6,7 +6,8 @@ Shared libraries: FFmpeg n7.1.5, originally bundled with the local PySide6 insta
 FFmpeg API and checks libavcodec major version 61 before opening it.
 Only actual decoded frames generate video PICOUT messages.
 
-Runtime libraries are copied beside the executable by CMake. Source and license:
+The four DLLs are kept in bin/ in this repository (LGPL 2.1 or later; license
+texts beside this file). Runtime libraries are copied beside the executable by CMake. Source and license:
 https://ffmpeg.org/ and https://github.com/FFmpeg/FFmpeg/tree/n7.1.5
 
 SHA256:

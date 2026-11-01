@@ -21,6 +21,8 @@ Makefile
 *.so
 *.dylib
 *.dll
+# FFmpeg runtime (LGPL; license and source link in third_party/ffmpeg)
+!third_party/ffmpeg/bin/*.dll
 *.exp
 *.pdb
 
@@ -129,8 +131,6 @@ projects/*/run-log-*.txt
 projects/*/spu-run-*.txt
 *.lnk
 *.before-*
-# FFmpeg DLLs are fetched separately (see the port's README)
-third_party/ffmpeg/bin/
 .mcp.json
 projects/*/shader_cache/
 projects/*/eboot_cache/
