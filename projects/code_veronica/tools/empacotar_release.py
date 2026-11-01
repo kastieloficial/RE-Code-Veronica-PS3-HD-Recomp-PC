@@ -6,6 +6,9 @@ FILES=("CodeVeronicaPort.exe","CodeVeronicaPort_US.exe","CodeVeronicaPort_JP.exe
        "avcodec-61.dll","avutil-59.dll","swresample-5.dll","swscale-8.dll",
        "amd_fidelityfx_framegeneration_dx12.dll","dxcompiler.dll","dxil.dll",
        "AMD-FSR-LICENSE.md","SAVE-LIBRARY-NOTICES.txt")
+# Compatibility executables for processors without AVX2 (CV_CPU_COMPAT). The
+# normal ones start these by themselves; packaged when they were built.
+COMPAT=("CodeVeronicaPort_SSE4.exe","CodeVeronicaPort_US_SSE4.exe","CodeVeronicaPort_JP_SSE4.exe")
 def find_vc_redist():
     # Newest Visual Studio copy of the redistributable installer (Microsoft lets apps ship it).
     found=glob.glob(r'C:\Program Files*\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\vc_redist.x64.exe')
@@ -30,15 +33,18 @@ def main():
     if not re.fullmatch(r'v?\d+(?:\.\d+)*',version):ap.error('Use a stable numeric version, such as v1.1.0')
     missing=[n for n in FILES if not (args.bin_dir/n).is_file()]
     if missing:ap.error('Missing build files: '+', '.join(missing))
+    compat=[n for n in COMPAT if (args.bin_dir/n).is_file()]
+    if compat and len(compat)!=len(COMPAT):ap.error('Build all three _SSE4 executables or none: '+', '.join(compat))
+    exes=(*FILES[:3],*compat)
     if args.distribution:
         result_path=args.bin_dir.parent/'build-result.json'
         if not result_path.is_file():ap.error('Missing distribution build-result.json; run distribution/build.py first')
         result=json.loads(result_path.read_text(encoding='utf-8'))
         if result.get('distribution') is not True:ap.error('Not a distribution build')
-        for name in (*FILES[:3], 'Code Veronica.exe'):
+        for name in (*exes, 'Code Veronica.exe'):
             with (args.bin_dir.parent/name if name=='Code Veronica.exe' else args.bin_dir/name).open('rb') as f:digest=hashlib.file_digest(f,'sha256').hexdigest()
             if result.get('executables',{}).get(name)!=digest:ap.error('Distribution executable changed since build: '+name)
-        for name in (*FILES[:3], 'Code Veronica.exe'):
+        for name in (*exes, 'Code Veronica.exe'):
             with (args.bin_dir.parent/name if name=='Code Veronica.exe' else args.bin_dir/name).open('rb') as f:
                 f.seek(0x3c); pe=struct.unpack('<I',f.read(4))[0]
                 f.seek(pe); signature=f.read(4)
@@ -49,16 +55,16 @@ def main():
     # Reject older executables: changing the source version alone is not a build.
     source=root/'launcher.cpp'
     if source.is_file() and not args.version:
-        stale=[n for n in FILES[:3] if (args.bin_dir/n).stat().st_mtime<source.stat().st_mtime]
+        stale=[n for n in exes if (args.bin_dir/n).stat().st_mtime<source.stat().st_mtime]
         if stale:ap.error('Rebuild the regional executables first: '+', '.join(stale))
-    print(f'{version}: {len(FILES)} redistributable files; no game data, saves or settings.')
+    print(f'{version}: {len(FILES)+len(compat)} redistributable files'+(' (with the _SSE4 compatibility executables)' if compat else ' (no _SSE4 compatibility executables)')+'; no game data, saves or settings.')
     if args.check_only:return
     args.output_dir.mkdir(parents=True,exist_ok=True)
     archive=args.output_dir/f'CodeVeronica-PC-{version}.zip'
     if archive.exists():ap.error(f'Refusing to overwrite an existing release package: {archive}')
     temporary=archive.with_suffix('.zip.part')
     manifest={'version':version,'files':{}}
-    sources={(('bin/'+n) if args.distribution else n):args.bin_dir/n for n in FILES}
+    sources={(('bin/'+n) if args.distribution else n):args.bin_dir/n for n in (*FILES,*compat)}
     if args.distribution:sources['Code Veronica.exe']=args.bin_dir.parent/'Code Veronica.exe'
     octicons=root/'launcher_art/github-octicons-LICENSE.txt'
     if octicons.is_file():sources['github-octicons-LICENSE.txt']=octicons

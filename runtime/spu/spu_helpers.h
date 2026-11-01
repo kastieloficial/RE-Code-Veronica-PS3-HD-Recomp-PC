@@ -288,9 +288,19 @@ static inline u128 spu_csflt(u128 a, int i8){ u128 r; double f=exp2((double)(i8-
 static inline u128 spu_cuflt(u128 a, int i8){ u128 r; double f=exp2((double)(i8-155));
     for(int i=0;i<4;i++) r._f32[i]=(float)((double)a._u32[i]*f); return r; }
 static inline u128 spu_fm(u128 a, u128 b) { u128 r; for(int i=0;i<4;i++) r._f32[i]=a._f32[i]*b._f32[i]; return r; }
-static inline u128 spu_fma(u128 a, u128 b, u128 c)  { u128 r; for(int i=0;i<4;i++) r._f32[i]=fmaf(a._f32[i], b._f32[i], c._f32[i]); return r; }
-static inline u128 spu_fms(u128 a, u128 b, u128 c)  { u128 r; for(int i=0;i<4;i++) r._f32[i]=fmaf(a._f32[i], b._f32[i], -c._f32[i]); return r; }
-static inline u128 spu_fnms(u128 a, u128 b, u128 c) { u128 r; for(int i=0;i<4;i++) r._f32[i]=fmaf(a._f32[i], -b._f32[i], c._f32[i]); return r; }
+/* Without a hardware FMA (a build for processors before Haswell), fmaf is a
+ * call into ucrt's slow software fma. The product of two floats is exact in
+ * a double, so one double add then a round to float matches fmaf except, very
+ * rarely, by one ulp (double rounding) -- far cheaper, and with FMA hardware
+ * the exact fmaf below is still used. */
+#if defined(__FMA__)
+#define SPU_FMAF(a, b, c) fmaf((a), (b), (c))
+#else
+#define SPU_FMAF(a, b, c) ((float)((double)(a) * (double)(b) + (double)(c)))
+#endif
+static inline u128 spu_fma(u128 a, u128 b, u128 c)  { u128 r; for(int i=0;i<4;i++) r._f32[i]=SPU_FMAF(a._f32[i], b._f32[i], c._f32[i]); return r; }
+static inline u128 spu_fms(u128 a, u128 b, u128 c)  { u128 r; for(int i=0;i<4;i++) r._f32[i]=SPU_FMAF(a._f32[i], b._f32[i], -c._f32[i]); return r; }
+static inline u128 spu_fnms(u128 a, u128 b, u128 c) { u128 r; for(int i=0;i<4;i++) r._f32[i]=SPU_FMAF(a._f32[i], -b._f32[i], c._f32[i]); return r; }
 static inline u128 spu_fceq(u128 a, u128 b) { u128 r; for(int i=0;i<4;i++) r._u32[i]=(a._f32[i]==b._f32[i])?0xFFFFFFFFu:0; return r; }
 static inline u128 spu_fcgt(u128 a, u128 b) { u128 r; for(int i=0;i<4;i++) r._u32[i]=(a._f32[i]>b._f32[i])?0xFFFFFFFFu:0; return r; }
 

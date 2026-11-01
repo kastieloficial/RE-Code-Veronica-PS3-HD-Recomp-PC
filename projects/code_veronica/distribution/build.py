@@ -15,12 +15,21 @@ def main():
     names=['CodeVeronicaPort.exe','CodeVeronicaPort_JP.exe','CodeVeronicaPort_US.exe','cv_launcher.ini']
     kept={n:sha(PORT/'build-release/bin'/n) for n in names}
     results={}
-    selected=set(sys.argv[1:]) or {'eu','us','jp'}
-    if not selected <= {'eu','us','jp'}:raise ValueError('Regions must be eu, us or jp')
-    for region,suffix,cache in [('JP','_jp','build-release-jp'),('EU','','build-release'),('US','_us','build-release-us')]:
-        if region.lower() not in selected:continue
-        build=OUT/region.lower();build.mkdir(exist_ok=True)
-        old=PORT/cache
+    # eu/us/jp: the normal AVX2 executables. eu-sse4/us-sse4/jp-sse4: the
+    # compatibility executables for processors without AVX2 (CV_CPU_COMPAT),
+    # which reuse the objects of build-release*-sse4 (build-release.cmd with
+    # CV_BUILD_COMPAT=1), never the AVX2 ones.
+    every={'eu','us','jp','eu-sse4','us-sse4','jp-sse4'}
+    selected=set(sys.argv[1:]) or every
+    if not selected <= every:raise ValueError('Regions must be eu, us, jp, eu-sse4, us-sse4 or jp-sse4')
+    variants=[(r,s,c,compat) for compat in (False,True)
+              for r,s,c in [('JP','_jp','build-release-jp'),('EU','','build-release'),('US','_us','build-release-us')]]
+    for region,suffix,cache,compat in variants:
+        key=region.lower()+('-sse4' if compat else '')
+        if key not in selected:continue
+        build=OUT/key;build.mkdir(exist_ok=True)
+        old=PORT/(cache+('-sse4' if compat else ''))
+        if not old.is_dir():raise RuntimeError(f'Missing {old.name}: run build-release.cmd'+(' with CV_BUILD_COMPAT=1' if compat else ''))
         objects=[];provenance=[]
         # Rebuild host/runtime/UI, but reuse only source-verified lifted units.
         for source in sorted((ROOT/('src/recomp'+suffix)).glob('ppu_recomp_*.cpp')):
@@ -50,13 +59,20 @@ def main():
              '-DCMAKE_C_COMPILER=C:/Program Files/LLVM/bin/clang-cl.exe','-DCMAKE_CXX_COMPILER=C:/Program Files/LLVM/bin/clang-cl.exe',
              '-DCMAKE_LINKER=C:/Program Files/LLVM/bin/lld-link.exe','-DCMAKE_C_FLAGS_RELEASE=/O2 /Ob2',
              '-DCMAKE_CXX_FLAGS_RELEASE=/O2 /Ob2',f'-DCV_REGION={region}',f'-DRECOMP_DIR={(ROOT/("src/recomp"+suffix)).as_posix()}',
-             f'-DSPU_DIR={(PORT/"spu").as_posix()}'],build/'configure.log')
+             f'-DSPU_DIR={(PORT/"spu").as_posix()}','-DCV_CPU_COMPAT='+('ON' if compat else 'OFF')],build/'configure.log')
         run(['cmake','--build',build,'--target','MyGameRecomp','CodeVeronicaLauncher','-j','2'],build/'build.log')
-        exe=OUT/'bin'/('CodeVeronicaPort'+('' if region=='EU' else '_'+region)+'.exe')
+        exe=OUT/'bin'/('CodeVeronicaPort'+('' if region=='EU' else '_'+region)+('_SSE4' if compat else '')+'.exe')
         results[exe.name]=sha(exe)
-        print(f'DONE {region}: {exe}',flush=True)
+        print(f'DONE {key}: {exe}',flush=True)
     results['Code Veronica.exe']=sha(OUT/'Code Veronica.exe')
     if kept!={n:sha(PORT/'build-release/bin'/n) for n in names}:raise RuntimeError('Local normal files changed')
-    (OUT/('build-result-'+next(iter(selected))+'.json' if len(selected)==1 else 'build-result.json')).write_text(json.dumps(dict(distribution=True,version='v1.1.11',executables=results,normal_preserved=kept),indent=2),encoding='utf-8')
-    print('PASS: all three GUI distribution builds completed; normal local files unchanged',flush=True)
+    result_file=OUT/('build-result-'+next(iter(selected))+'.json' if len(selected)==1 else 'build-result.json')
+    if result_file.name=='build-result.json' and result_file.is_file():
+        # Building some variants later (e.g. only the *-sse4 ones) keeps the
+        # digests of the executables built before, as long as they are unchanged.
+        previous=json.loads(result_file.read_text(encoding='utf-8')).get('executables',{})
+        for name,digest in previous.items():
+            if name not in results and (OUT/'bin'/name).is_file() and sha(OUT/'bin'/name)==digest:results[name]=digest
+    result_file.write_text(json.dumps(dict(distribution=True,version='v1.1.11',executables=results,normal_preserved=kept),indent=2),encoding='utf-8')
+    print('PASS: distribution builds completed ('+', '.join(sorted(selected))+'); normal local files unchanged',flush=True)
 if __name__=='__main__':main()

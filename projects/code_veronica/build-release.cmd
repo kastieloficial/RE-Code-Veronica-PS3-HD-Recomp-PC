@@ -117,6 +117,70 @@ if "%CV_BUILD_US%"=="1" (
  cmake --build build-release-us -j 6 || exit /b 1
 )
 
+rem Compatibility executables (*_SSE4.exe) for processors without AVX2:
+rem CV_BUILD_COMPAT=1 builds EU, plus US/JP when CV_BUILD_US/CV_BUILD_JP
+rem are set. The normal executables start these by themselves (cpu_tier.cpp).
+if "%CV_BUILD_COMPAT%"=="1" (
+ if not exist build-release-sse4\CMakeCache.txt (
+  cmake -S . -B build-release-sse4 -G Ninja ^
+   -DCMAKE_BUILD_TYPE=Release ^
+   "-DCMAKE_C_COMPILER=C:/Program Files/LLVM/bin/clang-cl.exe" ^
+   "-DCMAKE_CXX_COMPILER=C:/Program Files/LLVM/bin/clang-cl.exe" ^
+   "-DCMAKE_LINKER=C:/Program Files/LLVM/bin/lld-link.exe" ^
+   "-DCMAKE_C_FLAGS_RELEASE=/O2 /Ob2" ^
+   "-DCMAKE_CXX_FLAGS_RELEASE=/O2 /Ob2" ^
+   -DPS3RECOMP_DIR=%CV_ROOT% ^
+   -DRECOMP_DIR=%CV_ROOT%/src/recomp ^
+   -DCV_REGION=EU ^
+   -DCV_CPU_COMPAT=ON ^
+   -DSPU_DIR=%CV_ROOT%/projects/code_veronica/spu ^
+   -DPORT_ENABLE_SPU=ON ^
+   -DPS3RECOMP_BUILD_TESTS=OFF ^
+   -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=%CV_ROOT%/projects/code_veronica/build-release/bin || exit /b 1
+ )
+ cmake --build build-release-sse4 -j 6 || exit /b 1
+)
+if "%CV_BUILD_COMPAT%"=="1" if "%CV_BUILD_US%"=="1" (
+ if not exist build-release-us-sse4\CMakeCache.txt (
+  cmake -S . -B build-release-us-sse4 -G Ninja ^
+   -DCMAKE_BUILD_TYPE=Release ^
+   "-DCMAKE_C_COMPILER=C:/Program Files/LLVM/bin/clang-cl.exe" ^
+   "-DCMAKE_CXX_COMPILER=C:/Program Files/LLVM/bin/clang-cl.exe" ^
+   "-DCMAKE_LINKER=C:/Program Files/LLVM/bin/lld-link.exe" ^
+   "-DCMAKE_C_FLAGS_RELEASE=/O2 /Ob2" ^
+   "-DCMAKE_CXX_FLAGS_RELEASE=/O2 /Ob2" ^
+   -DPS3RECOMP_DIR=%CV_ROOT% ^
+   -DRECOMP_DIR=%CV_ROOT%/src/recomp_us ^
+   -DCV_REGION=US ^
+   -DCV_CPU_COMPAT=ON ^
+   -DSPU_DIR=%CV_ROOT%/projects/code_veronica/spu ^
+   -DPORT_ENABLE_SPU=ON ^
+   -DPS3RECOMP_BUILD_TESTS=OFF ^
+   -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=%CV_ROOT%/projects/code_veronica/build-release/bin || exit /b 1
+ )
+ cmake --build build-release-us-sse4 -j 6 || exit /b 1
+)
+if "%CV_BUILD_COMPAT%"=="1" if "%CV_BUILD_JP%"=="1" (
+ if not exist build-release-jp-sse4\CMakeCache.txt (
+  cmake -S . -B build-release-jp-sse4 -G Ninja ^
+   -DCMAKE_BUILD_TYPE=Release ^
+   "-DCMAKE_C_COMPILER=C:/Program Files/LLVM/bin/clang-cl.exe" ^
+   "-DCMAKE_CXX_COMPILER=C:/Program Files/LLVM/bin/clang-cl.exe" ^
+   "-DCMAKE_LINKER=C:/Program Files/LLVM/bin/lld-link.exe" ^
+   "-DCMAKE_C_FLAGS_RELEASE=/O2 /Ob2" ^
+   "-DCMAKE_CXX_FLAGS_RELEASE=/O2 /Ob2" ^
+   -DPS3RECOMP_DIR=%CV_ROOT% ^
+   -DRECOMP_DIR=%CV_ROOT%/src/recomp_jp ^
+   -DCV_REGION=JP ^
+   -DCV_CPU_COMPAT=ON ^
+   -DSPU_DIR=%CV_ROOT%/projects/code_veronica/spu ^
+   -DPORT_ENABLE_SPU=ON ^
+   -DPS3RECOMP_BUILD_TESTS=OFF ^
+   -DCMAKE_RUNTIME_OUTPUT_DIRECTORY=%CV_ROOT%/projects/code_veronica/build-release/bin || exit /b 1
+ )
+ cmake --build build-release-jp-sse4 -j 6 || exit /b 1
+)
+
 rem SRT memory/layout regression tests, isolated from real saves/settings.
 if "%CV_SPU_FAULT_TESTS%"=="1" (
  cmake --build build-release --target code_veronica_spu_fault_tests -j 6 || exit /b 1

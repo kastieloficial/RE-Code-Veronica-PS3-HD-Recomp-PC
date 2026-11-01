@@ -74,6 +74,16 @@ message(STATUS "Lifted sources:  ${RECOMP_SOURCE_COUNT} file(s)")
 # imported one arrives without SDL2, pthreads, the Metal frameworks or the
 # Winsock/XInput imports -- the link then fails on every platform for a
 # different reason. add_subdirectory hands all of that over with the target.
+# CV_CPU_COMPAT: the build for processors without AVX2 (Sandy/Ivy Bridge,
+# AMD FX, Nehalem...). Everything is built for SSE4.1 (with SSSE3: pshufb is
+# what shufb needs), the SPU code included, and the executables are named
+# *_SSE4.exe. The normal AVX2 executable starts this one by itself when the
+# processor lacks a Haswell feature (cpu_tier.cpp), so a player never picks.
+option(CV_CPU_COMPAT "Build the SSE4.1 executables for processors without AVX2" OFF)
+if(CV_CPU_COMPAT AND CMAKE_C_COMPILER_ID MATCHES "Clang" AND MSVC)
+    add_compile_options("-msse4.1")
+endif()
+
 add_subdirectory("${PS3RECOMP_DIR}" "${CMAKE_BINARY_DIR}/ps3recomp_sdk"
                  EXCLUDE_FROM_ALL)
 
@@ -96,11 +106,20 @@ endif()
 # round in the 3D cutscenes. Contraction stays off: only the SPU's own fma
 # instructions fuse. Empty = SSE2.
 set(SPU_ARCH "AVX2" CACHE STRING "clang-cl /arch for SPU code (empty = SSE2)")
-if(SPU_ARCH AND CMAKE_C_COMPILER_ID MATCHES "Clang" AND MSVC)
+# The compatibility build takes SSE4.1 from add_compile_options above instead.
+set(SPU_ARCH_FLAGS "")
+if(CMAKE_C_COMPILER_ID MATCHES "Clang" AND MSVC)
+    if(CV_CPU_COMPAT)
+        set(SPU_ARCH_FLAGS "-ffp-contract=off")
+    elseif(SPU_ARCH)
+        set(SPU_ARCH_FLAGS "/arch:${SPU_ARCH}" "-ffp-contract=off")
+    endif()
+endif()
+if(SPU_ARCH_FLAGS)
     file(GLOB SPU_RUNTIME_SOURCES "${PS3RECOMP_DIR}/runtime/spu/*.c")
     set_property(SOURCE ${SPU_RUNTIME_SOURCES}
         TARGET_DIRECTORY ps3recomp_runtime
-        APPEND PROPERTY COMPILE_OPTIONS "/arch:${SPU_ARCH}" "-ffp-contract=off")
+        APPEND PROPERTY COMPILE_OPTIONS ${SPU_ARCH_FLAGS})
 endif()
 
 # ---------------------------------------------------------------------------
@@ -230,6 +249,7 @@ if(WIN32)
 endif()
 add_executable(${PROJECT_NAME}
     main.cpp
+    $<$<PLATFORM_ID:Windows>:cpu_tier.cpp>
     launcher.cpp
     cv_texture_export.cpp
     cv_srt.cpp
@@ -268,9 +288,9 @@ if(SPU_SOURCES)
         COMPILE_DEFINITIONS SPU_USE_DISPATCH_MT)
     if(NOT MSVC OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         set_source_files_properties(${SPU_SOURCES} PROPERTIES COMPILE_OPTIONS "-O2")
-        if(SPU_ARCH)   # see SPU_ARCH above
+        if(SPU_ARCH_FLAGS)   # see SPU_ARCH above
             set_property(SOURCE ${SPU_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
-                "/arch:${SPU_ARCH}" "-ffp-contract=off")
+                ${SPU_ARCH_FLAGS})
         endif()
     endif()
 endif()
@@ -379,6 +399,13 @@ elseif(CV_REGION_LC STREQUAL "us")
     set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${CV_EXE_NAME}_US")
 elseif(NOT CV_REGION_LC STREQUAL "eu")
     message(FATAL_ERROR "CV_REGION must be EU, JP or US, not ${CV_REGION}")
+endif()
+
+# The compatibility build sits beside the normal one as *_SSE4.exe.
+if(CV_CPU_COMPAT)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE CV_CPU_COMPAT=1)
+    get_target_property(CV_OUT_NAME ${PROJECT_NAME} OUTPUT_NAME)
+    set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${CV_OUT_NAME}_SSE4")
 endif()
 
 # Windows system import libraries. dbghelp symbolizes crash-handler addresses
