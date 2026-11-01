@@ -250,6 +250,7 @@ endif()
 add_executable(${PROJECT_NAME}
     main.cpp
     $<$<PLATFORM_ID:Windows>:cpu_tier.cpp>
+    $<$<PLATFORM_ID:Windows>:cv_discord.cpp>
     launcher.cpp
     cv_texture_export.cpp
     cv_srt.cpp

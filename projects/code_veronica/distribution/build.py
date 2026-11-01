@@ -1,6 +1,6 @@
 """Build GUI distribution separately; preserve normal local executables."""
 from pathlib import Path
-import hashlib,json,shutil,subprocess,sys
+import hashlib,json,re,shutil,subprocess,sys
 PORT=Path(__file__).resolve().parents[1]
 ROOT=PORT.parents[1]
 OUT=PORT/'build-distribution'
@@ -73,6 +73,6 @@ def main():
         previous=json.loads(result_file.read_text(encoding='utf-8')).get('executables',{})
         for name,digest in previous.items():
             if name not in results and (OUT/'bin'/name).is_file() and sha(OUT/'bin'/name)==digest:results[name]=digest
-    result_file.write_text(json.dumps(dict(distribution=True,version='v1.1.11',executables=results,normal_preserved=kept),indent=2),encoding='utf-8')
+    result_file.write_text(json.dumps(dict(distribution=True,version=re.search(r'k_launcher_version\s*=\s*L"([^"]+)"',(PORT/'launcher.cpp').read_text(encoding='utf-8'))[1],executables=results,normal_preserved=kept),indent=2),encoding='utf-8')
     print('PASS: distribution builds completed ('+', '.join(sorted(selected))+'); normal local files unchanged',flush=True)
 if __name__=='__main__':main()

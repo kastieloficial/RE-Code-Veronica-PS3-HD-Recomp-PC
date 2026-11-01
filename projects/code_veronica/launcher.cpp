@@ -36,6 +36,8 @@
 #include <string>
 #include <vector>
 #include <filesystem>
+#include <fstream>
+#include <map>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -48,6 +50,7 @@
 #include "launcher_i18n.h"
 #include "launcher_design_i18n.h"
 #include "launcher_maps_i18n.h"
+#include "launcher_discord_i18n.h"
 #include "cv_trophies.h"
 #include "cv_trophy_popup.h"
 #include "cv_trophy_i18n.h"
@@ -152,6 +155,7 @@ std::wstring sibling_exe(const GameVersion& v)
     return std::filesystem::exists(p, ec) ? p.wstring() : L"";
 }
 std::wstring folder_code();   /* the chosen folder's TITLE_ID, defined below */
+bool folder_needs_rap();      /* its EBOOT.BIN needs a .rap, defined below */
 std::wstring with_code(std::wstring m, const std::wstring& code)
 {
     for (size_t at; (at = m.find(CODES_TOKEN)) != std::wstring::npos; )
@@ -286,6 +290,7 @@ struct Settings {
     bool focus_pause=true; // pause while the game window is out of focus (cv_focus_pause.cpp)
     bool items_menu=false; // F6 item menu in the game (cv_item_menu.cpp), off by default
     bool check_updates=true; // look for a newer GitHub release when the launcher opens (cv_updater.h)
+    bool discord=true; // "Playing ..." on the player's Discord profile (cv_discord.cpp)
     bool srt=false;
     bool srt_parts[5]={true,true,true,true,false}; // name, health, time, stats, inventory
     bool srt_border=true;
@@ -469,6 +474,45 @@ std::wstring rap_for_game(const Settings& s, const std::wstring& code)
     return s.rap;  /* also allow a manually chosen licence with a renamed file */
 }
 
+/* Whether a game folder's EBOOT.BIN needs a .rap: its NPD licence is 1 or 2
+ * (paid). The Japanese release comes both ways under the same NPJB00135 --
+ * a free-licence one (3, CONTENT00DISCPKG) and a paid one (issue #32) -- so
+ * the folder decides, not the region. No EBOOT.BIN (a decrypted EBOOT.elf
+ * only) needs none. Only the header is read, and the answer is kept per
+ * file and modification time: the library card asks on every paint. */
+bool eboot_needs_rap(const std::wstring& folder)
+{
+    static std::map<std::wstring, std::pair<long long, bool>> cache;
+    std::error_code ec;
+    const fs::path bin = fs::path(folder) / L"USRDIR" / L"EBOOT.BIN";
+    if (folder.empty() || !fs::is_regular_file(bin, ec)) return false;
+    const long long stamp = (long long)fs::last_write_time(bin, ec).time_since_epoch().count();
+    auto hit = cache.find(bin.wstring());
+    if (hit != cache.end() && hit->second.first == stamp) return hit->second.second;
+    bool needs = false;
+    std::ifstream f(bin, std::ios::binary);
+    std::vector<unsigned char> d(0x10000);
+    f.read((char*)d.data(), (std::streamsize)d.size());
+    d.resize((size_t)f.gcount());
+    auto be32 = [&](size_t o) { return o + 4 <= d.size() ? (unsigned)d[o] << 24 | d[o+1] << 16 | d[o+2] << 8 | d[o+3] : 0u; };
+    auto be64 = [&](size_t o) { return (unsigned long long)be32(o) << 32 | be32(o + 4); };
+    if (be32(0) == 0x53434500) {                                  /* "SCE\0" */
+        const unsigned long long ctrl = be64(0x58), len = be64(0x60);
+        for (unsigned long long o = ctrl; o + 0x10 <= ctrl + len && o + 0x20 <= d.size(); ) {
+            const unsigned type = be32((size_t)o), size = be32((size_t)o + 4);
+            if (type == 3 && be32((size_t)o + 0x10) == 0x4E504400) {  /* "NPD\0" */
+                const unsigned licence = be32((size_t)o + 0x18);
+                needs = licence == 1 || licence == 2;
+                break;
+            }
+            if (!size) break;
+            o += size;
+        }
+    }
+    cache[bin.wstring()] = { stamp, needs };
+    return needs;
+}
+
 // Host-only regional library. Slots follow k_versions: EU, US, JP.
 std::string sfo_field(const fs::path&,const char*);
 int region_index(const std::wstring& id){for(int i=0;i<3;i++)if(id==k_versions[i].code)return i;return -1;}
@@ -569,6 +613,7 @@ Settings load_settings()
     s.battle_unlocked=_wtoi(ini_get(L"extras",L"battle_game",L"0").c_str())!=0;
     s.focus_pause=_wtoi(ini_get(L"jogo",L"pausar_sem_foco",L"1").c_str())!=0;
     s.check_updates=_wtoi(ini_get(L"launcher",L"procurar_atualizacoes",L"1").c_str())!=0;
+    s.discord=_wtoi(ini_get(L"launcher",L"discord",L"1").c_str())!=0;
     s.srt_opacity=std::clamp(_wtoi(ini_get(L"srt",L"opacidade",L"70").c_str()),0,100);
     s.srt_inventory_below=std::clamp(_wtoi(ini_get(L"srt",L"inventario_embaixo",L"0").c_str()),0,1);
     s.srt_window=std::clamp(_wtoi(ini_get(L"srt",L"janela",L"0").c_str()),0,1);
@@ -666,6 +711,7 @@ void save_settings(const Settings& s)
     ini_set(L"trofeus",L"notificacoes",s.trophy_notifications?L"1":L"0");
     ini_set(L"jogo",L"pausar_sem_foco",s.focus_pause?L"1":L"0");
     ini_set(L"launcher",L"procurar_atualizacoes",s.check_updates?L"1":L"0");
+    ini_set(L"launcher",L"discord",s.discord?L"1":L"0");
     ini_set(L"srt", L"mostrar",s.srt?L"1":L"0");
     { const wchar_t* keys[]={L"nome",L"vida",L"tempo",L"contadores",L"inventario"};
       for(int i=0;i<5;i++)ini_set(L"srt",keys[i],s.srt_parts[i]?L"1":L"0"); }
@@ -785,7 +831,7 @@ std::wstring check_game_uncached(const std::wstring& g, bool* ok)
 }
 std::wstring check_rap(const std::wstring& r, bool* ok)
 {
-    if (folder_code() == L"NPJB00135") {
+    if (folder_code() == L"NPJB00135" && !folder_needs_rap()) {
         *ok = true;
         return T(S_CHK_RAP_NOT_REQUIRED);
     }
@@ -910,7 +956,7 @@ enum {
     ID_DD_OV_CORNER = 2450, ID_DD_OV_LAYOUT, ID_DD_SRT_INVPOS, ID_DD_SRT_WINDOW, ID_DD_SRT_BOSSBAR, ID_DD_OV_SIZE, ID_DD_OV_BG,
     ID_TEX_BROWSE = 2300, ID_TEX_OPEN, ID_TEX_REPLACE, ID_TEX_DUMP, ID_TEX_DUMP_BROWSE, ID_TEX_DUMP_OPEN, ID_TEX_ALL, ID_TEX_ALL_RUN, ID_TEX_FORMAT_PNG, ID_TEX_FORMAT_DDS,
     ID_SOCIAL_GITHUB=2580, ID_SOCIAL_YOUTUBE,
-    ID_UPD_TOGGLE=2590, ID_UPD_CHECK, ID_UPD_INSTALL, ID_UPD_LATER, ID_UPD_CANCEL, ID_UPD_CLOSE, ID_UPD_NOTES_THUMB, ID_UPD_NOTES_TRACK,
+    ID_DISCORD=2589, ID_UPD_TOGGLE=2590, ID_UPD_CHECK, ID_UPD_INSTALL, ID_UPD_LATER, ID_UPD_CANCEL, ID_UPD_CLOSE, ID_UPD_NOTES_THUMB, ID_UPD_NOTES_TRACK,
     ID_TROPHY_ENABLE=2800,ID_TROPHY_NOTIFY,ID_TROPHY_RESET,ID_TROPHY_REFRESH,ID_DD_TROPHY_FILTER,ID_DD_TROPHY_CORNER,
     ID_QUICK_ON=3000,ID_QUICK_KEY,ID_QUICK_BUTTON,ID_QUICK_KEY_CLEAR,ID_QUICK_BUTTON_CLEAR,ID_QUICK_RESET,ID_QUICK_DIR=3010,ID_QUICK_DIR_CLEAR=3020,ID_QUICK_SLOT=3030,ID_QUICK_EDIT_KEY=3040,ID_QUICK_EDIT_BUTTON,ID_QUICK_EDIT_KEY_CLEAR,ID_QUICK_EDIT_BUTTON_CLEAR,ID_QUICK_CONFIRM_KEY,ID_QUICK_CONFIRM_BUTTON,ID_QUICK_CONFIRM_KEY_CLEAR,ID_QUICK_CONFIRM_BUTTON_CLEAR,
     ID_HUD_ENABLED=2900,ID_HUD_RELOAD,ID_HUD_RELOAD_KEY,ID_HUD_RELOAD_BUTTON,ID_HUD_RELOAD_KEY_CLEAR,ID_HUD_RELOAD_BUTTON_CLEAR,ID_HUD_RELOAD_RESET,
@@ -1206,7 +1252,8 @@ void section(Graphics& gr, const std::wstring& t, float x, float y, float w, con
 
 
 /* Release shown under the sidebar, beside the credit. Bump it per release. */
-const wchar_t* const k_launcher_version = L"v1.1.11";
+const wchar_t* const k_launcher_version = L"v1.1.12";
+extern "C" const wchar_t* cv_launcher_version(void) { return k_launcher_version; }   /* cv_discord.cpp */
 
 /* ---------------------------------------------------------------- updates
  * cv_updater.h does the network and file work on threads of its own, which
@@ -1725,13 +1772,16 @@ void save_note(Graphics& gr, const wchar_t* message, float x, float y, const Fon
 void option_card(Graphics& gr, float x, float y, float w, float h, bool on, int id,
                  const std::wstring& title, const std::wstring& desc, const Font& body, const Font& fsm);
 
-/* A version is ready when its folder holds the game and, outside Japan, its RAP is set. */
+/* Whether version i needs a .rap: EU and US always; JP when its EBOOT.BIN
+ * carries a paid licence (eboot_needs_rap). */
+bool region_needs_rap(int i) { return i != 2 || eboot_needs_rap(g.s.region_game[i]); }
+/* A version is ready when its folder holds the game and, when it needs one, its RAP is set. */
 bool region_ready(int i)
 {
     if (g.s.region_game[i].empty()) return false;
     bool valid = false; check_game(g.s.region_game[i], &valid);
     std::error_code ec;
-    return valid && (i == 2 || (!g.s.region_rap[i].empty() && fs::is_regular_file(g.s.region_rap[i], ec)));
+    return valid && (!region_needs_rap(i) || (!g.s.region_rap[i].empty() && fs::is_regular_file(g.s.region_rap[i], ec)));
 }
 int ready_count() { int n = 0; for (int i = 0; i < 3; i++) n += region_ready(i); return n; }
 bool g_version_picked = false;   /* a card was clicked this session (needed with 2+ ready versions) */
@@ -1797,7 +1847,7 @@ void draw_jogo(Graphics& gr, const Font& head, const Font& body, const Font& fsm
         }
         text(gr,k_versions[i].code,tx,yy+192,fsm,C_DIM,StringAlignmentNear,tw,18);
         bool valid=false;if(added)check_game(g.s.region_game[i],&valid);
-        std::error_code ec;const bool rap_ok=i==2||(!g.s.region_rap[i].empty()&&fs::is_regular_file(g.s.region_rap[i],ec));
+        std::error_code ec;const bool needs_rap=region_needs_rap(i),rap_ok=!needs_rap||(!g.s.region_rap[i].empty()&&fs::is_regular_file(g.s.region_rap[i],ec));
         const wchar_t* status=!added?lx(design::MISSING):!valid?T(S_CHK_GAME_BAD):!rap_ok?lx(design::RAP_PENDING):lx(design::READY);
         const Color sc=!added?C_DIM:!valid?C_RED_HI:!rap_ok?amber:C_OK;
         {SolidBrush dot(sc);gr.FillEllipse(&dot,tx,yy+219,9.f,9.f);}
@@ -1808,7 +1858,7 @@ void draw_jogo(Graphics& gr, const Font& head, const Font& body, const Font& fsm
             field(gr,RectF(tx,yy+264,tw,30),false,false);
             text(gr,g.s.region_game[i],tx+8,yy+264,fsm,C_TEXT,StringAlignmentNear,tw-16,30);
             text(gr,T(S_LICENSE),tx,yy+300,fsm,C_DIM,StringAlignmentNear,tw,18);
-            if(i==2){
+            if(!needs_rap){
                 field(gr,RectF(tx,yy+320,tw,30),false,false);
                 text(gr,lx(design::RAP_NOT_NEEDED),tx+8,yy+320,fsm,C_DIM,StringAlignmentNear,tw-16,30);
             } else {
@@ -2305,6 +2355,10 @@ void draw_avancado(Graphics& gr, const Font& head, const Font& body, const Font&
         text(gr, st, x + 236, y, body, C_DIM, StringAlignmentNear, w - 236, 34);
     }
     y += 60;
+    /* "Playing ..." on Discord (cv_discord.cpp) */
+    option_card(gr, x, y, w, 84, g.s.discord, ID_DISCORD, cv_discord_text::texts[g_lang][cv_discord_text::OPTION],
+                cv_discord_text::texts[g_lang][cv_discord_text::OPTION_DESC], body, fsm);
+    y += 98;
     section(gr, T(S_ADV_FILES), x, y, w, head);
     y += 46;
     button(gr, RectF(x, y, 280, 34), T(S_CLEAR_CACHE), ID_CACHE_CLEAR, body, false, !g.running);
@@ -3404,6 +3458,7 @@ void click(int id)
     else if(id==ID_BATTLE){g.s.battle_unlocked=!g.s.battle_unlocked;changed();}
     else if(id==ID_FOCUS_PAUSE){g.s.focus_pause=!g.s.focus_pause;changed();}
     else if(id==ID_UPD_TOGGLE){g.s.check_updates=!g.s.check_updates;changed();}
+    else if(id==ID_DISCORD){g.s.discord=!g.s.discord;changed();}
     else if(id==ID_UPD_CHECK&&!g.running)upd_check(true);
     else if(id==ID_ITEMS_ENABLE){g.s.items_menu=!g.s.items_menu;cv_item_menu_enable(g.s.items_menu);changed();}
     else if(id==ID_SHOT_OPEN){const fs::path d=fs::path(ini_path()).parent_path()/L"screenshots";std::error_code ec;fs::create_directories(d,ec);open_in_explorer(d.wstring());}
@@ -3547,7 +3602,7 @@ void click(int id)
         if(ready>1&&!g_version_picked){g.page=P_JOGO;g.play_msg=lx(design::PICK_VERSION);InvalidateRect(g.hwnd,NULL,FALSE);return;}
         {   /* US/EU need the license the player chose, even if an old decrypted EBOOT is still there */
             const int r=g.s.region_selected;std::error_code ec;
-            if(r!=2&&!g.s.region_game[r].empty()&&(g.s.region_rap[r].empty()||!fs::is_regular_file(g.s.region_rap[r],ec))){
+            if(region_needs_rap(r)&&!g.s.region_game[r].empty()&&(g.s.region_rap[r].empty()||!fs::is_regular_file(g.s.region_rap[r],ec))){
                 g.page=P_JOGO;g.play_msg=lx(design::RAP_REQUIRED);InvalidateRect(g.hwnd,NULL,FALSE);return;}
         }
         bool ok; check_game(g.s.game, &ok);
@@ -4004,6 +4059,7 @@ std::wstring folder_code()
 {
     return widen(sfo_field(fs::path(g.s.game) / L"PARAM.SFO", "TITLE_ID").c_str());
 }
+bool folder_needs_rap() { return eboot_needs_rap(g.s.game); }
 
 /* The chosen folder is the other version: start its executable, which reads
  * the settings just saved and plays at once (CV_LAUNCHER_AUTOPLAY), and leave. */
@@ -4064,6 +4120,7 @@ void start_game()
     set_env("RES_SCALE", k_res[s.res].scale);
     set_env("WINDOW_MODE", k_mode_env[s.mode]);
     set_env("AA_MODE", std::to_string(s.aa));
+    set_env("CV_DISCORD", s.discord ? "1" : "0");
     set_env("RSX_ANISO", "0");
     /* Opt-in 60 FPS: preserve native 30 Hz gameplay, blend render poses.
      * The accelerated RAW benchmark remains a separate diagnostic shortcut. */

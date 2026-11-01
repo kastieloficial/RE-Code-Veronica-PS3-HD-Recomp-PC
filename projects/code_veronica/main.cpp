@@ -516,6 +516,9 @@ extern "C" const rsx_ui_sprite* (*g_rsx_srt_sprites_hook)(uint32_t*,const uint32
 extern "C" void cv_button_icons_init(void);   /* button_icons.cpp */
 extern "C" void ps3_patch_site(uint32_t addr, uint32_t word, const char* flag);   /* runtime/patches */
 extern "C" void ps3_patch_writes_from_env(void);
+#ifdef _WIN32
+extern "C" void cv_discord_start(const char* title_id);   /* cv_discord.cpp */
+#endif
 
 #include "cv_ptbr_spacing.h"
 
@@ -656,6 +659,9 @@ int main(int argc, char** argv)
     }
 
     ps3_patch_writes_from_env();   /* patch files: the data they change, before the game reads it */
+#ifdef _WIN32
+    cv_discord_start(CV_TITLE_ID);   /* "Playing ..." on Discord, unless the launcher turned it off */
+#endif
 
     derive_vfs_root(eboot_path.c_str());
     printf("[boot] VFS root: %s\n", ppu_vfs_root);
