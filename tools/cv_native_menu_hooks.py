@@ -9,7 +9,7 @@ from pathlib import Path
 # Japanese EBOOT, in the same order (projects/code_veronica/cv_version.h).
 # The last two: the guest libc memset and memmove (cv_native_libc.cpp).
 HOOKS_BY_REGION = {
-    "eu": ("0002A468", "0002F3D0", "001BD060", "0020140C", "0002B35C", "000333A0", "001D9370", "001D8090", "0050E538", "001D952C", "00033FD0", "007B6C38", "007AE7B0"),
+    "eu": ("0002A468", "0002F3D0", "001BD060", "0020140C", "0002B35C", "000333A0", "001D9370", "001D8090", "0050E538", "001D952C", "00033FD0", "007B6C38", "007AE7B0", "001E58FC", "00210914"),
     "us": ("0002A038", "0002EF60", "001BB5E0", "001FF46C", "0002AEEC", "00032FA0", "001D7550", "001D6270", "0050C578", "001D770C", "00033BD0", "007B4C78", "007AC7F0"),
     "jp": ("0002A038", "0002EF38", "001BB688", "001FF7C0", "0002AEC4", "00032F80", "001D76D0", "001D63F0", "0050CE68", "001D788C", "00033B78", "007B5568", "007AD0E0"),
 }

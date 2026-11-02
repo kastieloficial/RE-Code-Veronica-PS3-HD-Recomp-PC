@@ -18,6 +18,7 @@
  */
 #include "ppu_recomp.h"
 #include "cv_version.h"
+#include "cv_options.h"
 #include <cstdint>
 #include <cstring>
 
@@ -52,3 +53,56 @@ void CV_FN_LOGO(ppu_context* ctx)
     }
     CV_OG_LOGO(ctx);
 }
+
+#if !defined(CV_REGION_JP) && !defined(CV_REGION_US)
+extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
+static void drain_boot(ppu_context* ctx)
+{
+    while (g_trampoline_fn) {
+        auto fn = g_trampoline_fn;
+        g_trampoline_fn = nullptr;
+        fn(ctx);
+    }
+}
+void cv_original_001E58FC(ppu_context*);
+void cv_original_00210914(ppu_context*);
+
+// EU: skip only the initial autosave notice (message 0x29C). Continue at
+// the same load state as its OK button, retaining normal save/error handling.
+void func_001E58FC(ppu_context* ctx)
+{
+    if(!cv_options::enabled("CV_SKIP_START_NOTICES")){cv_original_001E58FC(ctx);return;}
+    const uint32_t unit = uint32_t(ctx->gpr[3]);
+    const uint32_t pane = vm_read32(unit + 0x9C);
+    if (vm_read32(unit + 0x30) != 0 || !(vm_read32(pane + 0x34) & 4)) {
+        cv_original_001E58FC(ctx);
+        return;
+    }
+    ppu_context query = *ctx;
+    query.gpr[3] = pane;
+    func_001F047C(&query); drain_boot(&query);
+    if (!query.gpr[3]) return;
+    vm_write8(vm_read32(0xAF96C4) + 0x51, 0);
+    const uint32_t settings = vm_read32(unit + 0x98);
+    vm_write32(settings + 0x1C, 0x29D); // Loading save data, not a confirmation.
+    vm_write16(settings + 0x14, 0);
+    vm_write32(unit + 0x54, 1);
+    vm_write32(unit + 0x30, 1);
+}
+
+// EU: initial PSN question 0x308 -> No, then 0x309 -> Start game.
+// State 6 returns the original offline result (2). Explicit leaderboard
+// requests (mode 4), profile errors and all other dialogs remain unchanged.
+void func_00210914(ppu_context* ctx)
+{
+    if(!cv_options::enabled("CV_SKIP_START_NOTICES")){cv_original_00210914(ctx);return;}
+    const uint32_t unit = uint32_t(ctx->gpr[3]);
+    if (vm_read32(unit + 0x30) == 2 && vm_read8(0xBBE993) != 4) {
+        ppu_context cleanup = *ctx;
+        cleanup.gpr[3] = vm_read32(0xAF96A0);
+        func_0026B170(&cleanup); drain_boot(&cleanup);
+        vm_write32(unit + 0x30, 6);
+    }
+    cv_original_00210914(ctx);
+}
+#endif
