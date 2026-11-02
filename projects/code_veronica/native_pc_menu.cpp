@@ -346,7 +346,7 @@ void CV_FN_MENU_INPUT(ppu_context* ctx) {
     const uint32_t frame=cellGcm_flip_submit_count();
     static const bool interpolated=[] {
         // Menu logic remains at 30 Hz with either 60 FPS rendering path.
-        return menu_environment("CV_FPS_TEST_60")=="1"&&(menu_environment("CV_RENDER_INTERPOLATION")=="1");
+        return menu_environment("CV_FPS_TEST_60")=="1"&&(menu_environment("CV_RENDER_INTERPOLATION")=="1"||cv_options::enabled("CV_INPUT_COMFORT")||cv_options::enabled("CV_SMOOTH_ANIMATION"));
     }();
     const uint32_t screen=rsx_ui_menu_contiguous(frame,last_frame,interpolated)?last_screen:~0u,fade=last_fade;
     last_screen=vm_read32(kScreen);last_fade=vm_read32(kFade);last_frame=frame;

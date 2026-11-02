@@ -28,11 +28,17 @@ def battle_reads(source,region):
             old="ctx->gpr[5] = vm_read32(ctx->gpr[5] + 0x4);"
             if body.count(old)!=2:raise SystemExit(f"Battle title read sites changed in {region}: {address:08X}")
             body=body.replace(old,"ctx->gpr[5] = cv_battle_read32(ctx->gpr[5] + 0x4,0x1u);");changed+=2
+            if region=="eu":
+                # The title prompt accepts the same confirm buttons as its menu.
+                old="ctx->gpr[3] = (uint64_t)ppc_rlwinm((uint32_t)ctx->gpr[3], 0, 28, 28);"
+                if body.count(old)!=1:raise SystemExit(f"Title Start test changed in {region}: {address:08X}")
+                body=body.replace(old,"ctx->gpr[3] = cv_title_input(uint32_t(ctx->gpr[3]));")
         elif address==script:
             old="ctx->gpr[3] = vm_read32((ctx->gpr[3] + ctx->gpr[6]));"
             if body.count(old)!=1:raise SystemExit(f"Battle character read site changed in {region}")
             body=body.replace(old,"ctx->gpr[3] = cv_battle_read32((ctx->gpr[3] + ctx->gpr[6]),0x7Cu);");changed+=1
         source=source[:m.start()]+body+source[end:]
+    if region=="eu" and "cv_title_input(" in source:source='extern "C" unsigned cv_title_input(unsigned);\n'+source
     return source,changed
 
 
@@ -49,8 +55,10 @@ def modern_controls(source,region):
         if key=="input" and body.count(needle)!=1:raise RuntimeError("Native modern input site changed")
         if needle not in body:raise RuntimeError("Native modern turn site changed")
         body=body.replace(needle,needle+"\n        cv_modern_turn();" if key=="player" else "        ctx->gpr[3] = cv_controls_input(uint32_t(ctx->gpr[3]));\n"+needle,1)
+        if key=="input" and region=="eu":
+            body=body.replace(needle,f"        ctx->gpr[{reg}] = cv_controls_previous(uint32_t(ctx->gpr[{reg}]));\n"+needle,1)
         source=source[:start]+body+source[end:];changed=True
-    if changed:source='extern "C" void cv_modern_turn();\nextern "C" unsigned cv_controls_input(unsigned);\n'+source
+    if changed:source='extern "C" void cv_modern_turn();\nextern "C" unsigned cv_controls_input(unsigned);\nextern "C" unsigned cv_controls_previous(unsigned);\n'+source
     return source
 
 def main(finalize=None):

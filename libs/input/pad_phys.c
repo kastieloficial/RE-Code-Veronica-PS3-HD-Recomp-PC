@@ -77,8 +77,20 @@ static void apply_360_layout(PadPhys* p)
 
 static int xi_read(int i, PadPhys* p)
 {
+    // An absent XInput slot can trigger expensive device discovery on Wine.
+    // Keep live input uncached; retry only disconnected slots twice a second.
+    // Each polling thread owns its deadlines, avoiding cross-thread races.
+    static __declspec(thread) ULONGLONG retry_at[4];
+    const ULONGLONG now = GetTickCount64();
+    const char* comfort=getenv("CV_INPUT_COMFORT");
+    const int retry=comfort&&!strcmp(comfort,"1");
+    if (retry&&now < retry_at[i]) return 0;
     XINPUT_STATE st; memset(&st, 0, sizeof st);
-    if (XInputGetState((DWORD)i, &st) != ERROR_SUCCESS) return 0;
+    if (XInputGetState((DWORD)i, &st) != ERROR_SUCCESS) {
+        retry_at[i] = now + 500;
+        return 0;
+    }
+    retry_at[i] = 0;
     const XINPUT_GAMEPAD* g = &st.Gamepad;
     uint32_t b = 0;
     if (g->wButtons & XINPUT_GAMEPAD_A)              b |= 1u << PB_SOUTH;
