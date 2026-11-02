@@ -3254,8 +3254,9 @@ void hide_menu()
     finish_srt_drag();
     g.cap = CAP_NONE; g.open_dd = -1;
     SetWindowPos(g.hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    if(g.s.enhancements[E_HIDE])ShowWindow(g.hwnd, SW_HIDE);
     if (HWND gw = (HWND)rsx_d3d12_window()) {
-        if (g.s.mode != 0) ShowWindow(g.hwnd, SW_MINIMIZE);
+        if(!g.s.enhancements[E_HIDE]&&g.s.mode!=0)ShowWindow(g.hwnd,SW_MINIMIZE);
         SetForegroundWindow(gw);
     }
 }
@@ -4243,6 +4244,7 @@ void start_game()
     g_rsx_key_hook = key_hook;
     g.page = P_JOGO;   /* the first tab */
     InvalidateRect(g.hwnd, NULL, FALSE);
+    if(s.enhancements[E_HIDE])hide_menu();
     SetEvent(s_play_ev);
 }
 
