@@ -1645,6 +1645,7 @@ static u32    s_lock_n  = 0;
 static int s_lighter_probe;
 static volatile LONG s_lighter_shadow_bypass;
 #include "cv_shadow_switch.h"
+#include "cv_depth_of_field.h"
 static volatile LONG s_cv_dynamic_shadows=1;
 int cv_dynamic_shadows_get(void){return InterlockedCompareExchange(&s_cv_dynamic_shadows,0,0)!=0;}
 void cv_dynamic_shadows_set(int enabled){InterlockedExchange(&s_cv_dynamic_shadows,enabled!=0);}
@@ -11279,6 +11280,11 @@ static void render_frame_impl(void)
             const int batch_shadow=shadow_batch_on()&&shader_uses_dxc()&&s_vf_buf&&
                 !s_cap_steps_on&&!s_cv_query_active&&!cv_diag&&!getenv("FP_ZERO_K");
             const int cv_shadows_enabled=cv_dynamic_shadows_get();
+            static int cv_depth_of_field_enabled=-1;
+            if(cv_depth_of_field_enabled<0) {
+                const char* value=getenv("CV_DEPTH_OF_FIELD");
+                cv_depth_of_field_enabled=!(value&&strcmp(value,"0")==0);
+            }
             unsigned char cv_shadow_neutralized[MAX_OFF_RTS]={0};
             for (u32 d = 0; d < s_rb.count && d < MAX_DRAWS; d++) {
                 const D3D12DrawRecord* dr = &s_rb.draws[d];
@@ -11586,6 +11592,14 @@ static void render_frame_impl(void)
                         static int reported=0;
                         if(!reported){reported=1;fprintf(stderr,"[SHADOWS] supported dynamic-shadow map neutralized; lighting preserved\n");}
                     }
+                    continue;
+                }
+                if(!cv_depth_of_field_enabled&&cv_depth_of_field_skip(0,
+                    dr->is_vp,dr->is_clear,dr->is_copy,dr->rt_off,dr->fp_exp32,
+                    dr->fp_bytes,fp_snap_code(dr),dr_num_rts(dr),dr->vertex_count,
+                    dr->cmask,dr->dtest,dr->blend_key)) {
+                    static int reported=0;
+                    if(!reported){reported=1;fprintf(stderr,"[DOF] depth-of-field composite disabled; sharp scene preserved\n");}
                     continue;
                 }
                 /* Per-draw pipeline: prefer the guest's own compiled FP; fall
