@@ -3389,3 +3389,132 @@ inline const wchar_t* srt_credit_text(int lang) {
     if(lang<0||lang>=LANG_COUNT)lang=LANG_EN;
     return lang==LANG_EN?L"by Kastiel":k_str[lang][S_CREDIT_KASTIEL];
 }
+
+/* Original PS3 text selection: independent of launcher language and PT-BR. */
+static const wchar_t* const k_original_language_text[LANG_COUNT][4] = {
+    {L"Idioma original", L"Automático", L"Apenas EU + Original. Automático mantém o inglês. Selecione antes de iniciar o jogo.", L"Inglês"},
+    {L"Original language", L"Automatic", L"EU + Original only. Automatic keeps English. Select before starting the game.", L"English"},
+    {L"Idioma original", L"Automático", L"Solo EU + Original. Automático mantiene el inglés. Selecciona antes de iniciar el juego.", L"Inglés"},
+    {L"オリジナルの言語", L"自動", L"EU版＋オリジナルのみ。自動は英語を維持します。ゲーム開始前に選択してください。", L"英語"},
+    {L"Langue d’origine", L"Automatique", L"EU + Original uniquement. Automatique conserve l’anglais. Choisir avant de démarrer le jeu.", L"Anglais"},
+    {L"Originalsprache", L"Automatisch", L"Nur EU + Original. Automatisch behält Englisch bei. Vor dem Spielstart auswählen.", L"Englisch"},
+    {L"Lingua originale", L"Automatico", L"Solo EU + Originale. Automatico mantiene l’inglese. Selezionare prima di avviare il gioco.", L"Inglese"},
+    {L"Język oryginalny", L"Automatyczny", L"Tylko EU + Oryginalne. Automatyczny zachowuje angielski. Wybierz przed uruchomieniem gry.", L"Angielski"},
+    {L"Orijinal dil", L"Otomatik", L"Yalnızca EU + Orijinal. Otomatik İngilizceyi korur. Oyunu başlatmadan önce seçin.", L"İngilizce"},
+    {L"اللغة الأصلية", L"تلقائي", L"للنسخة الأوروبية والنص الأصلي فقط. التلقائي يبقي الإنجليزية. اختر قبل بدء اللعبة.", L"الإنجليزية"},
+    {L"原版语言", L"自动", L"仅限欧版＋原版文本。自动保留英语。请在启动游戏前选择。", L"英语"},
+    {L"원본 언어", L"자동", L"유럽판 + 원본만 지원합니다. 자동은 영어를 유지합니다. 게임 시작 전에 선택하세요.", L"영어"},
+    {L"Язык оригинала", L"Автоматически", L"Только EU + Оригинал. Автоматически сохраняет английский. Выберите до запуска игры.", L"Английский"}
+};
+
+// Order matches Lang and Enhancement.
+inline const wchar_t* enhancement_text(int language,int option,bool description) {
+    static const wchar_t* const texts[LANG_COUNT][6][2]={
+        {
+            {L"Animações suaves a 60 FPS (EU)",L"Câmeras, personagens, objetos e cenas. Selecione também 60 FPS."},
+            {L"Confirmação aprimorada",L"Preserva toques curtos e permite confirmar textos enquanto corre e na tela inicial. Reinicie o jogo."},
+            {L"Pular avisos iniciais (EU)",L"Ignora o aviso inicial de salvamento e a solicitação da PSN para jogar offline. Reinicie o jogo."},
+            {L"Profundidade de campo",L"Remove o desfoque de profundidade original."},
+            {L"Contador de munição legível",L"Exibe munição carregada e reserva abaixo da arma. Reinicie o jogo."},
+            {L"Ocultar launcher ao jogar",L"Oculta ao jogar ou retomar. As configurações continuam acessíveis; reaparece ao sair."},
+        },
+        {
+            {L"Smooth 60 FPS animation (EU)",L"Cameras, actors, objects and cutscenes. Also select 60 FPS."},
+            {L"Improved confirmation input",L"Preserve short presses and confirm text while holding Run or at the title screen. Restart the game."},
+            {L"Skip startup notices (EU)",L"Skip the initial save notice and PSN prompt to continue offline. Restart the game."},
+            {L"Depth of field",L"Remove the original depth-of-field blur."},
+            {L"Readable ammunition counter",L"Show loaded rounds and carried reserve below the weapon. Restart the game."},
+            {L"Hide launcher while playing",L"Hide on Play or Resume. Settings remain accessible; the launcher returns after exiting."},
+        },
+        {
+            {L"Animaciones fluidas a 60 FPS (EU)",L"Cámaras, personajes, objetos y escenas. Selecciona también 60 FPS."},
+            {L"Confirmación mejorada",L"Conserva pulsaciones breves y permite confirmar textos al correr y en la pantalla inicial. Reinicia el juego."},
+            {L"Omitir avisos iniciales (EU)",L"Omite el aviso inicial de guardado y la pregunta de PSN para jugar sin conexión. Reinicia el juego."},
+            {L"Profundidad de campo",L"Elimina el desenfoque de profundidad original."},
+            {L"Contador de munición legible",L"Muestra la munición cargada y la reserva bajo el arma. Reinicia el juego."},
+            {L"Ocultar launcher al jugar",L"Se oculta al jugar o reanudar. Los ajustes siguen accesibles; reaparece al salir."},
+        },
+        {
+            {L"滑らかな60 FPSアニメーション (EU)",L"カメラ、キャラクター、オブジェクト、イベントシーン。フレーム上限も60 FPSに設定してください。"},
+            {L"決定入力を改善",L"短い入力を保持し、走るボタンを押したままの文章送りとタイトル画面での決定を可能にします。ゲームの再起動が必要です。"},
+            {L"起動時の通知を省略 (EU)",L"最初のセーブ通知とPSNへの接続確認を省略し、オフラインで続行します。ゲームの再起動が必要です。"},
+            {L"被写界深度",L"元の被写界深度によるぼかしを除去します。"},
+            {L"見やすい弾数表示",L"装填済みの弾数と所持する予備弾数を武器の下に表示します。ゲームの再起動が必要です。"},
+            {L"プレイ中はランチャーを隠す",L"開始・再開時に非表示にします。設定は引き続き開けます。終了後に再表示されます。"},
+        },
+        {
+            {L"Animations fluides à 60 FPS (EU)",L"Caméras, personnages, objets et cinématiques. Sélectionnez aussi 60 FPS."},
+            {L"Confirmation améliorée",L"Conserve les appuis brefs et permet de confirmer les textes en courant et à l’écran titre. Redémarrez le jeu."},
+            {L"Ignorer les avis initiaux (EU)",L"Ignore l’avis initial de sauvegarde et la demande PSN pour continuer hors ligne. Redémarrez le jeu."},
+            {L"Profondeur de champ",L"Supprime le flou de profondeur de champ d’origine."},
+            {L"Compteur de munitions lisible",L"Affiche les munitions chargées et la réserve sous l’arme. Redémarrez le jeu."},
+            {L"Masquer le lanceur en jouant",L"Masqué au lancement et à la reprise. Les réglages restent accessibles ; il revient après la fermeture du jeu."},
+        },
+        {
+            {L"Flüssige 60-FPS-Animationen (EU)",L"Kamera, Figuren, Objekte und Zwischensequenzen. Zusätzlich 60 FPS auswählen."},
+            {L"Verbesserte Bestätigungseingaben",L"Kurze Tastendrücke erhalten, Texte trotz gehaltener Lauftaste und am Titelbild bestätigen. Spielneustart nötig."},
+            {L"Startmeldungen überspringen (EU)",L"Anfänglichen Speicherhinweis und PSN-Abfrage überspringen, um offline fortzufahren. Spielneustart nötig."},
+            {L"Tiefenunschärfe",L"Den ursprünglichen Tiefenunschärfeeffekt entfernen."},
+            {L"Lesbare Munitionsanzeige",L"Geladene Munition und mitgeführte Reserve unter der Waffe anzeigen. Spielneustart nötig."},
+            {L"Launcher beim Spielen ausblenden",L"Beim Starten und Fortsetzen ausblenden. Einstellungen bleiben erreichbar; nach Spielende erscheint er wieder."},
+        },
+        {
+            {L"Animazioni fluide a 60 FPS (EU)",L"Telecamere, personaggi, oggetti e filmati di gioco. Seleziona anche 60 FPS."},
+            {L"Conferma migliorata",L"Conserva le pressioni brevi e consente di confermare testi correndo e nella schermata iniziale. Riavvia il gioco."},
+            {L"Salta avvisi iniziali (EU)",L"Salta l’avviso iniziale di salvataggio e la richiesta PSN per continuare offline. Riavvia il gioco."},
+            {L"Profondità di campo",L"Rimuove la sfocatura della profondità di campo originale."},
+            {L"Contatore munizioni leggibile",L"Mostra munizioni caricate e riserva sotto l’arma. Riavvia il gioco."},
+            {L"Nascondi launcher durante il gioco",L"Si nasconde all’avvio e alla ripresa. Le impostazioni restano accessibili; riappare all’uscita."},
+        },
+        {
+            {L"Płynne animacje 60 FPS (EU)",L"Kamery, postacie, obiekty i przerywniki. Wybierz również 60 FPS."},
+            {L"Ulepszone zatwierdzanie",L"Zachowuje krótkie naciśnięcia i pozwala zatwierdzać tekst podczas biegu oraz ekran tytułowy. Uruchom grę ponownie."},
+            {L"Pomiń komunikaty startowe (EU)",L"Pomija początkowy komunikat zapisu i pytanie o PSN, aby grać offline. Uruchom grę ponownie."},
+            {L"Głębia ostrości",L"Usuwa oryginalne rozmycie głębi ostrości."},
+            {L"Czytelny licznik amunicji",L"Pokazuje załadowaną amunicję i zapas pod bronią. Uruchom grę ponownie."},
+            {L"Ukryj launcher podczas gry",L"Ukrywa przy starcie i wznowieniu. Ustawienia pozostają dostępne; launcher wraca po wyjściu."},
+        },
+        {
+            {L"Akıcı 60 FPS animasyonlar (EU)",L"Kameralar, karakterler, nesneler ve ara sahneler. Ayrıca 60 FPS seçin."},
+            {L"Geliştirilmiş onay girdisi",L"Kısa basışları korur; koşarken metinleri ve başlık ekranını onaylamayı sağlar. Oyunu yeniden başlatın."},
+            {L"Başlangıç bildirimlerini atla (EU)",L"Çevrimdışı devam etmek için ilk kayıt bildirimini ve PSN sorusunu atlar. Oyunu yeniden başlatın."},
+            {L"Alan derinliği",L"Orijinal alan derinliği bulanıklığını kaldırır."},
+            {L"Okunaklı mühimmat sayacı",L"Silahtaki mühimmatı ve taşınan yedeği silahın altında gösterir. Oyunu yeniden başlatın."},
+            {L"Oynarken başlatıcıyı gizle",L"Başlatırken ve devam ederken gizlenir. Ayarlar erişilebilir kalır; çıkışta yeniden görünür."},
+        },
+        {
+            {L"حركة سلسة بمعدل 60 FPS (EU)",L"الكاميرات والشخصيات والعناصر والمشاهد. اختر أيضًا حد 60 FPS."},
+            {L"تحسين إدخال التأكيد",L"يحفظ الضغطات القصيرة ويتيح تأكيد النص أثناء الجري وفي شاشة العنوان. أعد تشغيل اللعبة."},
+            {L"تخطي إشعارات البداية (EU)",L"يتخطى إشعار الحفظ الأول وطلب PSN للمتابعة دون اتصال. أعد تشغيل اللعبة."},
+            {L"عمق المجال",L"يزيل ضبابية عمق المجال الأصلية."},
+            {L"عداد ذخيرة واضح",L"يعرض الذخيرة المحشوة والاحتياطية أسفل السلاح. أعد تشغيل اللعبة."},
+            {L"إخفاء المشغّل أثناء اللعب",L"يختفي عند البدء والاستئناف. تبقى الإعدادات متاحة ويظهر مجددًا بعد الخروج."},
+        },
+        {
+            {L"流畅的60 FPS动画 (EU)",L"摄像机、角色、物件和即时演算过场。请同时将帧率上限设为60 FPS。"},
+            {L"改善确认输入",L"保留短按输入，允许按住奔跑键时推进文本，并在标题画面使用确认键。需要重启游戏。"},
+            {L"跳过启动提示 (EU)",L"跳过最初的保存提示和PSN登录询问，以离线方式继续。需要重启游戏。"},
+            {L"景深",L"移除原版景深模糊效果。"},
+            {L"清晰的弹药计数",L"在武器下方显示已装填弹药和携带的备用弹药。需要重启游戏。"},
+            {L"游戏时隐藏启动器",L"开始或继续游戏时隐藏。仍可打开设置，退出游戏后会重新显示。"},
+        },
+        {
+            {L"부드러운 60 FPS 애니메이션 (EU)",L"카메라, 캐릭터, 사물 및 실시간 컷신. 프레임 제한도 60 FPS로 설정하세요."},
+            {L"확인 입력 개선",L"짧은 입력을 유지하고 달리기 버튼을 누른 채 텍스트를 넘기거나 타이틀 화면에서 확인할 수 있습니다. 게임을 재시작하세요."},
+            {L"시작 알림 건너뛰기 (EU)",L"첫 저장 알림과 PSN 로그인 질문을 건너뛰고 오프라인으로 진행합니다. 게임을 재시작하세요."},
+            {L"피사계 심도",L"원래의 피사계 심도 흐림 효과를 제거합니다."},
+            {L"읽기 쉬운 탄약 표시",L"무기 아래에 장전된 탄약과 소지한 예비 탄약을 표시합니다. 게임을 재시작하세요."},
+            {L"플레이 중 런처 숨기기",L"시작하거나 재개할 때 숨깁니다. 설정은 계속 열 수 있으며 게임 종료 후 다시 표시됩니다."},
+        },
+        {
+            {L"Плавные анимации 60 FPS (EU)",L"Камеры, персонажи, объекты и игровые сцены. Также выберите 60 FPS."},
+            {L"Улучшенный ввод подтверждения",L"Сохраняет короткие нажатия, позволяет подтверждать текст при беге и на титульном экране. Перезапустите игру."},
+            {L"Пропуск стартовых уведомлений (EU)",L"Пропускает первое уведомление о сохранении и запрос PSN для игры без сети. Перезапустите игру."},
+            {L"Глубина резкости",L"Убирает исходное размытие глубины резкости."},
+            {L"Читаемый счётчик патронов",L"Показывает заряженные патроны и запас под оружием. Перезапустите игру."},
+            {L"Скрывать лаунчер во время игры",L"Скрывает при запуске и продолжении. Настройки остаются доступны; после выхода лаунчер возвращается."},
+        },
+    };
+    if(language<0||language>=LANG_COUNT)language=LANG_EN;
+    return texts[language][option][description];
+}

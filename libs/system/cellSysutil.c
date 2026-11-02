@@ -263,6 +263,17 @@ s32 cellSysutilGetSystemParamInt(s32 id, u32 value_ea)
     switch (id) {
     case CELL_SYSUTIL_SYSTEMPARAM_ID_LANG:
         v = CELL_SYSUTIL_LANG_ENGLISH_US;
+        /* Optional host setting; absent/invalid values retain the old default. */
+        {
+            const char* language = getenv("PS3_SYSTEM_LANGUAGE");
+            if (language && *language) {
+                char* end;
+                const long parsed = strtol(language, &end, 10);
+                if (end != language && *end == '\0' &&
+                    parsed >= CELL_SYSUTIL_LANG_JAPANESE && parsed <= CELL_SYSUTIL_LANG_TURKISH)
+                    v = (s32)parsed;
+            }
+        }
         break;
     case CELL_SYSUTIL_SYSTEMPARAM_ID_ENTER_BUTTON_ASSIGN:
         v = CELL_SYSUTIL_ENTER_BUTTON_ASSIGN_CROSS;

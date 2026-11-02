@@ -48,6 +48,7 @@
 #include "analog_bindings.h"
 #include "analog_i18n.h"
 #include "launcher_i18n.h"
+#include "cv_original_language.h"
 #include "launcher_design_i18n.h"
 #include "launcher_maps_i18n.h"
 #include "launcher_discord_i18n.h"
@@ -155,7 +156,6 @@ std::wstring sibling_exe(const GameVersion& v)
     return std::filesystem::exists(p, ec) ? p.wstring() : L"";
 }
 std::wstring folder_code();   /* the chosen folder's TITLE_ID, defined below */
-bool folder_needs_rap();      /* its EBOOT.BIN needs a .rap, defined below */
 std::wstring with_code(std::wstring m, const std::wstring& code)
 {
     for (size_t at; (at = m.find(CODES_TOKEN)) != std::wstring::npos; )
@@ -166,7 +166,6 @@ std::wstring with_code(std::wstring m, const std::wstring& code)
 /* ---------------------------------------------------------------- language */
 int g_lang = LANG_PT;        /* the language shown */
 int g_lang_pick = -1;        /* the choice: -1 = Sistema (follow Windows), else a Lang */
-bool s_shortcut_xbox=false;
 const wchar_t* T(int id) {
     /* Controller hints name every pad, whatever is connected: "R1+R2+L1+L2+□"
      * becomes "PS: R1+R2+L1+L2+□ · Xbox: RB+RT+LB+LT+X · Switch: R+ZR+L+ZL+Y". */
@@ -254,6 +253,7 @@ static const wchar_t* ptbr_ui(int column) {
 
 struct Settings {
     int game_text_ptbr=0;
+    int original_language=0; // Automatic preserves the English system-language default
     int mode = 0;          /* 0 janela, 1 sem borda, 2 tela cheia */
     int res = 1;           /* index into k_res */
     int aa = 0;            /* anti-aliasing: 0 off, 1 FXAA, 2 SMAA */
@@ -265,6 +265,7 @@ struct Settings {
     int contrast = 100;   /* 50..180 percent */
     int saturation = 100; /* 0..200 percent */
     int sharpness = 0;    /* FSR 1 RCAS, 0..100 percent in steps of 10; 0 off */
+    bool enhancements[6] = {}; // opt-in; applied at the next game start
     bool patch[8] = {};    /* k_patches on/off */
     int layout = 2;        /* button icons: 0 PlayStation, 1 Xbox, 2 automatic, 3 keyboard, 4 Nintendo Switch */
     int rumble = 100;      /* vibration strength, percent (PAD_RUMBLE_SCALE): 0 off .. 200 */
@@ -320,8 +321,6 @@ std::wstring res_name(int i) { return i == 1 ? T(S_RES_NATIVE) : k_res[i].name; 
 std::wstring mode_name(int i) { return T(S_MODE_WINDOW + i); }
 std::wstring aa_name(int i) { return T(S_AA_OFF + i); }
 std::wstring pose_device_name(int i){return T(i?S_POSE_GPU:S_POSE_CPU);}
-std::wstring frame_generation_name(int i){return T(i?S_FRAME_GEN_ON:S_FRAME_GEN_OFF);}
-std::wstring vsync_name(int i){return T(i?S_VSYNC_ON:S_VSYNC_OFF);}
 bool frame_generation_allowed(){const char* d=getenv("CV_FPS_DIAGNOSTIC"),*p=getenv("CV_FSR_DIAGNOSTIC");return !(d&&!strcmp(d,"1"))||(p&&!strcmp(p,"1"));}
 int pose_device_override(){const char* d=std::getenv("CV_FPS_DIAGNOSTIC"),*p=std::getenv("CV_POSE_COMPUTE");return d&&std::strcmp(d,"1")==0&&p?(std::strcmp(p,"1")==0?1:0):-1;}
 std::wstring fps_name(int i) { return T(i ? S_FPS_60_DIAG : S_FPS_ORIG); }
@@ -337,6 +336,10 @@ const PatchOpt k_patches[] = {
     { "cv_infinite_ammo", S_CHEAT_AMMO_T, S_CHEAT_AMMO_D, S_PATCH_LOGO_C },
 };
 const int NPATCHES = sizeof k_patches / sizeof k_patches[0];
+enum Enhancement { E_SMOOTH, E_INPUT, E_NOTICES, E_DOF, E_AMMO, E_HIDE, E_COUNT };
+const char* const enhancement_env[E_COUNT]={"CV_SMOOTH_ANIMATION","CV_INPUT_COMFORT","CV_SKIP_START_NOTICES","CV_DISABLE_DOF","CV_AMMO_READOUT","CV_HIDE_LAUNCHER"};
+const wchar_t* const enhancement_keys[E_COUNT]={L"smooth_animation",L"input_comfort",L"skip_start_notices",L"disable_dof",L"ammo_readout",L"hide_launcher"};
+
 /* Infinite health and ammunition: shown on the Inventario page, beside the
  * item menu, rather than with the game patches. */
 bool is_cheat(int i) { return !strncmp(k_patches[i].id, "cv_infinite_", 12); }
@@ -550,6 +553,8 @@ Settings load_settings()
     s.manual_reload=_wtoi(ini_get(L"jogo",L"recarga_manual",L"0").c_str())!=0;
     s.combat_hud=_wtoi(ini_get(L"jogo",L"hud_combate",L"0").c_str())!=0;
     s.game_text_ptbr=_wtoi(ini_get(L"jogo",L"texto_ptbr_teste",L"0").c_str())==1;
+    for(int i=0;i<E_COUNT;i++)s.enhancements[i]=ini_get(L"enhancements",enhancement_keys[i],L"0")==L"1";
+    s.original_language=cv_original_language::parse(ini_get(L"jogo",L"idioma_original",L"auto").c_str());
     s.pose_device=0;   // CPU interpolation only; a saved interpolacao_gpu=1 is ignored
     s.frame_generation=_wtoi(ini_get(L"tela",L"fsr_frame_generation",L"0").c_str())==1;
     s.vsync=_wtoi(ini_get(L"tela",L"vsync",L"0").c_str())==1;
@@ -694,6 +699,8 @@ void save_settings(const Settings& s)
     ini_set(L"jogo",L"recarga_manual",s.manual_reload?L"1":L"0");
     ini_set(L"jogo",L"hud_combate",s.combat_hud?L"1":L"0");
     ini_set(L"jogo",L"texto_ptbr_teste",std::to_wstring(s.game_text_ptbr));
+    for(int i=0;i<E_COUNT;i++)ini_set(L"enhancements",enhancement_keys[i],s.enhancements[i]?L"1":L"0");
+    ini_set(L"jogo",L"idioma_original",cv_original_language::keys[s.original_language]);
     ini_set(L"controles", L"layout", std::to_wstring(s.layout));
     ini_set(L"controles", L"vibracao", std::to_wstring(s.rumble));
     ini_set(L"launcher", L"idioma", g_lang_pick < 0 ? std::wstring(L"system") : widen(k_lang_id[g_lang_pick]));
@@ -829,16 +836,6 @@ std::wstring check_game_uncached(const std::wstring& g, bool* ok)
     *ok = true;
     return with_code(T(bin ? S_CHK_GAME_OK : S_CHK_GAME_ELF), wid);
 }
-std::wstring check_rap(const std::wstring& r, bool* ok)
-{
-    if (folder_code() == L"NPJB00135" && !folder_needs_rap()) {
-        *ok = true;
-        return T(S_CHK_RAP_NOT_REQUIRED);
-    }
-    std::error_code ec; *ok = !r.empty() && fs::is_regular_file(r, ec);
-    return T(*ok ? S_CHK_RAP_OK : S_CHK_RAP_BAD);
-}
-
 /* ---------------------------------------------------------------- keys */
 std::wstring key_name(int vk)
 {
@@ -935,11 +932,12 @@ UI g;
 /* ids */
 enum {
     ID_NAV = 100,               /* + page */
-    ID_DD_MODE = 200, ID_DD_RES = 201, ID_DD_AA = 202, ID_DD_LANG = 203, ID_DD_FPS = 204, ID_DD_SHARP = 206, ID_DD_POSE_DEVICE = 207, ID_DD_FRAME_GEN = 208, ID_DD_VSYNC = 209, ID_DD_FILM = 210, ID_DD_GAME_TEXT = 211, ID_DD_SHADOWS=212, ID_DD_COMBAT_HUD=213, ID_DD_MANUAL_RELOAD=214, ID_DD_ITEM = 300,  /* + item index */
+    ID_DD_MODE = 200, ID_DD_RES = 201, ID_DD_AA = 202, ID_DD_LANG = 203, ID_DD_FPS = 204, ID_DD_SHARP = 206, ID_DD_POSE_DEVICE = 207, ID_GRAPHICS_FRAME_GEN = 208, ID_GRAPHICS_VSYNC = 209, ID_GRAPHICS_FILM = 210, ID_DD_GAME_TEXT = 211, ID_GRAPHICS_SHADOWS=212, ID_DD_COMBAT_HUD=213, ID_DD_MANUAL_RELOAD=214, ID_DD_ORIGINAL_LANGUAGE=215, ID_GRAPHICS_SMOOTH=216, ID_GRAPHICS_DOF=217, ID_DD_ITEM = 300,  /* + item index */
     ID_DD_UP = 390, ID_DD_DOWN = 391,
     ID_PLAY = 400, ID_RESUME, ID_QUIT,
     ID_GAME_BROWSE = 500, ID_GAME_OPEN, ID_RAP_BROWSE, ID_RAP_OPEN, ID_SAVE_BROWSE, ID_SAVE_OPEN, ID_SAVE_DEFAULT,
     ID_LAYOUT_PS = 600, ID_LAYOUT_XB, ID_LAYOUT_AUTO, ID_LAYOUT_KB, ID_LAYOUT_SW, ID_RUMBLE,
+    ID_ENHANCEMENT = 600,
     ID_KEY = 700, ID_BTN = 800, ID_RESTORE = 900, ID_PATCH = 1000,  /* + index (keys and buttons: action * slots + slot) */
     ID_TEST_ENABLE=2500, ID_TEST_OPEN,
     ID_FOCUS_PAUSE=2550, ID_SHOT_OPEN,
@@ -1374,7 +1372,7 @@ void upd_relaunch()
     wchar_t cwd[MAX_PATH]; GetCurrentDirectoryW(MAX_PATH, cwd);
     SetEnvironmentVariableW(L"CV_UPDATE_DONE", std::to_wstring(GetCurrentProcessId()).c_str());
     std::wstring cmd = L"\"" + std::wstring(self) + L"\"";
-    STARTUPINFOW si = { sizeof si }; PROCESS_INFORMATION pi = {};
+    STARTUPINFOW si = {}; si.cb = sizeof si; PROCESS_INFORMATION pi = {};
     if (CreateProcessW(self, &cmd[0], NULL, NULL, FALSE, 0, NULL, cwd, &si, &pi)) {
         CloseHandle(pi.hThread); CloseHandle(pi.hProcess);
         ExitProcess(0);
@@ -1691,6 +1689,7 @@ void draw_play(Graphics& gr,const Font& big,const Font& hint_font){
  text(gr,g.play_msg.empty()?lx(design::SELECT_HINT):g.play_msg,SIDE+30.f,H-44.f,hint_font,g.play_msg.empty()?C_DIM:C_RED_HI,StringAlignmentNear,W-SIDE-400.f,25);
  button(gr,RectF(W-310.f,H-72.f,280,50),L"▶   "+std::wstring(T(S_PLAY)),ID_PLAY,big,true,!upd_busy());
 }
+void draw_enhancement(Graphics& gr,float x,float& y,float w,int option,const Font& body,const Font& fsm);
 void draw_inicio(Graphics& gr,const Font& head,const Font& body,const Font&,const Font& hint_font){
  const float x=SIDE+30.f,w=W-SIDE-60.f,bh=308;
  if(g.banner){const float iw=float(g.banner->GetWidth()),ih=float(g.banner->GetHeight()),sc=std::max(float(W-SIDE)/iw,bh/ih);GraphicsState save=gr.Save();gr.SetClip(RectF(float(SIDE),0,float(W-SIDE),bh),CombineModeIntersect);gr.DrawImage(g.banner,RectF(float(SIDE)+(W-SIDE-iw*sc)/2,0,iw*sc,ih*sc));gr.Restore(save);}
@@ -1703,19 +1702,30 @@ void draw_inicio(Graphics& gr,const Font& head,const Font& body,const Font&,cons
  const wchar_t* titles[]={lx(design::DISPLAY),lx(design::QUALITY),lx(design::PERFORMANCE)};
  for(int i=0;i<3;i++){float xx=x+i*(cw+gap);SolidBrush b(Color(245,22,21,23));gr.FillRectangle(&b,xx,cy,cw,ch);Pen p(Color(255,96,78,54));gr.DrawRectangle(&p,xx,cy,cw,ch);text(gr,titles[i],xx+17,cy+12,head,C_TEXT,StringAlignmentNear,cw-34,34);}
  auto setting=[&](int card,int row,const wchar_t* name,const std::wstring& value,int id,bool enabled=true){float xx=x+card*(cw+gap)+16,yy=cy+60+row*61; text(gr,name,xx,yy,hint_font,C_DIM,StringAlignmentNear,cw-32,21);dropdown(gr,RectF(xx,yy+22,cw-32,29),value,id,body,enabled);};
+ auto toggle=[&](int card,int row,const std::wstring& label,bool on,int id,bool enabled=true){
+  const float xx=x+card*(cw+gap)+16,yy=cy+60+row*61;
+  text(gr,label,xx,yy,hint_font,enabled?C_TEXT:C_DIM,StringAlignmentNear,cw-92,51);
+  RectF sw(xx+cw-80,yy+12,48,26);GraphicsPath* shape=round_rect(sw,13);
+  SolidBrush track(enabled&&on?C_RED:Color(255,60,52,52));gr.FillPath(&track,shape);delete shape;
+  SolidBrush knob(enabled?C_TEXT:C_DIM);gr.FillEllipse(&knob,on?sw.X+25:sw.X+3,sw.Y+3,20.f,20.f);
+  if(enabled)hit(xx,yy,cw-32,51,id);
+ };
  setting(0,0,T(S_DISPLAY_MODE),mode_name(g.s.mode),ID_DD_MODE);setting(0,1,T(S_RENDER_RES),res_name(g.s.res),ID_DD_RES);
- setting(0,2,cv_enhanced_text::get(g_lang,cv_enhanced_text::FilmFilter),cv_enhanced_text::get(g_lang,g.s.film_filter?cv_enhanced_text::On:cv_enhanced_text::Off),ID_DD_FILM);
- setting(0,3,cv_enhanced_text::get(g_lang,cv_enhanced_text::DynamicShadows),cv_enhanced_text::get(g_lang,g.s.dynamic_shadows?cv_enhanced_text::On:cv_enhanced_text::Off),ID_DD_SHADOWS);
+ toggle(0,2,cv_enhanced_text::get(g_lang,cv_enhanced_text::FilmFilter),g.s.film_filter,ID_GRAPHICS_FILM);
+ toggle(0,3,cv_enhanced_text::get(g_lang,cv_enhanced_text::DynamicShadows),g.s.dynamic_shadows,ID_GRAPHICS_SHADOWS);
  setting(1,0,T(S_AA),aa_name(g.s.aa),ID_DD_AA);setting(1,1,T(S_SHARPNESS),sharp_name(g.s.sharpness/10),ID_DD_SHARP);
+ toggle(1,2,enhancement_text(g_lang,E_DOF,false),!g.s.enhancements[E_DOF],ID_GRAPHICS_DOF,!g.running);
  setting(2,0,T(S_FRAME_LIMIT),fps_name(g.s.fps),g.running||opt30_comparison()?-1:ID_DD_FPS,!g.running&&!opt30_comparison());
- if((g.s.fps==1||pose_device_override()>=0)&&!opt30_comparison())setting(2,1,T(S_FRAME_GEN),frame_generation_name(frame_generation_allowed()?g.s.frame_generation:0),g.running||!frame_generation_allowed()?-1:ID_DD_FRAME_GEN,!g.running&&frame_generation_allowed());
+ if((g.s.fps==1||pose_device_override()>=0)&&!opt30_comparison())toggle(2,1,std::wstring(T(S_FRAME_GEN))+L" (FSR 3.1)",frame_generation_allowed()&&g.s.frame_generation,ID_GRAPHICS_FRAME_GEN,!g.running&&frame_generation_allowed());
  /* VSync switches live, except in a session running frame generation (its swapchain paces itself). */
  if((g.s.fps==1||pose_device_override()>=0)&&!opt30_comparison()){const bool fg_running=g.running&&g.s.frame_generation&&frame_generation_allowed();
-  setting(2,2,T(S_VSYNC),vsync_name(fg_running?0:g.s.vsync),fg_running?-1:ID_DD_VSYNC,!fg_running);}
+  toggle(2,2,T(S_VSYNC),!fg_running&&g.s.vsync,ID_GRAPHICS_VSYNC,!fg_running);}
+ const bool smooth_available=!g.running&&std::strcmp(CV_TITLE_ID,"NPEB00553")==0;
+ toggle(2,3,enhancement_text(g_lang,E_SMOOTH,false),g.s.enhancements[E_SMOOTH],ID_GRAPHICS_SMOOTH,smooth_available);
  text(gr,cv_enhanced_text::get(g_lang,cv_enhanced_text::RestartApply),x,688,hint_font,C_DIM,StringAlignmentNear,w,24);
  text(gr,cv_enhanced_text::get(g_lang,cv_enhanced_text::ShadowHelp),x,718,hint_font,C_DIM,StringAlignmentNear,w,24);
  std::wstring note=T(g.s.fps?S_FPS_NOTE_60:S_FPS_NOTE_30);if(g.s.fps&&g.s.frame_generation&&frame_generation_allowed())note+=L"\n"+std::wstring(T(S_FPS_NOTE_FG));if(g.s.fps&&g.s.vsync)note+=L"\n"+std::wstring(T(S_FPS_NOTE_VSYNC));
- StringFormat sf;sf.SetLineAlignment(StringAlignmentNear);if(g_lang==LANG_AR)sf.SetFormatFlags(StringFormatFlagsDirectionRightToLeft);SolidBrush ink(C_DIM);gr.DrawString(note.c_str(),-1,&hint_font,RectF(x,748,w,60),&sf,&ink);g_page_end=820;
+ StringFormat sf;sf.SetLineAlignment(StringAlignmentNear);if(g_lang==LANG_AR)sf.SetFormatFlags(StringFormatFlagsDirectionRightToLeft);SolidBrush ink(C_DIM);gr.DrawString(note.c_str(),-1,&hint_font,RectF(x,748,w,60),&sf,&ink);g_page_end=808;
 }
 
 void path_row(Graphics& gr, float x, float y, const std::wstring& label, const std::wstring& value,
@@ -1897,7 +1907,13 @@ void draw_jogo(Graphics& gr, const Font& head, const Font& body, const Font& fsm
     text(gr,ptbr_ui(0),x,ty,body,C_TEXT,StringAlignmentNear,240,32);
     dropdown(gr,RectF(x+250,ty,w-250,32),ptbr_ui(g.s.game_text_ptbr?2:1),ID_DD_GAME_TEXT,body);
     text(gr,ptbr_ui(3),x,ty+39,fsm,C_DIM,StringAlignmentNear,w,28);
-    const float ay=yy+hh+260,col=(w-28)/2;
+    const float ly=ty+80;
+    const bool original_available=g.s.region_selected==0 && !g.s.game_text_ptbr;
+    text(gr,k_original_language_text[g_lang][0],x,ly,body,C_TEXT,StringAlignmentNear,240,32);
+    const wchar_t* language_choices[]={k_original_language_text[g_lang][1],k_lang_name[LANG_DE],k_original_language_text[g_lang][3]};
+    dropdown(gr,RectF(x+250,ly,w-250,32),language_choices[g.s.original_language],ID_DD_ORIGINAL_LANGUAGE,body,original_available && !g.running);
+    wrap(k_original_language_text[g_lang][2],RectF(x,ly+39,w,48));
+    const float ay=yy+hh+360,col=(w-28)/2;
     text(gr,get(g_lang,Audio),x,ay,head,C_TEXT);
     for(int i=0;i<2;i++){
         const float xx=x+i*(col+28);
@@ -1975,6 +1991,13 @@ void scan_patch_dir()
     g.patch_scroll = 0;
 }
 
+void draw_enhancement(Graphics& gr,float x,float& y,float w,int option,const Font& body,const Font& fsm) {
+    const bool eu=std::strcmp(CV_TITLE_ID,"NPEB00553")==0;
+    const bool usable=(!g.running||option==E_HIDE)&&(eu||(option!=E_SMOOTH&&option!=E_NOTICES));
+    option_card(gr,x,y,w,94,g.s.enhancements[option],usable?ID_ENHANCEMENT+option:-1,
+                enhancement_text(g_lang,option,false),enhancement_text(g_lang,option,true),body,fsm);
+    y+=112;
+}
 void draw_patches(Graphics& gr, const Font& head, const Font& body, const Font& fsm)
 {
     float x = SIDE + 32.0f, y = 34;
@@ -1990,6 +2013,7 @@ void draw_patches(Graphics& gr, const Font& head, const Font& body, const Font& 
                    T(k_patches[i].credit), false, body, fsm);
         y += 66;
     }
+    draw_enhancement(gr,x,y,w,E_NOTICES,body,fsm);
     /* patches from files: made by the player or shared by others */
     y += 10;
     section(gr, T(S_PATCH_CUSTOM_T), x, y, w, head);
@@ -2310,6 +2334,8 @@ void draw_controles(Graphics& gr, const Font& head, const Font& body, const Font
     srt_slider(gr, ID_RUMBLE, srt_slider_rect(ID_RUMBLE), g.s.rumble, 0, 200, body);
     text(gr, lx(design::RUMBLE_HINT), x, by + 34, fsm, C_DIM, StringAlignmentNear, W - SIDE - 64.0f, 20);
     text(gr, cv_axis_hints[g_lang], x, by + 64, fsm, C_DIM, StringAlignmentNear, W - SIDE - 64.0f, 52);
+    by += 134;
+    draw_enhancement(gr,x,by,W-SIDE-64.f,E_INPUT,body,fsm);
 }
 
 /* Resolve the port independently of how a shortcut/editor launched it.
@@ -2359,6 +2385,7 @@ void draw_avancado(Graphics& gr, const Font& head, const Font& body, const Font&
     option_card(gr, x, y, w, 84, g.s.discord, ID_DISCORD, cv_discord_text::texts[g_lang][cv_discord_text::OPTION],
                 cv_discord_text::texts[g_lang][cv_discord_text::OPTION_DESC], body, fsm);
     y += 98;
+    draw_enhancement(gr,x,y,w,E_HIDE,body,fsm);
     section(gr, T(S_ADV_FILES), x, y, w, head);
     y += 46;
     button(gr, RectF(x, y, 280, 34), T(S_CLEAR_CACHE), ID_CACHE_CLEAR, body, false, !g.running);
@@ -2535,7 +2562,9 @@ void draw_hud_page(Graphics& gr,const Font& head,const Font& body,const Font& fs
  option_card(gr,x,116,w,94,g.s.combat_hud,ID_HUD_ENABLED,get(g_lang,CombatHUD),get(g_lang,HUDHelp),body,fsm);
  option_card(gr,x,228,w,94,g.s.manual_reload,ID_HUD_RELOAD,get(g_lang,ManualReload),get(g_lang,ReloadHelp),body,fsm);
  option_card(gr,x,340,w,94,g.s.quick.on,ID_QUICK_ON,quick_text::get(g_lang,quick_text::Title),quick_text::get(g_lang,quick_text::Help),body,fsm);
- float y=466;
+ float y=452;
+ draw_enhancement(gr,x,y,w,E_AMMO,body,fsm);
+ y+=14;
  auto capture=[&](float bx,float by,float width,int id,int clear,bool active,int value,bool pad){
   RectF r(bx,by,width-38,38);field(gr,r,g.hover==id,active);const bool has=pad?value>=0:value>0;
   if(has&&!active){if(pad)btn_glyph(gr,icon_layout(),shown_button(value),r.X+8,r.Y+7,24);else key_glyph(gr,value,r.X+8,r.Y+7,24);}
@@ -3009,16 +3038,13 @@ void paint(HDC hdc)
         else if (g.open_dd == ID_DD_RES) { for (int i = 0; i < 5; i++) items.push_back(res_name(i)); sel = g.s.res; }
         else if (g.open_dd == ID_DD_AA) { for (int i = 0; i < 3; i++) items.push_back(aa_name(i)); sel = g.s.aa; }
         else if(g.open_dd==ID_DD_POSE_DEVICE){for(int i=0;i<2;i++)items.push_back(pose_device_name(i));sel=g.s.pose_device;}
-        else if(g.open_dd==ID_DD_FRAME_GEN){for(int i=0;i<2;i++)items.push_back(frame_generation_name(i));sel=g.s.frame_generation;}
-        else if(g.open_dd==ID_DD_VSYNC){for(int i=0;i<2;i++)items.push_back(vsync_name(i));sel=g.s.vsync;}
         else if (g.open_dd == ID_DD_FPS) { for (int i = 0; i < 2; i++) items.push_back(fps_name(i)); sel = g.s.fps; }
         else if (g.open_dd == ID_DD_GAME_TEXT) {items={ptbr_ui(1),ptbr_ui(2)};sel=g.s.game_text_ptbr;}
+        else if (g.open_dd == ID_DD_ORIGINAL_LANGUAGE) {items={k_original_language_text[g_lang][1],k_lang_name[LANG_DE],k_original_language_text[g_lang][3]};sel=g.s.original_language;}
         else if(g.open_dd==ID_DD_MANUAL_RELOAD){items={cv_enhanced_text::get(g_lang,cv_enhanced_text::Off),cv_enhanced_text::get(g_lang,cv_enhanced_text::On)};sel=g.s.manual_reload?1:0;}
         else if(g.open_dd>=ID_QUICK_SLOT&&g.open_dd<ID_QUICK_SLOT+4){const auto choices=quick_item_choices();sel=0;for(int i=0;i<int(choices.size());i++){items.push_back(quick_item_label(choices[i]));if(choices[i]==g.s.quick.items[g.open_dd-ID_QUICK_SLOT])sel=i;}}
         else if(g.open_dd==ID_SHADER_COMPILER){items={cv_shader_text::get(g_lang,cv_shader_text::DXC),cv_shader_text::get(g_lang,cv_shader_text::FXC)};sel=g.s.shader_compiler;}
         else if(g.open_dd==ID_DD_COMBAT_HUD){items={cv_enhanced_text::get(g_lang,cv_enhanced_text::Off),cv_enhanced_text::get(g_lang,cv_enhanced_text::On)};sel=g.s.combat_hud?1:0;}
-        else if(g.open_dd==ID_DD_SHADOWS){items={cv_enhanced_text::get(g_lang,cv_enhanced_text::Off),cv_enhanced_text::get(g_lang,cv_enhanced_text::On)};sel=g.s.dynamic_shadows?1:0;}
-        else if (g.open_dd == ID_DD_FILM) {items.push_back(cv_enhanced_text::get(g_lang,cv_enhanced_text::Off));items.push_back(cv_enhanced_text::get(g_lang,cv_enhanced_text::On));sel=g.s.film_filter?1:0;}
         else if (g.open_dd == ID_DD_SHARP) { for (int i = 0; i <= 10; i++) items.push_back(sharp_name(i)); sel = g.s.sharpness / 10; }
         else if (g.open_dd == ID_DD_SRT_ENEMIES) { for(int i=0;i<=5;i++)items.push_back(srt_enemy_value(i));items.push_back(T(S_SRT_ALL));sel=g.s.srt_enemies==99?6:g.s.srt_enemies; }
         else if (g.open_dd == ID_DD_SRT_CORNER) {for(int i=0;i<4;i++)items.push_back(T(S_SRT_TL+i));sel=g.s.srt_corner;}
@@ -3176,10 +3202,8 @@ void rumble_test()
     SetTimer(g.hwnd, 7, 400, NULL);
 }
 
-/* The game always runs with English as its system language; the only other
- * text it shows is the PT-BR translation. The options added inside the game
- * follow the same rule (Portuguese with the translation on, English
- * otherwise, also on the Japanese version), not the launcher's language. */
+/* The port-added RECOMP SETTINGS remain Portuguese with PT-BR enabled and
+ * English otherwise. Original PS3 text uses its separate system language. */
 void refresh_game_menu_language() { cv_enhanced_language_set(g.s.game_text_ptbr ? 0 : 1); }
 
 void apply_live(bool restore_menu = true)
@@ -3393,13 +3417,13 @@ void click(int id)
             else if (g.open_dd == ID_DD_AA) g.s.aa = i;
             else if (g.open_dd == ID_DD_FPS && !opt30_comparison()) g.s.fps = i;
             else if(g.open_dd==ID_DD_POSE_DEVICE)g.s.pose_device=i;
-            else if(g.open_dd==ID_DD_FRAME_GEN){g.s.frame_generation=i;if(i)g.s.vsync=0;}
-            else if(g.open_dd==ID_DD_VSYNC){g.s.vsync=i;if(i&&!g.running)g.s.frame_generation=0;}
             else if (g.open_dd == ID_DD_GAME_TEXT) g.s.game_text_ptbr=i;
+            else if (g.open_dd == ID_DD_ORIGINAL_LANGUAGE) {
+                if (!g.running && g.s.region_selected==0 && !g.s.game_text_ptbr && i < 3)
+                    g.s.original_language=i;
+            }
             else if(g.open_dd==ID_DD_MANUAL_RELOAD)g.s.manual_reload=i!=0;
             else if(g.open_dd==ID_DD_COMBAT_HUD)g.s.combat_hud=i!=0;
-            else if(g.open_dd==ID_DD_SHADOWS)g.s.dynamic_shadows=i!=0;
-            else if (g.open_dd == ID_DD_FILM) g.s.film_filter = i!=0;
             else if (g.open_dd == ID_DD_SHARP) g.s.sharpness = i * 10;
             else if(g.open_dd==ID_DD_SRT_ENEMIES)g.s.srt_enemies=i==6?99:i;
             else if(g.open_dd==ID_DD_SRT_CORNER)g.s.srt_corner=i;
@@ -3435,7 +3459,7 @@ void click(int id)
     if(id==ID_HUD_RELOAD_KEY_CLEAR){g.s.reload_key=0;changed();return;}
     if(id==ID_HUD_RELOAD_BUTTON_CLEAR){g.s.reload_button=-1;changed();return;}
     if(id==ID_HUD_RELOAD_RESET){g.s.reload_key='R';g.s.reload_button=g.s.region_selected==2?PB_L3:PB_EAST;changed();return;}
-    if (id >= ID_NAV && id < ID_NAV + P_COUNT) {
+    if (id >= ID_NAV && id < ID_NAV + static_cast<int>(P_COUNT)) {
         g.page = (Page)(id - ID_NAV); g.cache_msg.clear(); g.log_msg.clear();
         if (g.page == P_PATCHES) scan_patch_dir();   /* the folder may have new files */
         /* Count the textures again, but not on every visit: a large pack means
@@ -3443,8 +3467,15 @@ void click(int id)
          * the format still recounts at once. */
         if (g.page == P_MODS && GetTickCount64() - g_tex_scan_tick > 15000) g.tex_rep = -1;
     }
+    else if(id==ID_GRAPHICS_FILM){g.s.film_filter=!g.s.film_filter;changed();}
+    else if(id==ID_GRAPHICS_SHADOWS){g.s.dynamic_shadows=!g.s.dynamic_shadows;changed();}
+    else if(id==ID_GRAPHICS_DOF&&!g.running){g.s.enhancements[E_DOF]=!g.s.enhancements[E_DOF];changed();}
+    else if(id==ID_GRAPHICS_SMOOTH&&!g.running&&std::strcmp(CV_TITLE_ID,"NPEB00553")==0){g.s.enhancements[E_SMOOTH]=!g.s.enhancements[E_SMOOTH];changed();}
+    else if(id==ID_GRAPHICS_FRAME_GEN&&!g.running&&frame_generation_allowed()){g.s.frame_generation=!g.s.frame_generation;if(g.s.frame_generation)g.s.vsync=0;changed();}
+    else if(id==ID_GRAPHICS_VSYNC&&!(g.running&&g.s.frame_generation&&frame_generation_allowed())){g.s.vsync=!g.s.vsync;if(g.s.vsync&&!g.running)g.s.frame_generation=0;changed();}
+    else if(id>=ID_ENHANCEMENT&&id<ID_ENHANCEMENT+int(E_COUNT)&&(!g.running||id==ID_ENHANCEMENT+int(E_HIDE))){g.s.enhancements[id-ID_ENHANCEMENT]^=true;changed();}
     else if (id >= ID_PATCH && id < ID_PATCH + NPATCHES) { g.s.patch[id - ID_PATCH] ^= true; changed(); }
-    else if (id == ID_DD_MANUAL_RELOAD || id == ID_DD_COMBAT_HUD || id == ID_DD_SHADOWS || id == ID_DD_GAME_TEXT || id == ID_DD_TROPHY_CORNER || id == ID_DD_TROPHY_FILTER || id == ID_DD_FILM || id == ID_DD_MODE || id == ID_DD_RES || id == ID_DD_AA || id == ID_DD_FPS || id == ID_DD_POSE_DEVICE || id == ID_DD_FRAME_GEN || id == ID_DD_VSYNC || id == ID_DD_SHARP || id == ID_DD_LANG || id==ID_DD_SRT_ENEMIES || id==ID_DD_SRT_CORNER || id==ID_DD_SRT_LANGUAGE || id == ID_DD_OV_CORNER || id == ID_DD_OV_LAYOUT || id == ID_DD_OV_SIZE || id == ID_DD_OV_BG || id == ID_DD_SRT_INVPOS || id == ID_DD_SRT_WINDOW || id == ID_DD_SRT_BOSSBAR) {
+    else if (id == ID_DD_ORIGINAL_LANGUAGE || id == ID_DD_MANUAL_RELOAD || id == ID_DD_COMBAT_HUD || id == ID_DD_GAME_TEXT || id == ID_DD_TROPHY_CORNER || id == ID_DD_TROPHY_FILTER || id == ID_DD_MODE || id == ID_DD_RES || id == ID_DD_AA || id == ID_DD_FPS || id == ID_DD_POSE_DEVICE || id == ID_DD_SHARP || id == ID_DD_LANG || id==ID_DD_SRT_ENEMIES || id==ID_DD_SRT_CORNER || id==ID_DD_SRT_LANGUAGE || id == ID_DD_OV_CORNER || id == ID_DD_OV_LAYOUT || id == ID_DD_OV_SIZE || id == ID_DD_OV_BG || id == ID_DD_SRT_INVPOS || id == ID_DD_SRT_WINDOW || id == ID_DD_SRT_BOSSBAR) {
         g.open_dd = id; g.dd_scroll = 0;
         if (id == ID_DD_LANG && g_lang_pick >= 0)   /* open with the chosen language in view */
             for (int i = 0; i < LANG_COUNT; i++)
@@ -3860,7 +3891,6 @@ LRESULT CALLBACK wndproc(HWND h, UINT m, WPARAM wp, LPARAM lp)
             if(was_exporting&&!e.running){g.tex_rep=-1;if(g.page==P_MODS)redraw=true;}
             was_exporting=e.running;
         }
-        s_shortcut_xbox=kind==PAD_KIND_XINPUT;
         g.pad_status = st; g.pad_count = cnt; g.pad_kind = kind;
         if((g.cap==CAP_QUICK_EDIT_KEY||g.cap==CAP_QUICK_CONFIRM_KEY)&&GetTickCount64()-g.cap_since>10000){g.cap=CAP_NONE;redraw=true;}
         if(g.cap==CAP_QUICK_EDIT_BTN||g.cap==CAP_QUICK_CONFIRM_BTN){for(int i=0;i<PAD_PHYS_MAX;i++){PadPhys p{};pad_phys_poll(i,&p);uint32_t pressed=p.buttons&~g.pad_prev[i];g.pad_prev[i]=p.buttons;for(int b=0;b<PB_COUNT;b++)if(pressed&(1u<<b)){if(g.cap==CAP_QUICK_EDIT_BTN)g.s.quick.edit_button=b;else g.s.quick.confirm_button=b;g.cap=CAP_NONE;changed();return 0;}}if(GetTickCount64()-g.cap_since>10000){g.cap=CAP_NONE;redraw=true;}}
@@ -4059,7 +4089,6 @@ std::wstring folder_code()
 {
     return widen(sfo_field(fs::path(g.s.game) / L"PARAM.SFO", "TITLE_ID").c_str());
 }
-bool folder_needs_rap() { return eboot_needs_rap(g.s.game); }
 
 /* The chosen folder is the other version: start its executable, which reads
  * the settings just saved and plays at once (CV_LAUNCHER_AUTOPLAY), and leave. */
@@ -4074,7 +4103,7 @@ void start_other_version()
     set_env("CV_LAUNCHER_AUTOPLAY", "1");
     wchar_t cwd[MAX_PATH]; GetCurrentDirectoryW(MAX_PATH, cwd);
     std::wstring cmd = L"\"" + exe + L"\"";
-    STARTUPINFOW si = { sizeof si }; PROCESS_INFORMATION pi = {};
+    STARTUPINFOW si = {}; si.cb = sizeof si; PROCESS_INFORMATION pi = {};
     if (!CreateProcessW(exe.c_str(), &cmd[0], NULL, NULL, FALSE, 0, NULL, cwd, &si, &pi)) {
         set_env("CV_LAUNCHER_AUTOPLAY", "");
         g.page = P_JOGO; g.play_msg = T(S_SET_FOLDER_FIRST); return;
@@ -4095,6 +4124,14 @@ void start_game()
         MessageBoxW(g.hwnd,L"PT-BR translation files missing: rdx_lnk/rm_0000.arc.cvp",ptbr_ui(0),MB_OK|MB_ICONERROR);return;
     }
     set_env("CV_PTBR_ASSET_ROOT",s.game_text_ptbr?narrow(text_root.wstring()):"");
+    const bool eu=std::strcmp(CV_TITLE_ID,"NPEB00553")==0;
+    for(int i=0;i<E_COUNT;i++)set_env(enhancement_env[i],s.enhancements[i]&&((i!=E_SMOOTH&&i!=E_NOTICES)||eu)?"1":"0");
+    set_env("CV_DEPTH_OF_FIELD",s.enhancements[E_DOF]?"0":"1");
+    if(s.enhancements[E_SMOOTH]&&eu){set_env("CV_POSE_REPLAY","0");set_env("CV_FIFO_NOTIFY","1");set_env("GCM_PARK_GRACE_MS","5000");set_env("SPU_TASK_POOL","1");}
+    const int system_language=cv_original_language::system_language(s.original_language,CV_TITLE_ID,s.game_text_ptbr);
+    set_env("PS3_SYSTEM_LANGUAGE",std::to_string(system_language));
+    std::fprintf(stderr,"[LANGUAGE] original=%ls title=%s PS3=%d PT-BR=%d\n",
+                 cv_original_language::keys[s.original_language],CV_TITLE_ID,system_language,s.game_text_ptbr);
     /* Match the tested normal CMD when opening the executable directly.
      * An explicit compiler override remains available to diagnostic launchers. */
     set_env("SHADER_COMPILER",s.shader_compiler?"fxc":"dxc");
@@ -4126,6 +4163,8 @@ void start_game()
      * The accelerated RAW benchmark remains a separate diagnostic shortcut. */
     const char* diagnostic_env=std::getenv("CV_FPS_DIAGNOSTIC");
     const bool fps_diagnostic=diagnostic_env&&std::strcmp(diagnostic_env,"1")==0;
+    const char* native_env=std::getenv("CV_SMOOTH_ANIMATION");
+    const bool native_camera=native_env&&std::strcmp(native_env,"1")==0;
     /* Uncapped benchmark (its own shortcut only): vblank at 1000 Hz and no
      * frame generation, so the counter shows the real ceiling. */
     const char* unlocked_env=std::getenv("CV_FPS_UNLOCKED");
@@ -4136,13 +4175,13 @@ void start_game()
     } else if (s.fps == 1 || fps_diagnostic) {
         set_env("CV_FPS_TEST_60", "1");
         if(!fps_diagnostic)set_env("CV_FPS_BENCHMARK_RAW", "");
-        if(!fps_diagnostic)set_env("CV_RENDER_INTERPOLATION", "1");
+        if(!fps_diagnostic)set_env("CV_RENDER_INTERPOLATION", native_camera?"0":"1");
         set_env("VBLANK_HZ", fps_unlocked?"1000":"60");
         if(!fps_diagnostic){set_env("CV_POSE_CPU_BLEND","1");set_env("CV_POSE_CPU","");set_env("CV_POSE_COMPUTE",s.pose_device?"1":"");}
     }
     if(!opt30_comparison()&&(s.fps==1||fps_diagnostic)){
         /* Existing CPU/GPU benchmarks remain comparable after saving FSR on. */
-        set_env("CV_FSR_FRAME_GENERATION",!fps_unlocked&&s.frame_generation&&frame_generation_allowed()?"1":"");
+        set_env("CV_FSR_FRAME_GENERATION",!native_camera&&!fps_unlocked&&s.frame_generation&&frame_generation_allowed()?"1":"");
     }
     set_env("VSYNC",!opt30_comparison()&&!fps_diagnostic&&s.fps==1&&s.vsync&&!(s.frame_generation&&frame_generation_allowed())?"1":"");
     if(!fps_diagnostic) {
@@ -4234,7 +4273,7 @@ DWORD WINAPI launcher_thread(void*)
         if(full)g.brand_logo=full;
     }
 
-    WNDCLASSEXW wc = { sizeof wc };
+    WNDCLASSEXW wc = {}; wc.cbSize = sizeof wc;
     wc.lpfnWndProc = wndproc; wc.hInstance = GetModuleHandleW(NULL);
     wc.hCursor = LoadCursor(NULL, IDC_ARROW); wc.lpszClassName = L"cv_launcher";
     wc.hIcon = LoadIcon(GetModuleHandleW(NULL), MAKEINTRESOURCE(1));
@@ -4416,7 +4455,7 @@ extern "C" void cv_pc_settings_change(int which,int value)
 
 /* Opens the launcher on its own thread and returns 1 with the EBOOT.elf path
  * once the player pressed Jogar, or 0 if the window was closed first. After
- * Jogar the window stays open as the options menu for the running game. */
+ * Jogar the window is hidden until the options menu is requested. */
 /* The environment this process started with (before any set_env of the
  * settings), for the launcher that replaces it after the game window closes. */
 static std::vector<wchar_t> g_start_env;
@@ -4446,7 +4485,7 @@ extern "C" void cv_launcher_relaunch(void)
     wchar_t self[MAX_PATH];
     if (!GetModuleFileNameW(NULL, self, MAX_PATH)) return;
     std::wstring cmd = L"\"" + std::wstring(self) + L"\"";
-    STARTUPINFOW si = { sizeof si }; PROCESS_INFORMATION pi = {};
+    STARTUPINFOW si = {}; si.cb = sizeof si; PROCESS_INFORMATION pi = {};
     if (CreateProcessW(self, &cmd[0], NULL, NULL, FALSE, CREATE_UNICODE_ENVIRONMENT, g_start_env.data(),
                        g_start_cwd.empty() ? NULL : g_start_cwd.c_str(), &si, &pi)) {
         CloseHandle(pi.hThread); CloseHandle(pi.hProcess);

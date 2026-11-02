@@ -110,9 +110,9 @@ set(SPU_ARCH "AVX2" CACHE STRING "clang-cl /arch for SPU code (empty = SSE2)")
 set(SPU_ARCH_FLAGS "")
 if(CMAKE_C_COMPILER_ID MATCHES "Clang" AND MSVC)
     if(CV_CPU_COMPAT)
-        set(SPU_ARCH_FLAGS "-ffp-contract=off")
+        set(SPU_ARCH_FLAGS "/clang:-ffp-contract=off")
     elseif(SPU_ARCH)
-        set(SPU_ARCH_FLAGS "/arch:${SPU_ARCH}" "-ffp-contract=off")
+        set(SPU_ARCH_FLAGS "/arch:${SPU_ARCH}" "/clang:-ffp-contract=off")
     endif()
 endif()
 if(SPU_ARCH_FLAGS)
@@ -427,9 +427,16 @@ endif()
 # ---------------------------------------------------------------------------
 # Compiler-specific flags
 # ---------------------------------------------------------------------------
+if(MSVC)
+    # Keep CRT host-header settings off the large generated guest units.
+    get_target_property(CV_HOST_SOURCES ${PROJECT_NAME} SOURCES)
+    list(REMOVE_ITEM CV_HOST_SOURCES ${RECOMP_SOURCES} ${SPU_SOURCES})
+    set_property(SOURCE ${CV_HOST_SOURCES} APPEND PROPERTY COMPILE_DEFINITIONS _CRT_SECURE_NO_WARNINGS)
+endif()
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(${PROJECT_NAME} PRIVATE
-        -Wall -Wextra -Wno-unused-parameter
+        $<IF:$<BOOL:${MSVC}>,/clang:-Wall,-Wall> -Wextra -Wno-unused-parameter
         -fno-strict-aliasing
     )
 elseif(MSVC)
@@ -547,7 +554,7 @@ endif()
 if(WIN32)
     add_executable(code_veronica_menu_tests EXCLUDE_FROM_ALL tests/test_pc_menu.cpp ../../libs/input/pad_keyboard_filter.c)
     set_target_properties(code_veronica_menu_tests PROPERTIES OUTPUT_NAME "code_veronica_menu_tests_${CV_REGION_LC}")
-    target_include_directories(code_veronica_menu_tests PRIVATE "${RECOMP_DIR}")
+    target_include_directories(code_veronica_menu_tests PRIVATE "${RECOMP_DIR}" "${PS3RECOMP_DIR}/include")
     target_compile_options(code_veronica_menu_tests PRIVATE /UNDEBUG)
     target_link_libraries(code_veronica_menu_tests PRIVATE gdi32 user32 gdiplus)
     if(CV_REGION_LC STREQUAL "jp")
@@ -796,6 +803,18 @@ if(WIN32)
     target_include_directories(code_veronica_texture_dds_tests PRIVATE "${PS3RECOMP_DIR}/libs/video")
     target_compile_options(code_veronica_texture_dds_tests PRIVATE /UNDEBUG)
     target_link_libraries(code_veronica_texture_dds_tests PRIVATE d3d12 dxgi dxguid d3dcompiler)
+endif()
+
+# Original PS3 language policy and the real system-parameter HLE, no game data.
+add_executable(code_veronica_original_language_tests EXCLUDE_FROM_ALL
+    tests/test_original_language.cpp "${PS3RECOMP_DIR}/libs/system/cellSysutil.c")
+target_include_directories(code_veronica_original_language_tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}" "${PS3RECOMP_DIR}/include")
+if(MSVC)
+    target_compile_options(code_veronica_original_language_tests PRIVATE /UNDEBUG)
+    target_compile_definitions(code_veronica_original_language_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+else()
+    target_compile_options(code_veronica_original_language_tests PRIVATE -UNDEBUG)
 endif()
 
 # Launcher cache path and recursive operations, exercised only on temporary fixtures.

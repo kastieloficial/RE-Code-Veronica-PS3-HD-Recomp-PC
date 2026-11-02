@@ -1,3 +1,5 @@
+#include "cv_original_language.h"
+#include "cv_options.h"
 /* Code Veronica (EU/JP/US 1.00; addresses in cv_version.h): extend the guest's OPTION menu using its own 2D queue.
  * Only the build-local lift is wrapped. EBOOT and original generated files stay intact.
  * New labels use serif glyphs rasterized by Windows at the menu's own scale (one
@@ -59,8 +61,14 @@ std::array<int,kSettingCount> values={1,0,0,80,50,100,0,0,1}; // neutral brightn
 int pc_adjust_direction=0;
 ULONGLONG pc_adjust_started=0;
 
+std::string menu_environment(const char* name) {
+    char* value=nullptr;size_t size=0;
+    if(_dupenv_s(&value,&size,name)!=0)return {};
+    const std::string result=value?value:"";
+    std::free(value);return result;
+}
 bool enabled() {
-    static const bool on=[] { const char* value=std::getenv("CV_NATIVE_PC_MENU"); return !value || std::strcmp(value,"0")!=0; }();
+    static const bool on=[] { return menu_environment("CV_NATIVE_PC_MENU")!="0"; }();
     return on;
 }
 ppu_context call_context(const ppu_context* caller) {
@@ -161,18 +169,18 @@ int keyboard_tab(unsigned port,bool interactive){
 int tab_hint_kind(){
  const int last=pad_last_input();
  if(pc_keyboard_tabs||last==PAD_INPUT_KEYBOARD)return PAD_INPUT_KEYBOARD;
- const char* configured=std::getenv("CV_BUTTON_ICONS");
- if(configured){
-  if(std::strcmp(configured,"keyboard")==0)return PAD_INPUT_KEYBOARD;
-  if(std::strcmp(configured,"ps")==0)return PAD_KIND_DS4;
-  if(std::strcmp(configured,"xbox")==0)return PAD_KIND_XINPUT;
-  if(std::strcmp(configured,"switch")==0)return PAD_KIND_SWITCH;
+ const auto configured=menu_environment("CV_BUTTON_ICONS");
+ if(!configured.empty()){
+  if(configured=="keyboard")return PAD_INPUT_KEYBOARD;
+  if(configured=="ps")return PAD_KIND_DS4;
+  if(configured=="xbox")return PAD_KIND_XINPUT;
+  if(configured=="switch")return PAD_KIND_SWITCH;
  }
  return last;
 }
 void draw_tabs(cv_menu_text::TextBatch& batch){
  using namespace cv_enhanced_text;
- batch.text("RECOMP SETTINGS",320,78,0xDFFFFFFF,1.08f,true);
+ batch.text(cv_original_language::port_menu_title(CV_TITLE_ID,false,menu_environment("PS3_SYSTEM_LANGUAGE").c_str()),320,78,0xDFFFFFFF,1.08f,true);
  const Id names[]={Graphics,Audio,Gameplay};
  const int kind=tab_hint_kind();
  const char* left=kind==PAD_KIND_XINPUT?"LB":kind==PAD_KIND_SWITCH?"L":kind==PAD_KIND_DS4||kind==PAD_KIND_DUALSENSE?"L1":"Q";
@@ -212,7 +220,7 @@ bool extra_input(uint32_t input,uint32_t repeat){
  * backend draws our batch over this same frame of the game's. */
 void draw_entry(const ppu_context* caller,uint32_t screen,uint32_t fade_bits) {
     if(screen!=0) { rsx_d3d12_set_ui_quads(nullptr,0); return; }
-    TextBatch batch; batch.text("RECOMP SETTINGS",32,310,selected_color(pc_selected));
+    TextBatch batch; batch.text(cv_original_language::port_menu_title(CV_TITLE_ID,false,menu_environment("PS3_SYSTEM_LANGUAGE").c_str()),32,310,selected_color(pc_selected));
     /* The black layer: the rows darken under it as it thickens. */
     float fade; std::memcpy(&fade,&fade_bits,4);
     const float shade=1.f-std::clamp(fade,0.f,1.f);
@@ -337,8 +345,8 @@ void CV_FN_MENU_INPUT(ppu_context* ctx) {
     static uint32_t last_screen=~0u,last_fade=0,last_frame=0;
     const uint32_t frame=cellGcm_flip_submit_count();
     static const bool interpolated=[] {
-        const char* fps=std::getenv("CV_FPS_TEST_60"),*pose=std::getenv("CV_RENDER_INTERPOLATION");
-        return fps&&std::strcmp(fps,"1")==0&&pose&&std::strcmp(pose,"1")==0;
+        // Menu logic remains at 30 Hz with either 60 FPS rendering path.
+        return menu_environment("CV_FPS_TEST_60")=="1"&&(menu_environment("CV_RENDER_INTERPOLATION")=="1");
     }();
     const uint32_t screen=rsx_ui_menu_contiguous(frame,last_frame,interpolated)?last_screen:~0u,fade=last_fade;
     last_screen=vm_read32(kScreen);last_fade=vm_read32(kFade);last_frame=frame;
@@ -365,7 +373,7 @@ extern "C" int cv_native_pc_menu_selftest(void) {
     check(!move_extra_row(cursor,selected,kDown)&&cursor==1&&!selected,"existing rows keep native navigation");
     cursor=5;
     check(!move_extra_row(cursor,selected,kDown)&&cursor==5&&!selected,"EXIT wrap remains native");
-    TextBatch text;text.text("RECOMP SETTINGS",32,310,0xFFFFFFFF);
+    TextBatch text;text.text(cv_original_language::port_menu_title(CV_TITLE_ID,false,menu_environment("PS3_SYSTEM_LANGUAGE").c_str()),32,310,0xFFFFFFFF);
     check(!text.quads.empty(),"serif glyphs available");
     check(text.quads.size()<131072,"entry fits single GPU batch");
     for(const auto& q:text.quads) {
