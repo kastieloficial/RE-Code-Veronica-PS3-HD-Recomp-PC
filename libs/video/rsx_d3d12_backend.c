@@ -621,8 +621,10 @@ static u32 ui_reuse_age(void);
 
 static int ui_interpolated(void) {
     static int on=-1;
-    if(on<0){const char* fps=getenv("CV_FPS_TEST_60"),*pose=getenv("CV_RENDER_INTERPOLATION");
-        on=fps&&!strcmp(fps,"1")&&pose&&!strcmp(pose,"1");}
+    /* Guest menus still update at 30 Hz with the native 60 FPS scene path. */
+    if(on<0){const char* fps=getenv("CV_FPS_TEST_60");
+        const char* fix=getenv("CV_INPUT_COMFORT"),*smooth=getenv("CV_SMOOTH_ANIMATION"),*pose=getenv("CV_RENDER_INTERPOLATION");
+        on=fps&&!strcmp(fps,"1")&&((pose&&!strcmp(pose,"1"))||(fix&&!strcmp(fix,"1"))||(smooth&&!strcmp(smooth,"1")));}
     return on;
 }
 static u32 s_ui_render_flip;   /* the frame being rendered: s_rb's, set by render_frame */
@@ -1049,6 +1051,7 @@ typedef struct {
     u8*  vtex_arena;
     int  present;
     u32 pose_stamp,pose_nv,pose_scene;
+    u32 camera_cut; /* Producer cut epoch, frozen with this render batch. */
     int pose_done;   /* replay: the producer already interpolated this batch */
     u64 pose_seq;    /* ...or the pose thread is: wait for this job (pose_thread_wait) */
     double profile_producer,profile_backpressure;
@@ -1090,6 +1093,9 @@ static int shadow_batch_on(void) {
 }
 
 static volatile LONG s_pose_scene;
+static volatile LONG s_camera_cut;
+static volatile LONG s_camera_hold;
+static u32 s_presented_camera_cut;
 static u32 s_pose_stamp=1;
 static RsxPoseVertex* s_pose_vertices;
 static float* s_pose_cameras;
@@ -1139,6 +1145,14 @@ static int pose_prepare_profiled(RsxPoseHistory* history,const RsxPoseFrame* fra
     }
     return apply;
 }
+void rsx_d3d12_camera_hold(int hold) {
+    /* The FIFO still contains one transition batch when the producer's camera
+     * becomes complete. State 2 drains that batch before presenting again.
+     * Repeated release calls must not cancel this pending drain. */
+    if(hold)InterlockedExchange(&s_camera_hold,1);
+    else InterlockedCompareExchange(&s_camera_hold,2,1);
+}
+void rsx_d3d12_camera_cut(void) {InterlockedIncrement(&s_camera_cut);}
 void rsx_d3d12_pose_scene(u32 scene) {InterlockedExchange(&s_pose_scene,(LONG)scene);}
 static void pose_init_recording(void) {
     const char *e=getenv("CV_RENDER_INTERPOLATION"),*fps=getenv("CV_FPS_TEST_60"),*raw=getenv("CV_FPS_BENCHMARK_RAW");
@@ -1529,7 +1543,6 @@ static unsigned s_vcb_copied = 0, s_vcb_reused = 0, s_vcb_batch = 0;
 static unsigned long long s_vmemo_hits = 0, s_vmemo_miss = 0;   /* read_vp_vertex */
 static int s_perf_pso_calls = 0, s_perf_pso_miss = 0, s_perf_pso_hashbytes = 0;
 static u64    s_perf_nverts = 0;
-static u64    s_perf_texbytes = 0;
 static int    s_perf_ntex = 0;
 static double perf_now(void)
 {
@@ -5338,9 +5351,9 @@ static int fp_build_pso(FpJob* j)
     if (!buffered)
         n = rsx_fp_decompile_alloc(ucode, j->ucode_bytes, exp32 ? 0x40u : 0u, cube_mask,
                                    0, &j->hlsl, &j->hlsl_cap, NULL);
-    if (n <= 0) { static int _e=0; if(_e++<16)
+    if (n <= 0) { static int _e=0; if(_e++<16) {
         fprintf(stderr, "[FP] decompile fail (fp=0x%08X, program=%u bytes, HLSL capacity=%u, result=%d)%c",
-                fp_addr, j->ucode_bytes, j->hlsl_cap, n, 10); return FPB_FAIL; }
+                fp_addr, j->ucode_bytes, j->hlsl_cap, n, 10); } return FPB_FAIL; }
     /* Reserve the prelude and room for post-translation edits. WPOS is the
      * only normal edit that can expand at every instruction; count its
      * occurrences rather than assuming a fixed amount of slack suffices. */
@@ -7736,7 +7749,6 @@ static void vp_record_cb(u32 slot, int vs_idx, const D3D12DrawRecord* dr)
                           ts[FP_K_BASE+4], ts[FP_K_BASE+5], ts[FP_K_BASE+6], ts[FP_K_BASE+7], 10);
                   const u32 raw = dr->fp_addr & ~0x3u;
                   const u32 ea_main  = cellGcmResolveLocated(0, raw);
-                  const u32 ea_local = cellGcmResolveLocated(1, raw);
                   fprintf(stderr, "[FPK]   ucode main@0x%08X:", ea_main);
                   for (int b = 0; b < 48; b++) fprintf(stderr, "%s%02X", (b%16)?" ":"  |", vm_base[ea_main + b]);
                   fputc(10, stderr); }
@@ -10116,7 +10128,7 @@ static void frame_detail_tag(int tag) {frame_detail_scope(tag,0,0,0);}
 static void frame_detail_end_record(void) {
     if(!s_frame_detail.active)return;
     double now=pose_time();s_frame_detail.cpu[s_frame_detail.tag]+=now-s_frame_detail.mark;
-    if(s_frame_gpu.active&&!s_cap_steps_on){for(int i=0;i<RSX_FRAME_GPU_TAGS;i++)s_frame_detail.totals[i]+=s_frame_detail.cpu[i];s_frame_detail.samples++;}
+    if(s_frame_gpu.active&&!s_cap_steps_on){for(u32 i=0;i<RSX_FRAME_GPU_TAGS;i++)s_frame_detail.totals[i]+=s_frame_detail.cpu[i];s_frame_detail.samples++;}
     s_frame_detail.active=0;
 }
 
@@ -10523,8 +10535,7 @@ static void prepass_range(u32 from, u32 to)
                     int ts = vp_upload_tex_slot(dr->tex[_u].off, dr->tex[_u].w,
                                                 dr->tex[_u].h, dr->tex[_u].fmt,
                                                 _cube, dr->tex[_u].mips, dr->tex[_u].pitch);
-                    if (perf_on()) { s_perf_tex += perf_now() - _tt; s_perf_ntex++;
-                        s_perf_texbytes += (u64)dr->tex[_u].w * dr->tex[_u].h * 4u; }
+                    if (perf_on()) { s_perf_tex += perf_now() - _tt; s_perf_ntex++; }
                     /* Both forms of the offset are in hand here; the filters
                      * compare the BOUND one. */
                     if (s_duck_off && dr->tex[_u].off == s_duck_off)
@@ -10694,7 +10705,9 @@ static void render_frame_impl(void)
     if(s_rb.present&&rsx_fsr31_requested()) {
         s_fsr_ready=rsx_fsr31_begin(s_d3d.device,s_display?s_disp_w:rs_dim(s_d3d.width,s_rs),
             s_display?s_disp_h:rs_dim(s_d3d.height,s_rs),s_rb.pose_scene,
+            s_rb.camera_cut!=s_presented_camera_cut||
             s_pose_history.reason==RSX_POSE_CUT||s_pose_history.reason==RSX_POSE_LAYOUT);
+        s_presented_camera_cut=s_rb.camera_cut;
         /* Snapshot the shared DSV after the final full-size camera geometry,
          * before fullscreen/postprocess/shadow work can overwrite its bank. */
         if(s_fsr_ready)for(u32 i=0;i<s_rb.count&&i<MAX_DRAWS;i++){
@@ -11227,7 +11240,7 @@ static void render_frame_impl(void)
             if (s_vf_buf)   /* RSX_GPU_VFETCH: this batch's records, descriptors and bytes */
                 s_d3d.cmd_list->lpVtbl->SetGraphicsRootShaderResourceView(s_d3d.cmd_list, 4,
                     s_vf_buf->lpVtbl->GetGPUVirtualAddress(s_vf_buf) + (u64)s_rb.parity * vf_parity_bytes());
-                if(pose_compute_mode()&&s_pose_compute.ready)s_d3d.cmd_list->lpVtbl->SetGraphicsRootShaderResourceView(s_d3d.cmd_list,6,s_pose_compute.output->lpVtbl->GetGPUVirtualAddress(s_pose_compute.output)+s_pose_compute.final_offset);
+            if(pose_compute_mode()&&s_pose_compute.ready)s_d3d.cmd_list->lpVtbl->SetGraphicsRootShaderResourceView(s_d3d.cmd_list,6,s_pose_compute.output->lpVtbl->GetGPUVirtualAddress(s_pose_compute.output)+s_pose_compute.final_offset);
             ID3D12DescriptorHeap* heaps[] = { s_d3d.srv_heap };
             s_d3d.cmd_list->lpVtbl->SetDescriptorHeaps(s_d3d.cmd_list, 1, heaps);
             D3D12_GPU_DESCRIPTOR_HANDLE gh;
@@ -11243,7 +11256,6 @@ static void render_frame_impl(void)
             s_d3d.srv_heap->lpVtbl->GetGPUDescriptorHandleForHeapStart(s_d3d.srv_heap, &gh_base);
             int cur_rt = -1;                       /* target A: -1 = backbuffer */
             float cur_sc = s_rs;                   /* RES_SCALE of the bound target */
-            float vp_last_w = 0, vp_last_h = 0;    /* for DRAWARGS */
             float dvp_x = 0, dvp_y = 0, dvp_w = 0, dvp_h = 0;  /* per-draw, for DRAWARGS */
             int cur_m[3] = {-1, -1, -1};           /* MRT B/C/D: -1 = unbound   */
             /* Last pipeline / viewport handed to the command list, so a run of
@@ -11417,7 +11429,6 @@ static void render_frame_impl(void)
                         rh[nrt++] = off_rt_rtv(wantm[_m]);
                     }
                     D3D12_RECT sc = {0, 0, (LONG)vp.Width, (LONG)vp.Height};
-                    vp_last_w = vp.Width; vp_last_h = vp.Height;
                     s_d3d.cmd_list->lpVtbl->OMSetRenderTargets(s_d3d.cmd_list, nrt, rh, FALSE, &dsv_handle);
                     cur_sc = (want >= 0) ? s_d3d.off_rt[want].sc : s_rs;
                     rs_set_vp(cur_sc, &vp, &sc);
@@ -11692,8 +11703,6 @@ static void render_frame_impl(void)
                 { static int dcap = -1, dn = 0;
                   if (dcap < 0) { const char* e = getenv("DRAWARGS"); dcap = e ? atoi(e) : 0; }
                   if (dcap && dn < dcap) { dn++;
-                      D3D12_CPU_DESCRIPTOR_HANDLE _rh =
-                          (cur_rt >= 0) ? off_rt_rtv(cur_rt) : rtv_handle;
                       fprintf(stderr, "[DRAWARGS] verts=%u start=%u rt=%d rec=0x%08X bound=0x%08X"
                               " tex0=0x%08X texrt=%d dvp=%.0f,%.0f %.0fx%.0f%c",
                               dr->vertex_count, dr->vb_byte_offset / 256, cur_rt,
@@ -11942,7 +11951,7 @@ static void render_frame_impl(void)
             s_perf_frame = 0.0; s_perf_tex = 0.0; s_perf_vtx = 0.0; s_perf_rf = 0.0;
             s_perf_gpu = 0.0; s_perf_pre = 0.0; s_perf_srv = 0.0; s_perf_pso = 0.0;
             s_perf_pso_calls = 0; s_perf_pso_miss = 0; s_perf_pso_hashbytes = 0;
-            s_perf_ntex = 0; s_perf_texbytes = 0; s_perf_nverts = 0;
+            s_perf_ntex = 0; s_perf_nverts = 0;
         }
     }
     { static int dt = -1;
@@ -12761,6 +12770,7 @@ static void render_frame(void)
         next.count = s_d3d.draw_count;
         next.parity = s_d3d.vp_parity;
         next.fp_arena = s_fp_arena;
+        next.vtex_arena = s_vtex_arena;
         next.present = 1;
         next.pose_stamp = s_pose_stamp;
         next.pose_nv = s_d3d.vp_vb_offset / 256;
@@ -12783,10 +12793,13 @@ static void render_frame(void)
     s_rb.parity     = s_d3d.vp_parity;
     s_rb.fp_arena   = s_fp_arena;
     s_rb.vtex_arena = s_vtex_arena;
-    s_rb.present    = s_present_this_frame;
+    /* Preserve the last complete image during a partially prepared camera cut.
+     * Freeze this choice with the batch; offscreen execution still runs. */
+    s_rb.present    = s_present_this_frame && !InterlockedCompareExchange(&s_camera_hold,0,2);
     s_rb.pose_stamp=s_pose_stamp;s_rb.pose_nv=s_d3d.vp_vb_offset/256;
     s_rb.pose_scene=pose_done?pose_scene:(u32)InterlockedCompareExchange(&s_pose_scene,0,0);
     s_rb.pose_done=pose_done;s_rb.pose_seq=pose_seq;
+    s_rb.camera_cut=(u32)InterlockedCompareExchange(&s_camera_cut,0,0);
     s_rb.profile_producer=profile&&profile_released?profile_ready-profile_released:0;
     s_rb.profile_backpressure=profile_wait;
     /* GetThreadTimes is cumulative for one host thread. Never subtract across

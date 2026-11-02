@@ -8,6 +8,7 @@ class LogicClock {
     double pending_=0;bool first_=true;
 public:
     void reset() {pending_=0;first_=true;}
+    double phase() const {return pending_;}
     unsigned advance(double ticks) {
         if(!std::isfinite(ticks)||ticks<0)return 0;
         if(first_) {first_=false;return 1;}

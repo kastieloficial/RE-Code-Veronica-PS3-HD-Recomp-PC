@@ -922,3 +922,12 @@ target_include_directories(code_veronica_hud_health_tests PRIVATE "${PS3RECOMP_D
 if(MSVC)
  target_compile_options(code_veronica_hud_health_tests PRIVATE /UNDEBUG)
 endif()
+
+
+add_executable(code_veronica_smooth_animation_tests EXCLUDE_FROM_ALL tests/test_smooth_animation.cpp)
+target_include_directories(code_veronica_smooth_animation_tests PRIVATE "${RECOMP_DIR}" "${PS3RECOMP_DIR}/include")
+if(MSVC)
+    target_compile_options(code_veronica_smooth_animation_tests PRIVATE /UNDEBUG)
+else()
+    target_compile_options(code_veronica_smooth_animation_tests PRIVATE -UNDEBUG)
+endif()
