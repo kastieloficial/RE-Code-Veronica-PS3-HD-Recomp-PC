@@ -939,3 +939,10 @@ if(MSVC)
 else()
     target_compile_options(code_veronica_startup_notices_tests PRIVATE -UNDEBUG)
 endif()
+
+# Loaded rounds and matching carried reserve, independent of a game dump.
+add_executable(code_veronica_hud_ammo_tests EXCLUDE_FROM_ALL tests/test_hud_ammo.cpp)
+target_include_directories(code_veronica_hud_ammo_tests PRIVATE "${PS3RECOMP_DIR}/libs/video")
+if(MSVC)
+ target_compile_options(code_veronica_hud_ammo_tests PRIVATE /UNDEBUG)
+endif()
