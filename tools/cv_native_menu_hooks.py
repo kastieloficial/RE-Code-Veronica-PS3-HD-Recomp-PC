@@ -61,6 +61,17 @@ def modern_controls(source,region):
     if changed:source='extern "C" void cv_modern_turn();\nextern "C" unsigned cv_controls_input(unsigned);\nextern "C" unsigned cv_controls_previous(unsigned);\n'+source
     return source
 
+def play_time(source,region):
+    if region!="eu":return source,0
+    pair=("        ctx->lr = 0x00028A88; func_001D027C(ctx); DRAIN_TRAMPOLINE(ctx);\n"
+          "        ctx->lr = 0x00028A8C; func_001D027C(ctx); DRAIN_TRAMPOLINE(ctx);")
+    count=source.count(pair)
+    if count:
+        source=source.replace(pair,"        cv_play_time_update(ctx);")
+        source='struct ppu_context;\nvoid cv_play_time_update(ppu_context*);\n'+source
+    return source,count
+
+
 def main(finalize=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--discover", type=Path)
@@ -73,10 +84,13 @@ def main(finalize=None):
     if args.discover:
         owners = {}
         battle_count=0
+        timer_count=0
         for path in sorted(args.discover.glob("ppu_recomp_*.cpp")):
             text = path.read_text(encoding="utf-8", errors="surrogateescape")
             _,verified=battle_reads(text,args.region)
             battle_count+=verified
+            _,timer_sites=play_time(text,args.region)
+            timer_count+=timer_sites
             for address in HOOKS:
                 definition = f"void func_{address}(ppu_context* ctx) {{"
                 count = text.count(definition)
@@ -87,6 +101,7 @@ def main(finalize=None):
         if len(owners) != len(HOOKS):
             raise SystemExit(f"Native-menu hooks missing from lift: {set(HOOKS)-owners.keys()}")
         if battle_count!=5:raise SystemExit(f"Expected five verified Battle read sites in {args.region}; found {battle_count}")
+        if args.region=="eu" and timer_count!=1:raise SystemExit(f"Expected one verified play-time pair; found {timer_count}")
         print(";".join(path.resolve().as_posix() for path in sorted(args.discover.glob("ppu_recomp_*.cpp"))))
         return
     if not args.input or not args.output:
@@ -108,6 +123,7 @@ def main(finalize=None):
         raise SystemExit("No guest function found for cheat store wrappers")
     source = source[:first.start()] + '#include "cv_cheats_lift.h"\n' + source[first.start():]
     if battle_count:source=source.replace('#include "cv_cheats_lift.h"','#include "cv_cheats_lift.h"\n#include "cv_unlock_lift.h"')
+    source,_=play_time(source,args.region)
     source=modern_controls(source,args.region)
     if finalize:source=finalize(source,args.region)
     args.output.parent.mkdir(parents=True, exist_ok=True)

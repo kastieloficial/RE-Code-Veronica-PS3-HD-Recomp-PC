@@ -329,7 +329,7 @@ if(WIN32)
             cv_appearance_preview.cpp cv_appearance_menu_preview.cpp cv_appearance_runtime.cpp cv_appearance_prepare.cpp)
         set_source_files_properties(cv_appearance_assets.cpp cv_appearance_prepare.cpp PROPERTIES INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/libs/codec")
     endif()
-    target_sources(${PROJECT_NAME} PRIVATE ${CV_MENU_SOURCE} boot_skip.cpp cv_test_tools.cpp cv_save_library.cpp cv_fps_experimental.cpp cv_native_libc.cpp cv_focus_pause.cpp cv_items.cpp cv_item_menu.cpp)
+    target_sources(${PROJECT_NAME} PRIVATE ${CV_MENU_SOURCE} boot_skip.cpp cv_test_tools.cpp cv_save_library.cpp cv_fps_experimental.cpp cv_play_time.cpp cv_native_libc.cpp cv_focus_pause.cpp cv_items.cpp cv_item_menu.cpp)
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/SAVE-LIBRARY-NOTICES.txt"
@@ -945,4 +945,13 @@ add_executable(code_veronica_hud_ammo_tests EXCLUDE_FROM_ALL tests/test_hud_ammo
 target_include_directories(code_veronica_hud_ammo_tests PRIVATE "${PS3RECOMP_DIR}/libs/video")
 if(MSVC)
  target_compile_options(code_veronica_hud_ammo_tests PRIVATE /UNDEBUG)
+endif()
+
+# Original timer conditions with frame-rate-independent elapsed time.
+add_executable(code_veronica_play_time_tests EXCLUDE_FROM_ALL tests/test_play_time.cpp cv_play_time.cpp)
+target_include_directories(code_veronica_play_time_tests PRIVATE "${RECOMP_DIR}" "${PS3RECOMP_DIR}/include")
+if(MSVC)
+    target_compile_options(code_veronica_play_time_tests PRIVATE /UNDEBUG)
+else()
+    target_compile_options(code_veronica_play_time_tests PRIVATE -UNDEBUG)
 endif()

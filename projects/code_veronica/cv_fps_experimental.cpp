@@ -64,6 +64,13 @@ bool replay() {
     return on;
 }
 }
+extern "C" bool cv_fps_elapsed_ticks(float* out) {
+    const uint64_t sample=timing.load(std::memory_order_acquire);
+    if(!(sample>>32))return false;
+    const uint32_t bits=static_cast<uint32_t>(sample);
+    std::memcpy(out,&bits,sizeof bits);
+    return true;
+}
 void CV_FN_FRAME_PACE(ppu_context* ctx) {
     if(!enabled()) { CV_OG_FRAME_PACE(ctx);return; }
     const uint32_t object=static_cast<uint32_t>(ctx->gpr[3]);
