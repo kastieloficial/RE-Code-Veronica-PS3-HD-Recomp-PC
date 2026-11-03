@@ -18,16 +18,18 @@ Vuelve a jugar a la versión de PS3 en PC. Practica rutas con SRT nativo, selecc
 > [!IMPORTANT]
 > **No se incluye ningún archivo del juego.** Este repositorio y sus lanzamientos contienen solo el port: ningún dato del juego, ningún ejecutable del juego y ningún código generado a partir de él. Necesitas tu **propia copia original** del juego de PS3 (versión de PSN). *Resident Evil*, *Code: Veronica* y todos los nombres, personajes e imágenes relacionados son marcas y derechos de autor de **Capcom**. Es un proyecto de fans. **No está afiliado, autorizado ni respaldado por Capcom ni por Sony Interactive Entertainment**.
 
-## Descargas — v1.1.11
+## Descargas — v1.5.0
 
-Novedades de la v1.1.11: un **pack de texturas HD** listo para usar (imágenes en 4K de **ewgeha**, **SonicB00M** y **JuanchoTexHD**, adaptadas a este proyecto por Kastiel) para las versiones americana, europea y japonesa, con los créditos en [TEXTURAS-HD-COMUNIDADE.md](projects/code_veronica/TEXTURAS-HD-COMUNIDADE.md); un **launcher más rápido** que ahora **vuelve al cerrar la ventana del juego**; el **interruptor de texturas (F9) corregido**; y la opción de movimiento moderno indica ahora que su jugabilidad es similar a la de Resident Evil HD Remaster y Resident Evil 0 HD Remaster. Modo moderno opcional inspirado en **Resident Evil HD Remaster** y **Resident Evil 0 HD Remaster**, con sticks analógicos configurables. Nuevas teclas predeterminadas: **WASD para el stick izquierdo y flechas para la cruceta**. Actívalo en **Recomp Settings → Jugabilidad → Estilo de movimiento**; Clásico sigue siendo el valor predeterminado. Se conservan las asignaciones guardadas; usa **Restaurar valores predeterminados** para aplicar la nueva distribución.
+**v1.5.0:** animaciones nativas a 60 FPS para **EU/US/JP**, inventario más fluido con correcciones al equipar/desequipar, generación de fotogramas FSR 3.1 junto con la suavización, corrección para omitir puertas en EU, vista previa de apariencia más ligera y ajustes del Recomp reorganizados. **30 FPS y movimiento Clásico siguen como valores iniciales.** Los textos adicionales de US utilizan tu instalación europea registrada; JP permanece solo en japonés. Incluye ejecutables AVX2 y compatibilidad SSE4.1 automática.
 
-[**RE Code Veronica Recomp Release v1.1.11**](https://github.com/kastieloficial/RE-Code-Veronica-PS3-HD-Recomp-PC/releases/tag/v1.1.11)
+Gracias a **[Lyxodius](https://github.com/Lyxodius)** por la **[PR #36](https://github.com/kastieloficial/RE-Code-Veronica-PS3-HD-Recomp-PC/pull/36)**, revisada y ampliada por Kastiel. [Notas completas en inglés y portugués](projects/code_veronica/distribution/NOTAS-RELEASE-v1.5.0.md).
+
+[**RE Code Veronica Recomp Release v1.5.0**](https://github.com/kastieloficial/RE-Code-Veronica-PS3-HD-Recomp-PC/releases/tag/v1.5.0)
 
 | Descarga | Contenido |
 |---|---|
-| [CodeVeronica-PC-v1.1.11.zip](https://github.com/kastieloficial/RE-Code-Veronica-PS3-HD-Recomp-PC/releases/download/v1.1.11/CodeVeronica-PC-v1.1.11.zip) | Port para Windows con launcher y soporte EU/JP/US. Extrae todo y abre **Code Veronica.exe**. |
-| [Veronica-PKG-Extractor-v1.0.1.zip](https://github.com/kastieloficial/RE-Code-Veronica-PS3-HD-Recomp-PC/releases/download/v1.1.11/Veronica-PKG-Extractor-v1.0.1.zip) | Herramienta para preparar tu propio PKG, en ZIP separado y sin cambios en esta versión. También puedes usar RPCS3. |
+| [CodeVeronica-PC-v1.5.0.zip](https://github.com/kastieloficial/RE-Code-Veronica-PS3-HD-Recomp-PC/releases/download/v1.5.0/CodeVeronica-PC-v1.5.0.zip) | Port para Windows con launcher y soporte EU/JP/US. Extrae todo y abre **Code Veronica.exe**. |
+| [Veronica-PKG-Extractor-v1.0.1.zip](https://github.com/kastieloficial/RE-Code-Veronica-PS3-HD-Recomp-PC/releases/download/v1.5.0/Veronica-PKG-Extractor-v1.0.1.zip) | Herramienta para preparar tu propio PKG, en ZIP separado y sin cambios en esta versión. También puedes usar RPCS3. |
 | [Pack de texturas HD (Google Drive)](https://drive.google.com/file/d/1t6yVG1yEC5dl3Td6jT4rhFj1EEwmbsAZ/view?usp=sharing) | Texturas HD de la comunidad, opcionales, para las versiones americana, europea y japonesa, adaptadas a este proyecto. Créditos, canales e instrucciones: [TEXTURAS-HD-COMUNIDADE.md](projects/code_veronica/TEXTURAS-HD-COMUNIDADE.md). |
 | [CodeVeronica-LiveSplit-Speedrun-v1.0.zip](https://github.com/kastiellcontato-design/Code-Veronica-Recomp/releases/download/v1.0/CodeVeronica-LiveSplit-Speedrun-v1.0.zip) | Splits Any%/S-Rank e instrucciones de LiveSplit de la publicación anterior. |
 
@@ -176,7 +178,7 @@ El launcher también puede buscar nuevas versiones en los lanzamientos de GitHub
 - **Nitidez** con **AMD FSR 1 RCAS**, del 10% al 100%.
 - **Límite de fotogramas**:
   - **30 FPS (original)**: la misma experiencia que en PS3, donde el juego va a 30 FPS.
-  - **60 FPS**: la lógica del juego sigue a sus 30 Hz originales y los fotogramas extra salen de la **interpolación de las poses** de personajes y objetos, así que se mantiene el ritmo del juego. La interpolación usa la CPU por defecto, con un modo experimental en la GPU. Si el PC no mantiene los 60 FPS, el juego va más lento.
+  - **60 FPS**: la lógica del juego sigue a sus 30 Hz originales y los fotogramas extra salen de la **interpolación de las poses** de personajes y objetos, así que se mantiene el ritmo del juego. La suavización nativa se selecciona automáticamente para EU/US/JP.
 - **AMD FSR 3.1 Frame Generation** (opcional, solo en el modo 60 FPS): hasta 120 FPS cuando el PC mantiene los 60 FPS.
 - **VSync** (modo 60 FPS): la imagen no se corta. No se puede usar junto con la generación de fotogramas.
 - Indicador de rendimiento con FPS, tiempo de fotograma, CPU, GPU, RAM, VRAM y carga de SPU/RSX, en cualquier esquina.
@@ -316,7 +318,7 @@ Una selección del launcher y del juego. Las demás pantallas están reunidas en
 
 ## Problemas conocidos
 
-El port sigue en desarrollo. Todavía pueden aparecer fallos gráficos y de iluminación, los 60 FPS no están garantizados en todos los PC, y la mayoría de las pruebas de juego se hicieron en la versión japonesa (la europea y la americana comparten el mismo código). Informa de los problemas con tu `run-log.txt` y una descripción de lo que pasó.
+El port sigue en desarrollo. Las pruebas locales cubren EU, US y JP, pero no se ha verificado una partida completa en todas las configuraciones de hardware. Aún pueden aparecer problemas gráficos o de compatibilidad, y 60 FPS no está garantizado en todos los PC. Informa de la región, las especificaciones del PC, tu `run-log.txt` y lo que pasó.
 
 ## Compilar el código
 

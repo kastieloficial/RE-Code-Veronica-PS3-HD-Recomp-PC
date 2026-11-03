@@ -7,7 +7,9 @@
 #include <cstring>
 #include <filesystem>
 #include "ppu_recomp.h"
+#include "cv_scene_region.h"
 #include "cv_version.h"
+#include "cv_options.h"
 #include "cv_items.h"
 #include "cv_quick_select.h"
 #include "modern_math.h"
@@ -32,6 +34,17 @@ extern "C" int cv_modern_get(){return modern;}
 extern "C" void cv_modern_set(int value){modern=value!=0;generation++;}
 extern "C" void cv_modern_change(int value){cv_modern_set(value);WritePrivateProfileStringW(L"jogabilidade",L"movimento_moderno",value?L"1":L"0",ini().c_str());}
 extern "C" void cv_modern_boot(){cv_modern_set(GetPrivateProfileIntW(L"jogabilidade",L"movimento_moderno",0,ini().c_str())!=0);}
+// Keep distinct physical confirmation presses while another confirm/run button
+// remains held. Only room text uses this override; movement retains its history.
+extern "C" uint32_t cv_controls_previous(uint32_t previous){
+ if(!cv_options::enabled("CV_INPUT_COMFORT"))return previous;
+ const auto state=vm_read32(CV_SCENE_SYSTEM);
+ if(readable(state,0x1b07c)&&(vm_read32(state+0x70)&0x200)){
+  const auto input=vm_read32(state+0x1b078);
+  if(readable(input,0x14)&&(vm_read32(input+0x10)&0xc000))return previous&~0x800u;
+ }
+ return previous;
+}
 extern "C" uint32_t cv_controls_input(uint32_t pad){
  steer=false;if(seen!=generation){seen=generation;reset();}
  if(!modern||!focused()||cv_quick::consumes_stick()){reset();return pad;}
@@ -67,3 +80,5 @@ extern "C" void cv_modern_turn(){
  if(!modern||!steer||vm_read32(EXP_PLAYER_PTR)!=actor||vm_read8(actor+12)!=1||vm_read8(actor+13)!=0||vm_read8(actor+14)>13||vm_read8(actor+14)==12||(vm_read32(actor)&0x100000))return;
  const int32_t yaw=int32_t(vm_read32(actor+32));vm_write32(actor+32,uint32_t(yaw+int(turn(float(yaw),wanted))));
 }
+
+extern "C" unsigned cv_title_input(unsigned input){return input&(cv_options::enabled("CV_INPUT_COMFORT")?0xc008u:8u);}

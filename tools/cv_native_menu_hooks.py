@@ -9,9 +9,9 @@ from pathlib import Path
 # Japanese EBOOT, in the same order (projects/code_veronica/cv_version.h).
 # The last two: the guest libc memset and memmove (cv_native_libc.cpp).
 HOOKS_BY_REGION = {
-    "eu": ("0002A468", "0002F3D0", "001BD060", "0020140C", "0002B35C", "000333A0", "001D9370", "001D8090", "0050E538", "001D952C", "00033FD0", "007B6C38", "007AE7B0"),
-    "us": ("0002A038", "0002EF60", "001BB5E0", "001FF46C", "0002AEEC", "00032FA0", "001D7550", "001D6270", "0050C578", "001D770C", "00033BD0", "007B4C78", "007AC7F0"),
-    "jp": ("0002A038", "0002EF38", "001BB688", "001FF7C0", "0002AEC4", "00032F80", "001D76D0", "001D63F0", "0050CE68", "001D788C", "00033B78", "007B5568", "007AD0E0"),
+    "eu": ("0002A468", "0002F3D0", "001BD060", "0020140C", "0002B35C", "000333A0", "001D9370", "001D8090", "0050E538", "001D952C", "00033FD0", "007B6C38", "007AE7B0", "001E58FC", "00210914"),
+    "us": ("0002A038", "0002EF60", "001BB5E0", "001FF46C", "0002AEEC", "00032FA0", "001D7550", "001D6270", "0050C578", "001D770C", "00033BD0", "007B4C78", "007AC7F0", "001E395C", "0020E974"),
+    "jp": ("0002A038", "0002EF38", "001BB688", "001FF7C0", "0002AEC4", "00032F80", "001D76D0", "001D63F0", "0050CE68", "001D788C", "00033B78", "007B5568", "007AD0E0", "001E3BBC", "0020F264"),
 }
 HOOKS = HOOKS_BY_REGION["eu"]
 
@@ -28,11 +28,17 @@ def battle_reads(source,region):
             old="ctx->gpr[5] = vm_read32(ctx->gpr[5] + 0x4);"
             if body.count(old)!=2:raise SystemExit(f"Battle title read sites changed in {region}: {address:08X}")
             body=body.replace(old,"ctx->gpr[5] = cv_battle_read32(ctx->gpr[5] + 0x4,0x1u);");changed+=2
+            if True:
+                # The title prompt accepts the same confirm buttons as its menu.
+                old="ctx->gpr[3] = (uint64_t)ppc_rlwinm((uint32_t)ctx->gpr[3], 0, 28, 28);"
+                if body.count(old)!=1:raise SystemExit(f"Title Start test changed in {region}: {address:08X}")
+                body=body.replace(old,"ctx->gpr[3] = cv_title_input(uint32_t(ctx->gpr[3]));")
         elif address==script:
             old="ctx->gpr[3] = vm_read32((ctx->gpr[3] + ctx->gpr[6]));"
             if body.count(old)!=1:raise SystemExit(f"Battle character read site changed in {region}")
             body=body.replace(old,"ctx->gpr[3] = cv_battle_read32((ctx->gpr[3] + ctx->gpr[6]),0x7Cu);");changed+=1
         source=source[:m.start()]+body+source[end:]
+    if "cv_title_input(" in source:source='extern "C" unsigned cv_title_input(unsigned);\n'+source
     return source,changed
 
 
@@ -49,9 +55,42 @@ def modern_controls(source,region):
         if key=="input" and body.count(needle)!=1:raise RuntimeError("Native modern input site changed")
         if needle not in body:raise RuntimeError("Native modern turn site changed")
         body=body.replace(needle,needle+"\n        cv_modern_turn();" if key=="player" else "        ctx->gpr[3] = cv_controls_input(uint32_t(ctx->gpr[3]));\n"+needle,1)
+        if key=="input":
+            body=body.replace(needle,f"        ctx->gpr[{reg}] = cv_controls_previous(uint32_t(ctx->gpr[{reg}]));\n"+needle,1)
         source=source[:start]+body+source[end:];changed=True
-    if changed:source='extern "C" void cv_modern_turn();\nextern "C" unsigned cv_controls_input(unsigned);\n'+source
+    if changed:source='extern "C" void cv_modern_turn();\nextern "C" unsigned cv_controls_input(unsigned);\nextern "C" unsigned cv_controls_previous(unsigned);\n'+source
     return source
+
+def play_time(source,region):
+    timer={"eu":"001D027C","us":"001CE45C","jp":"001CE5DC"}[region]
+    pair=("        ctx->lr = 0x00028A88; func_001D027C(ctx); DRAIN_TRAMPOLINE(ctx);\n"
+          "        ctx->lr = 0x00028A8C; func_001D027C(ctx); DRAIN_TRAMPOLINE(ctx);")
+    pair=pair.replace("001D027C",timer)
+    count=source.count(pair)
+    if count:
+        source=source.replace(pair,"        cv_play_time_update(ctx);")
+        source='struct ppu_context;\nvoid cv_play_time_update(ppu_context*);\n'+source
+    return source,count
+
+
+
+def door_skip(source,region):
+    site,callee={"eu":("001AFCCC","0003BC10"),"us":("001AE25C","0003B810"),"jp":("001AE304","0003B7B8")}[region]
+    label="loc_"+site+":\n"
+    if label not in source:return source,0
+    if source.count(label)!=1:raise RuntimeError("Ambiguous door patch site")
+    start=source.index(label)+len(label);end=source.index("\n",start)
+    line=source[start:end]
+    native=f"ctx->lr = 0x{int(site,16)+4:08X}; func_{callee}(ctx); DRAIN_TRAMPOLINE(ctx);"
+    if 'ps3_patch_flag("cv_door_skip")' in line:
+        if native not in line or 'ctx->gpr[3] = (int64_t)(int32_t)(0);' not in line:raise RuntimeError("Door patch semantics changed")
+        return source,1
+    if line.strip()!=native:raise RuntimeError("Unrecognized native door site; refusing to patch")
+    replacement='        { static volatile unsigned char* door_flag = nullptr; if (!door_flag) door_flag = ps3_patch_flag("cv_door_skip"); if (*door_flag) { ctx->gpr[3] = (int64_t)(int32_t)(0); } else { '+native+' } } /* verified local door skip */'
+    source=source[:start]+replacement+source[end:]
+    if 'extern "C" volatile unsigned char* ps3_patch_flag(' not in source:
+        source='extern "C" volatile unsigned char* ps3_patch_flag(const char*);\n'+source
+    return source,1
 
 def main(finalize=None):
     parser = argparse.ArgumentParser(description=__doc__)
@@ -65,10 +104,16 @@ def main(finalize=None):
     if args.discover:
         owners = {}
         battle_count=0
+        timer_count=0
+        door_count=0
         for path in sorted(args.discover.glob("ppu_recomp_*.cpp")):
             text = path.read_text(encoding="utf-8", errors="surrogateescape")
             _,verified=battle_reads(text,args.region)
             battle_count+=verified
+            _,door_sites=door_skip(text,args.region)
+            door_count+=door_sites
+            _,timer_sites=play_time(text,args.region)
+            timer_count+=timer_sites
             for address in HOOKS:
                 definition = f"void func_{address}(ppu_context* ctx) {{"
                 count = text.count(definition)
@@ -79,6 +124,8 @@ def main(finalize=None):
         if len(owners) != len(HOOKS):
             raise SystemExit(f"Native-menu hooks missing from lift: {set(HOOKS)-owners.keys()}")
         if battle_count!=5:raise SystemExit(f"Expected five verified Battle read sites in {args.region}; found {battle_count}")
+        if door_count!=1:raise SystemExit(f"Expected one verified door site in {args.region}; found {door_count}")
+        if timer_count!=1:raise SystemExit(f"Expected one verified play-time pair; found {timer_count}")
         print(";".join(path.resolve().as_posix() for path in sorted(args.discover.glob("ppu_recomp_*.cpp"))))
         return
     if not args.input or not args.output:
@@ -100,7 +147,13 @@ def main(finalize=None):
         raise SystemExit("No guest function found for cheat store wrappers")
     source = source[:first.start()] + '#include "cv_cheats_lift.h"\n' + source[first.start():]
     if battle_count:source=source.replace('#include "cv_cheats_lift.h"','#include "cv_cheats_lift.h"\n#include "cv_unlock_lift.h"')
+    source,_=door_skip(source,args.region)
+    source,_=play_time(source,args.region)
     source=modern_controls(source,args.region)
+    enqueue="void func_00015AFC(ppu_context* ctx) {"
+    if enqueue in source:
+        if source.count(enqueue)!=1:raise RuntimeError("Ambiguous UI enqueue hook")
+        source=source.replace(enqueue,"void cv_ui_original_enqueue(ppu_context* ctx) {")
     if finalize:source=finalize(source,args.region)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if not args.output.exists() or args.output.read_text(encoding="utf-8", errors="surrogateescape") != source:

@@ -1,3 +1,4 @@
+#include "cv_native_language_overlay.h"
 #include "cv_film_filter.h"
 #include "cv_translation_patch.h"
 /*
@@ -2040,6 +2041,31 @@ void watcher()
 
 const char* overlay(const char* host_path, char* buf, size_t cap)
 {
+    // Route the requested US locale through the same icon/appearance filters.
+    // The recursive path belongs to the EU installation and is resolved once.
+    static thread_local bool native_language_filter=false;
+    if(const char* root=native_language_filter?nullptr:getenv("CV_NATIVE_LANGUAGE_ROOT")){
+        auto localized=cv_native_language::resolve(CV_TITLE_ID,host_path,root);
+        if(!localized.empty() && localized.lexically_normal()!=fs::path(host_path).lexically_normal()){
+            if(localized.extension()==".arc"){
+                std::filesystem::path adapted;std::string error;
+                if(!cv_native_language::prepare_archive(host_path,localized,adapted,error)){
+                    std::fprintf(stderr,"[LANGUAGE-US] cannot adapt %s: %s\n",host_path,error.c_str());return "";
+                }
+                localized=adapted;
+            }
+            const auto path=localized.string();
+            if(path.size()+1>cap)return "";
+            struct Scope{bool& active;Scope(bool& value):active(value){active=true;}~Scope(){active=false;}} scope(native_language_filter);
+            const char* result=overlay(path.c_str(),buf,cap);
+            if(result!=buf){
+                if(strlen(result)+1>cap)return "";
+                memmove(buf,result,strlen(result)+1);
+            }
+            return buf;
+        }
+    }
+
     // Private proof: route only the verified text archive. Never write game data.
     if(const char* root=getenv("CV_PTBR_ASSET_ROOT")) if(*root && (!strcmp(CV_TITLE_ID,"NPEB00553") || !strcmp(CV_TITLE_ID,"NPUB30467"))) {
         std::string path(host_path);for(char& c:path){if(c=='\\')c='/';if(c>='A'&&c<='Z')c+=32;}

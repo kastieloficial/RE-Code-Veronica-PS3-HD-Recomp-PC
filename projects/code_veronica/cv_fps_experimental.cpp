@@ -4,7 +4,12 @@
  */
 #include "ppu_recomp.h"
 #include "cv_version.h"
+#include "cv_scene_region.h"
 #include "cv_fps_clock.h"
+#include "cv_item_interpolation.h"
+#include "cv_inventory_ui_interpolation.h"
+#include "cv_fps_input.h"
+#include "cv_options.h"
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
@@ -26,7 +31,13 @@ static constexpr uint32_t bio_update_address=0x00210070;
 void CV_BIO_UPDATE(ppu_context*);
 extern "C" void ppu_register_function(uint64_t,void (*)(ppu_context*));
 extern "C" void rsx_d3d12_pose_scene(uint32_t);
+extern "C" void rsx_d3d12_camera_cut(void);
+extern "C" void rsx_d3d12_camera_hold(int);
 extern "C" int rsx_d3d12_pose_replay_enabled(void);
+extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
+static void drain_scene(ppu_context* ctx) {
+    while(g_trampoline_fn) {auto fn=g_trampoline_fn;g_trampoline_fn=nullptr;fn(ctx);}
+}
 namespace {
 // Publish pacing to a possible engine worker as one consistent snapshot.
 std::atomic<uint64_t> timing{0};
@@ -52,6 +63,13 @@ bool replay() {
     static const bool on=rsx_d3d12_pose_replay_enabled()!=0;
     return on;
 }
+}
+extern "C" bool cv_fps_elapsed_ticks(float* out) {
+    const uint64_t sample=timing.load(std::memory_order_acquire);
+    if(!(sample>>32))return false;
+    const uint32_t bits=static_cast<uint32_t>(sample);
+    std::memcpy(out,&bits,sizeof bits);
+    return true;
 }
 void CV_FN_FRAME_PACE(ppu_context* ctx) {
     if(!enabled()) { CV_OG_FRAME_PACE(ctx);return; }
@@ -89,21 +107,42 @@ void CV_FN_FRAME_PACE(ppu_context* ctx) {
 }
 
 namespace {
+#include "cv_smooth_animation.h"
 void bio_update_30hz(ppu_context* ctx) {
+    const bool smooth=cv_options::enabled("CV_SMOOTH_ANIMATION");
+    const bool input_fix=cv_options::enabled("CV_INPUT_COMFORT");
+    if(smooth)cv_item_interpolation::restore();
+    cv_inventory_ui::restore();
+    native_scene_restore();
     static thread_local cv_fps::LogicClock clock;
+    static thread_local cv_fps_input::Latch input;
     const uint64_t sample=timing.load(std::memory_order_acquire);
     unsigned count=1;float elapsed_ticks=1;
     if(!(sample>>32)) {
         // Native pacing (replay or unrecognised object): one update a frame.
-        clock.reset();CV_BIO_UPDATE(ctx);
+        clock.reset();input.reset();cv_item_interpolation::reset();cv_inventory_ui::reset();CV_BIO_UPDATE(ctx);
         if(!replay())return;
     }else {
         uint32_t bits=static_cast<uint32_t>(sample);std::memcpy(&elapsed_ticks,&bits,4);
         count=clock.advance(elapsed_ticks);
+        if(input_fix)input.capture();
         // The virtual method is void. Skipped updates leave the incoming guest
         // context alone; each executed update gets the same incoming arguments.
         const ppu_context incoming=*ctx;
-        for(unsigned i=0;i<count;i++) {*ctx=incoming;CV_BIO_UPDATE(ctx);}
+        for(unsigned i=0;i<count;i++) {
+            *ctx=incoming;
+            if(input_fix)input.begin_tick(i==0);
+            cv_inventory_ui::begin();
+            native_scene_before();
+            CV_BIO_UPDATE(ctx);
+            if(input_fix)input.end_tick();
+            native_scene_after();
+            if(smooth)cv_item_interpolation::capture();
+            cv_inventory_ui::capture();
+        }
+        render_scene_between_ticks(ctx,count,clock.phase());
+        if(smooth)cv_item_interpolation::render(clock.phase());
+        cv_inventory_ui::render(clock.phase());
     }
     static const bool interpolate=[] {const char* e=std::getenv("CV_RENDER_INTERPOLATION");return e&&std::strcmp(e,"1")==0;}();
     if(interpolate) {
@@ -131,5 +170,9 @@ extern "C" void cv_fps_register_game_update() {
         std::fprintf(stderr,"[FPS60] RAW benchmark: game logic still runs once per rendered frame\n");return;
     }
     ppu_register_function(bio_update_address,bio_update_30hz);
+    if(cv_options::enabled("CV_SMOOTH_ANIMATION")) {
+        ppu_register_function(uint32_t(CV_SCENE_PREPARE_CUT),native_prepare_cut);
+        ppu_register_function(uint32_t(CV_SCENE_HD_UPDATE),inspection_hd_update);
+    }
     std::fprintf(stderr,"[FPS60] 30 Hz game update experiment registered at %08X; rendering kept separate\n",bio_update_address);
 }

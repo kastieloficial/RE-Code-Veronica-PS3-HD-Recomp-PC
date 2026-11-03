@@ -20,12 +20,19 @@ static LONG WINAPI exception(EXCEPTION_POINTERS* e){
  }return EXCEPTION_CONTINUE_SEARCH;
 }
 int main(int argc,char** argv){AddVectoredExceptionHandler(1,exception);
- const bool full=argc>1&&!strcmp(argv[1],"--1080");
+ bool full=false,native=false;for(int i=1;i<argc;i++){full|=!strcmp(argv[i],"--1080");native|=!strcmp(argv[i],"--native");}
+ _putenv_s("CV_RENDER_INTERPOLATION","");_putenv_s("CV_SMOOTH_ANIMATION","");_putenv_s("CV_FPS_BENCHMARK_RAW","");
  _putenv_s("CV_FSR_FRAME_GENERATION","1");_putenv_s("CV_FPS_TEST_60","");assert(!rsx_fsr31_requested());
  unsigned presents=123;assert(rsx_fsr31_present_count(&presents)==0&&presents==123);
  void* empty=nullptr;assert(!rsx_fsr31_swapchain(nullptr,nullptr,nullptr,nullptr,nullptr,&empty));assert(!GetModuleHandleW(L"amd_fidelityfx_framegeneration_dx12.dll"));
  _putenv_s("CV_FPS_TEST_60","1");_putenv_s("CV_RENDER_INTERPOLATION","1");assert(rsx_fsr31_requested());
+ _putenv_s("CV_RENDER_INTERPOLATION","0");assert(!rsx_fsr31_requested());
+ _putenv_s("CV_SMOOTH_ANIMATION","1");assert(rsx_fsr31_requested());
+ _putenv_s("CV_FSR_FRAME_GENERATION","0");assert(!rsx_fsr31_requested());_putenv_s("CV_FSR_FRAME_GENERATION","1");
+ _putenv_s("CV_FPS_TEST_60","");assert(!rsx_fsr31_requested());_putenv_s("CV_FPS_TEST_60","1");
  _putenv_s("CV_FPS_BENCHMARK_RAW","1");assert(!rsx_fsr31_requested());_putenv_s("CV_FPS_BENCHMARK_RAW","");
+ _putenv_s("CV_SMOOTH_ANIMATION",native?"1":"0");_putenv_s("CV_RENDER_INTERPOLATION",native?"0":"1");assert(rsx_fsr31_requested());
+ printf("Testing FSR input: %s\n",native?"PR36 native smoothing, legacy blending OFF":"legacy pose interpolation");
  ComPtr<ID3D12Debug> debug;if(SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug))))debug->EnableDebugLayer();
  ComPtr<ID3D12Device> device;assert(SUCCEEDED(D3D12CreateDevice(nullptr,D3D_FEATURE_LEVEL_11_0,IID_PPV_ARGS(&device))));
  ComPtr<IDXGIFactory4> factory;assert(SUCCEEDED(CreateDXGIFactory1(IID_PPV_ARGS(&factory))));

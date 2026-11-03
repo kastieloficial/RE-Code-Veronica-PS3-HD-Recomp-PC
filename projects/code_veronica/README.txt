@@ -1,3 +1,10 @@
+NEW IN v1.5.0
+Native 60 FPS smoothing now supports EU/US/JP automatically when you select 60 FPS. Inventory opening, tabs, inspection and files are smoother; backgrounds remain stable when equipping and unequipping. FSR 3.1 Frame Generation can run alongside this smoothing, with output up to 120 displayed FPS in compatible scenes.
+Fixed European door-animation skipping. Recomp Settings is visible and reorganized; the appearance preview is lighter. Depth of field remains optional with a help description. Confirmation/input and play-time handling are improved.
+EU/US game-text choices: Original, Portuguese (Brazil), English, French, German, Italian and Spanish. Extra US languages require your European installation registered in the launcher; conversion uses a local cache and preserves US gameplay data. JP remains Japanese only.
+30 FPS and Classic movement remain the initial defaults. Existing settings are preserved. AVX2 and automatic SSE4.1 compatibility executables are included for all regions.
+Special thanks to Lyxodius for PR #36, reviewed and extended by Kastiel. Full English/Portuguese notes are in CHANGELOG.md. Veronica PKG Extractor v1.0.1 is a separate ZIP.
+
 NEW IN v1.1.11
 Fixed the texture mods switch (F9): turning it off now returns to the original textures at once, and turning it on again brings them back, without restarting the game. Having the game text set to Portuguese no longer interferes.
 The in-game Modern movement option now says the gameplay is similar to Resident Evil HD Remaster and Resident Evil 0 HD Remaster. The in-game Recomp Settings menu follows the game text: Portuguese with the PT-BR translation on, English otherwise.

@@ -70,6 +70,8 @@ def main():
     if octicons.is_file():sources['github-octicons-LICENSE.txt']=octicons
     if (root/'LEIA-ME.txt').is_file():sources['LEIA-ME.txt']=root/'LEIA-ME.txt'
     if (root/'README.txt').is_file():sources['README.txt']=root/'README.txt'
+    changelog=root/'distribution'/f'NOTAS-RELEASE-{version}.md'
+    if changelog.is_file():sources['CHANGELOG.md']=changelog
     # The port's own license and the third-party license texts the binaries need.
     repo=root.parents[1]
     notices={'LICENSE.txt':repo/'LICENSE','THIRD-PARTY-NOTICES.md':repo/'THIRD-PARTY-NOTICES.md',

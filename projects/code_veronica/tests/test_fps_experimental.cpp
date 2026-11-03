@@ -1,5 +1,6 @@
 #include "ppu_recomp.h"
 #include "cv_version.h"
+#include "cv_scene_region.h"
 #include "cv_fps_clock.h"
 #include <cassert>
 #include <cstdlib>
@@ -9,7 +10,7 @@
 static unsigned char mem[4096];static unsigned calls,bio_calls;
 static uint32_t expected_cap,next_step=0x3f800000;static uint8_t expected_mode;static bool change_inside;
 static bool interpolation;static unsigned scene_calls;
-uint32_t vm_read32(uint64_t a) {if(interpolation&&a==CV_SRT_RDX)return 0x3D650;assert(a+4<=sizeof mem);return uint32_t(mem[a])<<24|uint32_t(mem[a+1])<<16|uint32_t(mem[a+2])<<8|mem[a+3];}
+uint32_t vm_read32(uint64_t a) {if(a==CV_SCENE_SYSTEM)return 0;if(interpolation&&a==CV_SRT_RDX)return 0x3D650;assert(a+4<=sizeof mem);return uint32_t(mem[a])<<24|uint32_t(mem[a+1])<<16|uint32_t(mem[a+2])<<8|mem[a+3];}
 uint8_t vm_read8(uint64_t a) {if(interpolation){if(a==CV_SRT_CHARACTER)return 0;if(a==CV_SRT_ROOM)return 1;if(a==CV_SRT_ROOM+1)return 13;}assert(a<sizeof mem);return mem[a];}
 void vm_write32(uint64_t a,uint32_t b) {assert(a+4<=sizeof mem);for(int j=0;j<4;j++)mem[a+j]=uint8_t(b>>(24-j*8));}
 void vm_write8(uint64_t a,uint8_t b) {assert(a<sizeof mem);mem[a]=b;}
@@ -33,9 +34,22 @@ static constexpr uint32_t test_bio_address=0x00210070;
 void TEST_BIO(ppu_context* ctx) {assert(ctx->gpr[3]==256);bio_calls++;ctx->gpr[3]=77;}
 extern "C" void ppu_register_function(uint64_t a,void (*fn)(ppu_context*)) {assert(a==test_bio_address);registered_update=fn;}
 extern "C" void cv_fps_register_game_update();
+extern "C" {PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*)=nullptr;}
+extern "C" int rsx_d3d12_pose_replay_enabled(){return 0;}
+extern "C" void rsx_d3d12_camera_cut(){std::abort();}
+extern "C" void rsx_d3d12_camera_hold(int on){assert(!on);}
+void CV_SCENE_FN_000155D0(ppu_context*){std::abort();}
+void CV_SCENE_FN_00034478(ppu_context*){std::abort();}
+void CV_SCENE_FN_00146BE0(ppu_context*){std::abort();}
+void CV_SCENE_FN_00158620(ppu_context*){std::abort();}
+void CV_SCENE_FN_001F4C40(ppu_context*){std::abort();}
+void CV_SCENE_FN_0022B9F0(ppu_context*){std::abort();}
+void CV_SCENE_FN_0022C108(ppu_context*){std::abort();}
+
 extern "C" void rsx_d3d12_pose_scene(uint32_t scene) {assert(interpolation&&scene==0x80010D00u);scene_calls++;}
 static ppu_context input() {ppu_context c{};c.gpr[3]=256;c.gpr[20]=123;return c;}
 int main(int argc,char** argv) {
+ _putenv_s("CV_SMOOTH_ANIMATION","0");_putenv_s("CV_INPUT_COMFORT","0");_putenv_s("CV_INVENTORY_UI_SMOOTH","0");
  interpolation=argc>1&&std::strcmp(argv[1],"interp")==0;
  _putenv_s("CV_RENDER_INTERPOLATION",interpolation?"1":"");
  bool raw=argc>1&&std::strcmp(argv[1],"raw")==0;

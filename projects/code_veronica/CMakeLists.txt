@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(MyGameRecomp
-    VERSION 0.1.0
+    VERSION 1.5.0
     LANGUAGES C CXX
     DESCRIPTION "Recompiled PS3 game project (ps3recomp)"
 )
@@ -110,9 +110,9 @@ set(SPU_ARCH "AVX2" CACHE STRING "clang-cl /arch for SPU code (empty = SSE2)")
 set(SPU_ARCH_FLAGS "")
 if(CMAKE_C_COMPILER_ID MATCHES "Clang" AND MSVC)
     if(CV_CPU_COMPAT)
-        set(SPU_ARCH_FLAGS "-ffp-contract=off")
+        set(SPU_ARCH_FLAGS "/clang:-ffp-contract=off")
     elseif(SPU_ARCH)
-        set(SPU_ARCH_FLAGS "/arch:${SPU_ARCH}" "-ffp-contract=off")
+        set(SPU_ARCH_FLAGS "/arch:${SPU_ARCH}" "/clang:-ffp-contract=off")
     endif()
 endif()
 if(SPU_ARCH_FLAGS)
@@ -329,7 +329,7 @@ if(WIN32)
             cv_appearance_preview.cpp cv_appearance_menu_preview.cpp cv_appearance_runtime.cpp cv_appearance_prepare.cpp)
         set_source_files_properties(cv_appearance_assets.cpp cv_appearance_prepare.cpp PROPERTIES INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/libs/codec")
     endif()
-    target_sources(${PROJECT_NAME} PRIVATE ${CV_MENU_SOURCE} boot_skip.cpp cv_test_tools.cpp cv_save_library.cpp cv_fps_experimental.cpp cv_native_libc.cpp cv_focus_pause.cpp cv_items.cpp cv_item_menu.cpp)
+    target_sources(${PROJECT_NAME} PRIVATE ${CV_MENU_SOURCE} boot_skip.cpp cv_test_tools.cpp cv_save_library.cpp cv_fps_experimental.cpp cv_play_time.cpp cv_native_libc.cpp cv_focus_pause.cpp cv_items.cpp cv_item_menu.cpp)
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/SAVE-LIBRARY-NOTICES.txt"
@@ -427,9 +427,16 @@ endif()
 # ---------------------------------------------------------------------------
 # Compiler-specific flags
 # ---------------------------------------------------------------------------
+if(MSVC)
+    # Keep CRT host-header settings off the large generated guest units.
+    get_target_property(CV_HOST_SOURCES ${PROJECT_NAME} SOURCES)
+    list(REMOVE_ITEM CV_HOST_SOURCES ${RECOMP_SOURCES} ${SPU_SOURCES})
+    set_property(SOURCE ${CV_HOST_SOURCES} APPEND PROPERTY COMPILE_DEFINITIONS _CRT_SECURE_NO_WARNINGS)
+endif()
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(${PROJECT_NAME} PRIVATE
-        -Wall -Wextra -Wno-unused-parameter
+        $<IF:$<BOOL:${MSVC}>,/clang:-Wall,-Wall> -Wextra -Wno-unused-parameter
         -fno-strict-aliasing
     )
 elseif(MSVC)
@@ -547,7 +554,7 @@ endif()
 if(WIN32)
     add_executable(code_veronica_menu_tests EXCLUDE_FROM_ALL tests/test_pc_menu.cpp ../../libs/input/pad_keyboard_filter.c)
     set_target_properties(code_veronica_menu_tests PROPERTIES OUTPUT_NAME "code_veronica_menu_tests_${CV_REGION_LC}")
-    target_include_directories(code_veronica_menu_tests PRIVATE "${RECOMP_DIR}")
+    target_include_directories(code_veronica_menu_tests PRIVATE "${RECOMP_DIR}" "${PS3RECOMP_DIR}/include")
     target_compile_options(code_veronica_menu_tests PRIVATE /UNDEBUG)
     target_link_libraries(code_veronica_menu_tests PRIVATE gdi32 user32 gdiplus)
     if(CV_REGION_LC STREQUAL "jp")
@@ -589,7 +596,7 @@ endif()
 
 if(WIN32)
     add_executable(code_veronica_fps_tests EXCLUDE_FROM_ALL tests/test_fps_experimental.cpp cv_fps_experimental.cpp)
-    target_include_directories(code_veronica_fps_tests PRIVATE "${RECOMP_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_include_directories(code_veronica_fps_tests PRIVATE "${RECOMP_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}" "${PS3RECOMP_DIR}/include")
     target_compile_options(code_veronica_fps_tests PRIVATE /UNDEBUG)
     if(CV_REGION_LC STREQUAL "jp")
         target_compile_definitions(code_veronica_fps_tests PRIVATE CV_REGION_JP=1)
@@ -798,6 +805,18 @@ if(WIN32)
     target_link_libraries(code_veronica_texture_dds_tests PRIVATE d3d12 dxgi dxguid d3dcompiler)
 endif()
 
+# Original PS3 language policy and the real system-parameter HLE, no game data.
+add_executable(code_veronica_original_language_tests EXCLUDE_FROM_ALL
+    tests/test_original_language.cpp "${PS3RECOMP_DIR}/libs/system/cellSysutil.c")
+target_include_directories(code_veronica_original_language_tests PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}" "${PS3RECOMP_DIR}/include")
+if(MSVC)
+    target_compile_options(code_veronica_original_language_tests PRIVATE /UNDEBUG)
+    target_compile_definitions(code_veronica_original_language_tests PRIVATE _CRT_SECURE_NO_WARNINGS)
+else()
+    target_compile_options(code_veronica_original_language_tests PRIVATE -UNDEBUG)
+endif()
+
 # Launcher cache path and recursive operations, exercised only on temporary fixtures.
 if(WIN32)
     add_executable(code_veronica_launcher_cache_tests EXCLUDE_FROM_ALL tests/test_launcher_cache.cpp)
@@ -902,4 +921,103 @@ add_executable(code_veronica_hud_health_tests EXCLUDE_FROM_ALL tests/test_hud_he
 target_include_directories(code_veronica_hud_health_tests PRIVATE "${PS3RECOMP_DIR}/libs/video")
 if(MSVC)
  target_compile_options(code_veronica_hud_health_tests PRIVATE /UNDEBUG)
+endif()
+
+
+add_executable(code_veronica_smooth_animation_tests EXCLUDE_FROM_ALL tests/test_smooth_animation.cpp)
+target_include_directories(code_veronica_smooth_animation_tests PRIVATE "${RECOMP_DIR}" "${PS3RECOMP_DIR}/include")
+if(MSVC)
+    target_compile_options(code_veronica_smooth_animation_tests PRIVATE /UNDEBUG)
+else()
+    target_compile_options(code_veronica_smooth_animation_tests PRIVATE -UNDEBUG)
+endif()
+
+add_executable(code_veronica_startup_notices_tests EXCLUDE_FROM_ALL tests/test_startup_notices.cpp)
+target_include_directories(code_veronica_startup_notices_tests PRIVATE "${RECOMP_DIR}" "${PS3RECOMP_DIR}/include")
+if(MSVC)
+    target_compile_options(code_veronica_startup_notices_tests PRIVATE /UNDEBUG)
+else()
+    target_compile_options(code_veronica_startup_notices_tests PRIVATE -UNDEBUG)
+endif()
+
+# Loaded rounds and matching carried reserve, independent of a game dump.
+add_executable(code_veronica_hud_ammo_tests EXCLUDE_FROM_ALL tests/test_hud_ammo.cpp)
+target_include_directories(code_veronica_hud_ammo_tests PRIVATE "${PS3RECOMP_DIR}/libs/video")
+if(MSVC)
+ target_compile_options(code_veronica_hud_ammo_tests PRIVATE /UNDEBUG)
+endif()
+
+# Original timer conditions with frame-rate-independent elapsed time.
+add_executable(code_veronica_play_time_tests EXCLUDE_FROM_ALL tests/test_play_time.cpp cv_play_time.cpp)
+target_include_directories(code_veronica_play_time_tests PRIVATE "${RECOMP_DIR}" "${PS3RECOMP_DIR}/include")
+if(MSVC)
+    target_compile_options(code_veronica_play_time_tests PRIVATE /UNDEBUG)
+else()
+    target_compile_options(code_veronica_play_time_tests PRIVATE -UNDEBUG)
+endif()
+
+# Local inventory sprite interpolation regression, separate from production UI.
+if(WIN32)
+    add_executable(code_veronica_inventory_ui_tests EXCLUDE_FROM_ALL tests/test_inventory_ui.cpp)
+    target_compile_features(code_veronica_inventory_ui_tests PRIVATE cxx_std_17)
+    target_compile_options(code_veronica_inventory_ui_tests PRIVATE /UNDEBUG)
+endif()
+
+# Local source-identity hook for inventory UI interpolation.
+target_sources(MyGameRecomp PRIVATE cv_inventory_ui_origin.cpp)
+
+if(WIN32)
+ add_executable(code_veronica_appearance_menu_tests EXCLUDE_FROM_ALL tests/test_appearance_menu.cpp ../../libs/input/pad_keyboard_filter.c)
+ target_include_directories(code_veronica_appearance_menu_tests PRIVATE "${RECOMP_DIR}" "${PS3RECOMP_DIR}/include" "${PS3RECOMP_DIR}/libs/video")
+ target_compile_options(code_veronica_appearance_menu_tests PRIVATE /UNDEBUG)
+ target_link_libraries(code_veronica_appearance_menu_tests PRIVATE gdi32 user32 gdiplus)
+endif()
+
+if(WIN32)
+ add_executable(code_veronica_preview_quality_tests EXCLUDE_FROM_ALL tests/test_preview_quality.cpp tests/reference_preview_quality.cpp cv_appearance_preview.cpp cv_appearance_assets.cpp cv_appearance_mesh.cpp)
+ target_include_directories(code_veronica_preview_quality_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${PS3RECOMP_DIR}/libs/video" "${PS3RECOMP_DIR}/libs/codec")
+ target_compile_options(code_veronica_preview_quality_tests PRIVATE /UNDEBUG)
+endif()
+
+# Run the same interpolation regression against each independently mapped region.
+foreach(test code_veronica_startup_notices_tests code_veronica_smooth_animation_tests code_veronica_inventory_ui_tests code_veronica_play_time_tests code_veronica_appearance_menu_tests)
+ if(CV_REGION_LC STREQUAL "us")
+  target_compile_definitions(${test} PRIVATE CV_REGION_US=1)
+ elseif(CV_REGION_LC STREQUAL "jp")
+  target_compile_definitions(${test} PRIVATE CV_REGION_JP=1)
+ endif()
+endforeach()
+
+add_executable(code_veronica_native_language_overlay_tests EXCLUDE_FROM_ALL tests/test_native_language_overlay.cpp)
+target_compile_options(code_veronica_native_language_overlay_tests PRIVATE /UNDEBUG)
+
+target_sources(MyGameRecomp PRIVATE cv_native_language.cpp)
+
+add_executable(code_veronica_native_language_tests EXCLUDE_FROM_ALL tests/test_native_language.cpp cv_native_language.cpp cv_appearance_assets.cpp cv_appearance_prepare.cpp)
+target_include_directories(code_veronica_native_language_tests PRIVATE "${PS3RECOMP_DIR}/libs/codec")
+target_compile_options(code_veronica_native_language_tests PRIVATE /UNDEBUG)
+target_link_libraries(code_veronica_native_language_tests PRIVATE cv_appearance_zlib)
+
+add_executable(code_veronica_fps_input_tests EXCLUDE_FROM_ALL tests/test_fps_input.cpp)
+target_compile_options(code_veronica_fps_input_tests PRIVATE /UNDEBUG)
+if(CV_REGION_LC STREQUAL "us")
+ target_compile_definitions(code_veronica_fps_input_tests PRIVATE CV_REGION_US=1)
+elseif(CV_REGION_LC STREQUAL "jp")
+ target_compile_definitions(code_veronica_fps_input_tests PRIVATE CV_REGION_JP=1)
+endif()
+
+if(WIN32)
+ add_executable(code_veronica_inventory_origin_hook_tests EXCLUDE_FROM_ALL tests/test_inventory_origin_hook.cpp)
+ target_include_directories(code_veronica_inventory_origin_hook_tests PRIVATE "${RECOMP_DIR}" "${PS3RECOMP_DIR}/include")
+ target_compile_options(code_veronica_inventory_origin_hook_tests PRIVATE /UNDEBUG)
+ if(CV_REGION_LC STREQUAL "us")
+  target_compile_definitions(code_veronica_inventory_origin_hook_tests PRIVATE CV_REGION_US=1)
+ elseif(CV_REGION_LC STREQUAL "jp")
+  target_compile_definitions(code_veronica_inventory_origin_hook_tests PRIVATE CV_REGION_JP=1)
+ endif()
+endif()
+
+if(WIN32)
+ add_executable(code_veronica_update_package_selection_tests EXCLUDE_FROM_ALL tests/test_update_package_selection.cpp cv_updater.cpp)
+ target_compile_options(code_veronica_update_package_selection_tests PRIVATE /UNDEBUG)
 endif()

@@ -166,4 +166,6 @@ bool prepare_appearance_asset(const std::filesystem::path& system,const std::fil
   std::fprintf(stderr,"[appearance] prepared %s from selected game in local cache\n",catalog[choice].archive);error.clear();return true;
  }catch(const std::exception& e){error=e.what();result.clear();return false;}
 }
+std::vector<uint8_t> encode_archive_resources(const std::vector<Resource>& records){return archive(records);}
+
 }

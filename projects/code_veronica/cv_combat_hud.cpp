@@ -1,3 +1,4 @@
+#include "cv_options.h"
 #define NOMINMAX
 #include <windows.h>
 #include <objidl.h>
@@ -125,6 +126,25 @@ std::unique_ptr<Bitmap> render(int hp,int maximum,const Weapon& w,float scale=1,
  }
  }
  if(layer==0||layer==3)health_label(g,hp,maximum,condition,language,health);
+ if(cv_options::enabled("CV_AMMO_READOUT")){
+ if(layer==0||layer==2){
+  const auto amount=ammo_label(w);
+  if(!amount.empty()){
+   // Bahnschrift is not installed in many Wine prefixes; GDI+ then draws
+   // no glyphs. Use a conventional font with an explicit system fallback.
+   FontFamily family(L"Arial");const auto* face=family.GetLastStatus()==Ok?&family:FontFamily::GenericSansSerif();
+   StringFormat format;format.SetAlignment(StringAlignmentCenter);format.SetLineAlignment(StringAlignmentCenter);format.SetFormatFlags(StringFormatFlagsNoWrap);
+   Font measure_font(face,20,FontStyleRegular,UnitPixel);RectF measured;
+   g.MeasureString(amount.c_str(),-1,&measure_font,PointF(0,0),&format,&measured);
+   const float fit=std::min(1.f,104.f/std::max(1.f,measured.Width));
+   Font font(face,20*fit,FontStyleRegular,UnitPixel);
+   SolidBrush shadow(Color(230,0,0,0)),ink(w.loaded==0?Color(255,224,110,96):Color(255,195,229,196));
+   if(w.infinite)ink.SetColor(Color(255,195,229,196));
+   g.DrawString(amount.c_str(),-1,&font,RectF(112,164,106,25),&format,&shadow);
+   g.DrawString(amount.c_str(),-1,&font,RectF(111,163,106,25),&format,&ink);
+  }
+ }
+ }else{
  if((layer==0||layer==2)&&w.id&&w.id!=8&&w.id!=0x37){
   const std::wstring loaded=w.infinite?L"∞":std::to_wstring(std::max(0,w.loaded))+(w.percent?L"%":L"");
   const std::wstring reserve=(w.id==1||w.id==11||w.id==0x21)?L"—":std::to_wstring(w.reserve)+(w.percent?L"%":L"");
@@ -134,6 +154,7 @@ std::unique_ptr<Bitmap> render(int hp,int maximum,const Weapon& w,float scale=1,
   g.DrawString(loaded.c_str(),-1,&large,RectF(138,40,80,34),&right,&shadow);
   g.DrawString(loaded.c_str(),-1,&large,RectF(137,39,80,34),&right,&front);
   g.DrawString(reserve.c_str(),-1,&reserve_font,RectF(168,72,49,24),&right,&rear);
+ }
  }
  return image;
 }
@@ -267,7 +288,7 @@ std::unique_ptr<Bitmap> render_quick(const cv_quick::View& menu,float scale,int 
    const float fit=std::min(88.f/art->GetWidth(),(icon_only?40.f:30.f)/art->GetHeight());
    const float iw=art->GetWidth()*fit,ih=art->GetHeight()*fit;
    RectF area(x+(112-iw)/2,y+33.f-ih/2,iw,ih);
-   if(available)g.DrawImage(art,area);else{ColorMatrix matrix={1,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,.18f,0,0,0,0,0,1};ImageAttributes attrs;attrs.SetColorMatrix(&matrix);g.DrawImage(art,area,0,0,float(art->GetWidth()),float(art->GetHeight()),UnitPixel,&attrs);Pen slash(Color(100,130,137,131),1);g.DrawLine(&slash,x+35,y+52,x+76,y+11);}
+   if(available)g.DrawImage(art,area);else{ColorMatrix matrix={{{1,0,0,0,0},{0,1,0,0,0},{0,0,1,0,0},{0,0,0,.18f,0},{0,0,0,0,1}}};ImageAttributes attrs;attrs.SetColorMatrix(&matrix);g.DrawImage(art,area,0,0,float(art->GetWidth()),float(art->GetHeight()),UnitPixel,&attrs);Pen slash(Color(100,130,137,131),1);g.DrawLine(&slash,x+35,y+52,x+76,y+11);}
   }
   if(available&&id!=8&&id!=55){state.equipped=slot+1;const auto gun=weapon(state);SolidBrush ammo(active?Color(255,192,229,192):Color(225,181,198,183));const auto amount=(gun.infinite?std::wstring(L"∞"):std::to_wstring(gun.loaded)) + L"/" + std::to_wstring(gun.reserve);g.DrawString(amount.c_str(),-1,&font,RectF(x+8,y+48,96,18),&right_align,&ammo);}
   SolidBrush direction(Color(155,183,192,185));const wchar_t* arrows[]={L"↑",L"→",L"↓",L"←"};g.DrawString(arrows[d],-1,&hint_font,PointF(x+5,y+3),&direction);

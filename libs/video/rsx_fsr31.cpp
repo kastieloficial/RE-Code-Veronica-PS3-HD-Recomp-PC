@@ -283,8 +283,11 @@ bool library(){
 }
 }
 extern "C" int rsx_fsr31_requested(){
- const char *on=getenv("CV_FSR_FRAME_GENERATION"),*fps=getenv("CV_FPS_TEST_60"),*ri=getenv("CV_RENDER_INTERPOLATION"),*raw=getenv("CV_FPS_BENCHMARK_RAW");
- return on&&!strcmp(on,"1")&&fps&&!strcmp(fps,"1")&&ri&&!strcmp(ri,"1")&&!(raw&&!strcmp(raw,"1"));
+ const char *on=getenv("CV_FSR_FRAME_GENERATION"),*fps=getenv("CV_FPS_TEST_60"),*ri=getenv("CV_RENDER_INTERPOLATION"),*raw=getenv("CV_FPS_BENCHMARK_RAW"),*native=getenv("CV_SMOOTH_ANIMATION");
+ // PR36 supplies smooth real frames itself; legacy pose blending stays off.
+ // Both inputs may feed FSR, while native 30 Hz and RAW remain excluded.
+ const bool smooth=(ri&&!strcmp(ri,"1"))||(native&&!strcmp(native,"1"));
+ return on&&!strcmp(on,"1")&&fps&&!strcmp(fps,"1")&&smooth&&!(raw&&!strcmp(raw,"1"));
 }
 extern "C" int rsx_fsr31_swapchain(void* dev,void* queue,void* factory,void* hwnd,void* desc,void** output){
  if(!rsx_fsr31_requested())return 0;

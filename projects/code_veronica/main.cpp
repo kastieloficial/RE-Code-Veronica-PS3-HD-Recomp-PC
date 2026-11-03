@@ -72,6 +72,7 @@ extern "C" void cv_pc_settings_quick_read(void);
 #include <timeapi.h>
 #include <io.h>        /* _dup2: the log redirect of a double-clicked start */
 #include "cv_support_log.h"
+#include "cv_options.h"
 #include "cv_trophies.h"
 #include "cv_trophy_popup.h"
 #endif
@@ -274,12 +275,12 @@ static DWORD WINAPI frame_clock(LPVOID)
     double vblank_us = 1000000.0 / 60.0;
     { const char* e = getenv("VBLANK_HZ"); if (e && atof(e) > 1.0) vblank_us = 1000000.0 / atof(e); }
     double next_tick = (double)now_us();
-    const bool wake_fifo=rsx_fifo_idle_enabled(getenv("CV_FPS_TEST_60"),getenv("CV_RENDER_INTERPOLATION"),getenv("CV_FIFO_WAKE"))!=0;
+    const bool wake_fifo=rsx_fifo_idle_enabled(getenv("CV_FPS_TEST_60"),cv_options::enabled("CV_SMOOTH_ANIMATION")?"1":getenv("CV_RENDER_INTERPOLATION"),getenv("CV_FIFO_WAKE"))!=0;
     const char* idle_probe=getenv("CV_PRODUCER_PROFILE");
     const bool profile_idle=idle_probe&&!strcmp(idle_probe,"1");
     const char* fifo_probe=getenv("CV_FIFO_PROFILE");
     const bool profile_fifo=profile_idle&&fifo_probe&&!strcmp(fifo_probe,"1")&&
-        rsx_fifo_idle_enabled(getenv("CV_FPS_TEST_60"),getenv("CV_RENDER_INTERPOLATION"),nullptr);
+        rsx_fifo_idle_enabled(getenv("CV_FPS_TEST_60"),cv_options::enabled("CV_SMOOTH_ANIMATION")?"1":getenv("CV_RENDER_INTERPOLATION"),nullptr);
     unsigned fifo_states[RSX_FIFO_PROBE_STATES]={},fifo_put_changed=0,fifo_head_changed=0;
     unsigned fifo_empty_to_pending=0,fifo_pending_unchanged=0,fifo_get_changed=0;
     double fifo_wait_ms[RSX_FIFO_PROBE_STATES]={},fifo_probe_us=0;
@@ -609,7 +610,9 @@ int main(int argc, char** argv)
     const char* trophy_lang=getenv("CV_TROPHY_LANGUAGE");
     const char* trophy_on=getenv("CV_TROPHIES");
     const char* trophy_notice=getenv("CV_TROPHY_NOTIFICATIONS");
-    cv_trophies::start(trophy_root&&*trophy_root?std::filesystem::u8path(trophy_root):std::filesystem::u8path("."),
+    const char* trophy_path=trophy_root&&*trophy_root?trophy_root:".";
+    const auto* trophy_utf8=reinterpret_cast<const char8_t*>(trophy_path);
+    cv_trophies::start(std::filesystem::path(std::u8string_view(trophy_utf8)),
         trophy_lang?atoi(trophy_lang):1,!(trophy_on&&trophy_on[0]=='0'),!(trophy_notice&&trophy_notice[0]=='0'));
 
     const char* trophy_corner=getenv("CV_TROPHY_CORNER");
@@ -702,7 +705,7 @@ int main(int argc, char** argv)
      * until the title registers its vblank and flip handlers during init. */
     { const char* notify=getenv("CV_FIFO_NOTIFY");
       cellGcm_fifo_notify_configure(notify&&!strcmp(notify,"1")&&
-          rsx_fifo_idle_enabled(getenv("CV_FPS_TEST_60"),getenv("CV_RENDER_INTERPOLATION"),getenv("CV_FIFO_WAKE"))); }
+          rsx_fifo_idle_enabled(getenv("CV_FPS_TEST_60"),cv_options::enabled("CV_SMOOTH_ANIMATION")?"1":getenv("CV_RENDER_INTERPOLATION"),getenv("CV_FIFO_WAKE"))); }
     g_ps3_guest_caller = harness_guest_caller;
     {
         HANDLE fc = CreateThread(NULL, 4u * 1024 * 1024, frame_clock, NULL, 0, NULL);

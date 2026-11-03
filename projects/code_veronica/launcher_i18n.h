@@ -296,7 +296,7 @@ static const wchar_t* const k_str_pt[] = {
     L"Desligada",
     L"FSR 3.1",
     L"Atalhos", L"ATALHOS DO JOGO", L"Atalhos que funcionam durante a partida, no teclado e no controle.", L"Teclado", L"Controle", L"O que faz", L"Abre o menu de opções do jogo (tela, áudio, SRT, sair).", L"Abre o menu de itens para pôr armas e itens no inventário. Ative em %s.", L"Abre a janela de mapas de teste para ir a uma sala. Ative em %s.", L"Mostra ou esconde o painel SRT (vida, inventário e inimigos).", L"Liga ou desliga as texturas do mod na hora.", L"Tira uma screenshot; ela fica na pasta screenshots, ao lado do jogo.", L"No controle: segure os quatro botões de ombro primeiro e depois aperte o botão indicado.",
-    L"30 FPS é o original: a mesma experiência do PlayStation 3, onde o jogo roda a 30 FPS em 720p.", L"60 FPS deixa o jogo mais fluido. Se o PC não mantiver os 60 FPS, o jogo fica mais lento, como no Resident Evil 4 Ultimate HD Edition (2014).", L"Com a geração de quadros (FSR 3.1), se o PC mantiver os 60 FPS, o jogo pode chegar a até 120 FPS.",
+    L"30 FPS é o original: a mesma experiência do PlayStation 3, onde o jogo roda a 30 FPS em 720p.", L"60 FPS ativa automaticamente as anima\u00e7\u00f5es e transi\u00e7\u00f5es suaves. Com gera\u00e7\u00e3o de quadros FSR 3.1, a sa\u00edda pode chegar a 120 FPS.", L"Com a geração de quadros (FSR 3.1), se o PC mantiver os 60 FPS, o jogo pode chegar a até 120 FPS.",
     L"VSync", L"Desligado", L"Ligado", L"Com VSync, a imagem não rasga; se o PC não mantiver os 60 FPS, alguns quadros esperam a próxima atualização da tela. Não funciona junto com a geração de quadros.",
 };
 static_assert(sizeof k_str_pt / sizeof k_str_pt[0] == S_COUNT, "k_str_pt: one text per StrId");
@@ -512,7 +512,7 @@ static const wchar_t* const k_str_en[] = {
     L"Off",
     L"FSR 3.1",
     L"Shortcuts", L"GAME SHORTCUTS", L"Shortcuts that work during play, on the keyboard and on a controller.", L"Keyboard", L"Controller", L"What it does", L"Opens the game options menu (display, audio, SRT, quit).", L"Opens the item menu to put weapons and items in the inventory. Enable it in %s.", L"Opens the test map window to go to a room. Enable it in %s.", L"Shows or hides the SRT panel (health, inventory and enemies).", L"Turns mod textures on or off at once.", L"Takes a screenshot; it goes to the screenshots folder next to the game.", L"On a controller: hold the four shoulder buttons first, then press the button shown.",
-    L"30 FPS is the original: the same experience as on PlayStation 3, where the game runs at 30 FPS in 720p.", L"60 FPS makes the game smoother. If your PC can't hold 60 FPS, the game runs slower, like Resident Evil 4 Ultimate HD Edition (2014).", L"With frame generation (FSR 3.1), if your PC holds 60 FPS, the game can reach up to 120 FPS.",
+    L"30 FPS is the original: the same experience as on PlayStation 3, where the game runs at 30 FPS in 720p.", L"60 FPS automatically enables smooth animations and transitions. FSR 3.1 Frame Generation can raise output up to 120 FPS.", L"With frame generation (FSR 3.1), if your PC holds 60 FPS, the game can reach up to 120 FPS.",
     L"VSync", L"Off", L"On", L"With VSync the image never tears; if the PC can't hold 60 FPS, some frames wait for the next screen refresh. It can't be used with frame generation.",
 };
 static_assert(sizeof k_str_en / sizeof k_str_en[0] == S_COUNT, "k_str_en: one text per StrId");
@@ -728,7 +728,7 @@ static const wchar_t* const k_str_es[] = {
     L"Desactivada",
     L"FSR 3.1",
     L"Atajos", L"ATAJOS DEL JUEGO", L"Atajos que funcionan durante la partida, en el teclado y en el mando.", L"Teclado", L"Mando", L"Qué hace", L"Abre el menú de opciones del juego (pantalla, audio, SRT, salir).", L"Abre el menú de objetos para poner armas y objetos en el inventario. Actívalo en %s.", L"Abre la ventana de mapas de prueba para ir a una sala. Actívala en %s.", L"Muestra u oculta el panel SRT (vida, inventario y enemigos).", L"Activa o desactiva las texturas del mod al instante.", L"Hace una captura; se guarda en la carpeta screenshots, junto al juego.", L"En el mando: mantén primero los cuatro botones de hombro y luego pulsa el botón indicado.",
-    L"30 FPS es el original: la misma experiencia que en PlayStation 3, donde el juego va a 30 FPS en 720p.", L"60 FPS hace el juego más fluido. Si el PC no mantiene los 60 FPS, el juego va más lento, como Resident Evil 4 Ultimate HD Edition (2014).", L"Con la generación de fotogramas (FSR 3.1), si el PC mantiene los 60 FPS, el juego puede llegar a hasta 120 FPS.",
+    L"30 FPS es el original: la misma experiencia que en PlayStation 3, donde el juego va a 30 FPS en 720p.", L"60 FPS activa autom\u00e1ticamente las animaciones y transiciones suaves. La generaci\u00f3n de fotogramas FSR 3.1 permite hasta 120 FPS.", L"Con la generación de fotogramas (FSR 3.1), si el PC mantiene los 60 FPS, el juego puede llegar a hasta 120 FPS.",
     L"VSync", L"Desactivado", L"Activado", L"Con VSync la imagen no se corta; si el PC no mantiene los 60 FPS, algunos fotogramas esperan al siguiente refresco de la pantalla. No funciona junto con la generación de fotogramas.",
 };
 static_assert(sizeof k_str_es / sizeof k_str_es[0] == S_COUNT, "k_str_es: one text per StrId");
@@ -944,7 +944,7 @@ static const wchar_t* const k_str_ja[] = {
     L"オフ",
     L"FSR 3.1",
     L"ショートカット", L"ゲーム中のショートカット", L"プレイ中にキーボードとコントローラーで使えるショートカットです。", L"キーボード", L"コントローラー", L"機能", L"ゲームのオプションメニューを開きます（画面、音声、SRT、終了）。", L"アイテムメニューを開き、武器やアイテムをインベントリに入れます。「%s」で有効にしてください。", L"テストマップのウィンドウを開き、部屋へ移動します。「%s」で有効にしてください。", L"SRTパネル（体力、インベントリ、敵）を表示・非表示にします。", L"MODテクスチャをすぐにオン・オフします。", L"スクリーンショットを撮ります。ゲームの横のscreenshotsフォルダーに保存されます。", L"コントローラー：先に4つのショルダーボタンを押したまま、表示のボタンを押します。",
-    L"30 FPSはオリジナルです。PlayStation 3と同じ体験で、ゲームは720p・30 FPSで動作します。", L"60 FPSはより滑らかになります。PCが60 FPSを保てないと、Resident Evil 4 Ultimate HD Edition（2014）のようにゲームが遅くなります。", L"フレーム生成（FSR 3.1）を使うと、PCが60 FPSを保てれば、ゲームは最大120 FPSに達します。",
+    L"30 FPSはオリジナルです。PlayStation 3と同じ体験で、ゲームは720p・30 FPSで動作します。", L"60 FPS\u3067\u306f\u30a2\u30cb\u30e1\u30fc\u30b7\u30e7\u30f3\u3068\u753b\u9762\u9077\u79fb\u306e\u6ed1\u3089\u304b\u3055\u304c\u81ea\u52d5\u7684\u306b\u5411\u4e0a\u3057\u307e\u3059\u3002FSR 3.1\u30d5\u30ec\u30fc\u30e0\u751f\u6210\u3067\u6700\u5927120 FPS\u306e\u51fa\u529b\u304c\u53ef\u80fd\u3067\u3059\u3002", L"フレーム生成（FSR 3.1）を使うと、PCが60 FPSを保てれば、ゲームは最大120 FPSに達します。",
     L"垂直同期", L"オフ", L"オン", L"垂直同期をオンにすると画面の裂け（ティアリング）がなくなります。PCが60 FPSを維持できない場合、一部のフレームは次の画面更新を待ちます。フレーム生成とは併用できません。",
 };
 static_assert(sizeof k_str_ja / sizeof k_str_ja[0] == S_COUNT, "k_str_ja: one text per StrId");
@@ -1214,7 +1214,7 @@ static const wchar_t* const k_str_fr[] = {
     L"Désactivée",
     L"FSR 3.1",
     L"Raccourcis", L"RACCOURCIS DU JEU", L"Raccourcis utilisables pendant la partie, au clavier et à la manette.", L"Clavier", L"Manette", L"Action", L"Ouvre le menu des options du jeu (affichage, audio, SRT, quitter).", L"Ouvre le menu des objets pour mettre armes et objets dans l'inventaire. À activer dans %s.", L"Ouvre la fenêtre des cartes de test pour aller dans une salle. À activer dans %s.", L"Affiche ou masque le panneau SRT (santé, inventaire et ennemis).", L"Active ou désactive les textures du mod immédiatement.", L"Prend une capture d'écran ; elle va dans le dossier screenshots, à côté du jeu.", L"À la manette : maintenez d'abord les quatre gâchettes et boutons d'épaule, puis appuyez sur le bouton indiqué.",
-    L"30 FPS est l'original : la même expérience que sur PlayStation 3, où le jeu tourne à 30 FPS en 720p.", L"60 FPS rend le jeu plus fluide. Si le PC ne tient pas 60 FPS, le jeu ralentit, comme Resident Evil 4 Ultimate HD Edition (2014).", L"Avec la génération d'images (FSR 3.1), si le PC tient 60 FPS, le jeu peut atteindre jusqu'à 120 FPS.",
+    L"30 FPS est l'original : la même expérience que sur PlayStation 3, où le jeu tourne à 30 FPS en 720p.", L"60 FPS active automatiquement les animations et transitions fluides. La g\u00e9n\u00e9ration d\u2019images FSR 3.1 permet une sortie jusqu\u2019\u00e0 120 FPS.", L"Avec la génération d'images (FSR 3.1), si le PC tient 60 FPS, le jeu peut atteindre jusqu'à 120 FPS.",
     L"VSync", L"Désactivée", L"Activée", L"Avec la VSync, l'image ne se déchire plus ; si le PC ne tient pas 60 FPS, certaines images attendent le rafraîchissement suivant de l'écran. Incompatible avec la génération d'images.",
 };
 static_assert(sizeof k_str_fr / sizeof k_str_fr[0] == S_COUNT, "k_str_fr: one text per StrId");
@@ -1484,7 +1484,7 @@ static const wchar_t* const k_str_de[] = {
     L"Aus",
     L"FSR 3.1",
     L"Tastenkürzel", L"TASTENKÜRZEL IM SPIEL", L"Kürzel, die während des Spiels auf Tastatur und Controller funktionieren.", L"Tastatur", L"Controller", L"Funktion", L"Öffnet das Optionsmenü des Spiels (Anzeige, Audio, SRT, Beenden).", L"Öffnet das Gegenstandsmenü, um Waffen und Gegenstände ins Inventar zu legen. Unter %s aktivieren.", L"Öffnet das Testkarten-Fenster, um in einen Raum zu gehen. Unter %s aktivieren.", L"Zeigt oder verbirgt das SRT-Panel (Gesundheit, Inventar und Gegner).", L"Schaltet Mod-Texturen sofort ein oder aus.", L"Macht einen Screenshot; er landet im Ordner screenshots neben dem Spiel.", L"Am Controller: zuerst die vier Schultertasten halten, dann die angezeigte Taste drücken.",
-    L"30 FPS ist das Original: dasselbe Erlebnis wie auf der PlayStation 3, wo das Spiel mit 30 FPS in 720p läuft.", L"60 FPS macht das Spiel flüssiger. Hält der PC keine 60 FPS, läuft das Spiel langsamer, wie Resident Evil 4 Ultimate HD Edition (2014).", L"Mit Frame-Generierung (FSR 3.1) kann das Spiel bis zu 120 FPS erreichen, wenn der PC 60 FPS hält.",
+    L"30 FPS ist das Original: dasselbe Erlebnis wie auf der PlayStation 3, wo das Spiel mit 30 FPS in 720p läuft.", L"60 FPS aktiviert automatisch fl\u00fcssige Animationen und \u00dcberg\u00e4nge. FSR 3.1 Frame-Generierung erm\u00f6glicht eine Ausgabe mit bis zu 120 FPS.", L"Mit Frame-Generierung (FSR 3.1) kann das Spiel bis zu 120 FPS erreichen, wenn der PC 60 FPS hält.",
     L"VSync", L"Aus", L"An", L"Mit VSync reißt das Bild nicht mehr; hält der PC keine 60 FPS, warten manche Bilder auf die nächste Bildschirmaktualisierung. Nicht zusammen mit der Bildgenerierung nutzbar.",
 };
 static_assert(sizeof k_str_de / sizeof k_str_de[0] == S_COUNT, "k_str_de: one text per StrId");
@@ -1754,7 +1754,7 @@ static const wchar_t* const k_str_it[] = {
     L"Disattivata",
     L"FSR 3.1",
     L"Scorciatoie", L"SCORCIATOIE DI GIOCO", L"Scorciatoie che funzionano durante il gioco, da tastiera e controller.", L"Tastiera", L"Controller", L"Cosa fa", L"Apre il menu opzioni del gioco (schermo, audio, SRT, esci).", L"Apre il menu oggetti per mettere armi e oggetti nell'inventario. Attivalo in %s.", L"Apre la finestra delle mappe di prova per andare in una stanza. Attivala in %s.", L"Mostra o nasconde il pannello SRT (salute, inventario e nemici).", L"Attiva o disattiva subito le texture della mod.", L"Scatta uno screenshot; finisce nella cartella screenshots, accanto al gioco.", L"Con il controller: tieni prima premuti i quattro tasti dorsali, poi premi il tasto indicato.",
-    L"30 FPS è l'originale: la stessa esperienza di PlayStation 3, dove il gioco gira a 30 FPS in 720p.", L"60 FPS rende il gioco più fluido. Se il PC non mantiene i 60 FPS, il gioco rallenta, come Resident Evil 4 Ultimate HD Edition (2014).", L"Con la generazione dei fotogrammi (FSR 3.1), se il PC mantiene i 60 FPS, il gioco può arrivare fino a 120 FPS.",
+    L"30 FPS è l'originale: la stessa esperienza di PlayStation 3, dove il gioco gira a 30 FPS in 720p.", L"60 FPS attiva automaticamente animazioni e transizioni fluide. La generazione dei fotogrammi FSR 3.1 permette fino a 120 FPS in uscita.", L"Con la generazione dei fotogrammi (FSR 3.1), se il PC mantiene i 60 FPS, il gioco può arrivare fino a 120 FPS.",
     L"VSync", L"Disattivato", L"Attivato", L"Con il VSync l'immagine non si strappa; se il PC non mantiene i 60 FPS, alcuni fotogrammi attendono il successivo aggiornamento dello schermo. Non funziona insieme alla generazione di fotogrammi.",
 };
 static_assert(sizeof k_str_it / sizeof k_str_it[0] == S_COUNT, "k_str_it: one text per StrId");
@@ -2024,7 +2024,7 @@ static const wchar_t* const k_str_pl[] = {
     L"Wyłączone",
     L"FSR 3.1",
     L"Skróty", L"SKRÓTY W GRZE", L"Skróty działające podczas gry, na klawiaturze i kontrolerze.", L"Klawiatura", L"Kontroler", L"Działanie", L"Otwiera menu opcji gry (obraz, dźwięk, SRT, wyjście).", L"Otwiera menu przedmiotów, by dodać broń i przedmioty do ekwipunku. Włącz w: %s.", L"Otwiera okno map testowych, by przejść do pokoju. Włącz w: %s.", L"Pokazuje lub ukrywa panel SRT (zdrowie, ekwipunek i wrogowie).", L"Od razu włącza lub wyłącza tekstury moda.", L"Robi zrzut ekranu; trafia do folderu screenshots obok gry.", L"Na kontrolerze: najpierw przytrzymaj cztery przyciski ramion, potem naciśnij wskazany przycisk.",
-    L"30 FPS to oryginał: to samo doświadczenie co na PlayStation 3, gdzie gra działa w 30 FPS i 720p.", L"60 FPS daje płynniejszą grę. Jeśli PC nie utrzyma 60 FPS, gra zwalnia, jak w Resident Evil 4 Ultimate HD Edition (2014).", L"Z generowaniem klatek (FSR 3.1), jeśli PC utrzyma 60 FPS, gra może osiągnąć do 120 FPS.",
+    L"30 FPS to oryginał: to samo doświadczenie co na PlayStation 3, gdzie gra działa w 30 FPS i 720p.", L"60 FPS automatycznie w\u0142\u0105cza p\u0142ynne animacje i przej\u015bcia. Generowanie klatek FSR 3.1 umo\u017cliwia wy\u015bwietlanie do 120 FPS.", L"Z generowaniem klatek (FSR 3.1), jeśli PC utrzyma 60 FPS, gra może osiągnąć do 120 FPS.",
     L"VSync", L"Wyłączona", L"Włączona", L"Z VSync obraz się nie rwie; jeśli komputer nie utrzyma 60 FPS, niektóre klatki czekają na kolejne odświeżenie ekranu. Nie działa razem z generowaniem klatek.",
 };
 static_assert(sizeof k_str_pl / sizeof k_str_pl[0] == S_COUNT, "k_str_pl: one text per StrId");
@@ -2294,7 +2294,7 @@ static const wchar_t* const k_str_tr[] = {
     L"Kapalı",
     L"FSR 3.1",
     L"Kısayollar", L"OYUN KISAYOLLARI", L"Oyun sırasında klavyede ve kontrolcüde çalışan kısayollar.", L"Klavye", L"Kontrolcü", L"Ne yapar", L"Oyunun seçenekler menüsünü açar (ekran, ses, SRT, çıkış).", L"Silah ve eşyaları envantere koymak için eşya menüsünü açar. %s bölümünden etkinleştirin.", L"Bir odaya gitmek için test haritaları penceresini açar. %s bölümünden etkinleştirin.", L"SRT panelini (sağlık, envanter ve düşmanlar) gösterir veya gizler.", L"Mod dokularını anında açar veya kapatır.", L"Ekran görüntüsü alır; oyunun yanındaki screenshots klasörüne kaydedilir.", L"Kontrolcüde: önce dört omuz tuşunu basılı tutun, sonra gösterilen tuşa basın.",
-    L"30 FPS orijinaldir: oyunun 720p'de 30 FPS çalıştığı PlayStation 3 ile aynı deneyim.", L"60 FPS oyunu daha akıcı yapar. PC 60 FPS'yi koruyamazsa oyun, Resident Evil 4 Ultimate HD Edition'daki (2014) gibi yavaşlar.", L"Kare oluşturma (FSR 3.1) ile PC 60 FPS'yi korursa oyun 120 FPS'ye kadar çıkabilir.",
+    L"30 FPS orijinaldir: oyunun 720p'de 30 FPS çalıştığı PlayStation 3 ile aynı deneyim.", L"60 FPS, ak\u0131c\u0131 animasyonlar\u0131 ve ge\u00e7i\u015fleri otomatik a\u00e7ar. FSR 3.1 kare olu\u015fturma ile \u00e7\u0131k\u0131\u015f 120 FPS\u2019ye ula\u015fabilir.", L"Kare oluşturma (FSR 3.1) ile PC 60 FPS'yi korursa oyun 120 FPS'ye kadar çıkabilir.",
     L"VSync", L"Kapalı", L"Açık", L"VSync ile görüntü yırtılmaz; bilgisayar 60 FPS'yi koruyamazsa bazı kareler ekranın bir sonraki yenilemesini bekler. Kare oluşturma ile birlikte kullanılamaz.",
 };
 static_assert(sizeof k_str_tr / sizeof k_str_tr[0] == S_COUNT, "k_str_tr: one text per StrId");
@@ -2564,7 +2564,7 @@ static const wchar_t* const k_str_ar[] = {
     L"إيقاف",
     L"FSR 3.1",
     L"الاختصارات", L"اختصارات اللعبة", L"اختصارات تعمل أثناء اللعب على لوحة المفاتيح ووحدة التحكم.", L"لوحة المفاتيح", L"وحدة التحكم", L"الوظيفة", L"يفتح قائمة خيارات اللعبة (الشاشة، الصوت، SRT، الخروج).", L"يفتح قائمة العناصر لوضع الأسلحة والعناصر في المخزون. فعّلها من %s.", L"يفتح نافذة الخرائط التجريبية للانتقال إلى غرفة. فعّلها من %s.", L"يُظهر لوحة SRT (الصحة والمخزون والأعداء) أو يخفيها.", L"يشغّل خامات التعديل أو يوقفها فورًا.", L"يلتقط صورة للشاشة وتُحفظ في مجلد screenshots بجوار اللعبة.", L"على وحدة التحكم: اضغط أولًا مع الاستمرار على أزرار الكتف الأربعة ثم اضغط الزر المذكور.",
-    L"30 FPS هو الأصلي: نفس تجربة PlayStation 3 حيث تعمل اللعبة بدقة 720p و30 إطارًا في الثانية.", L"60 FPS يجعل اللعبة أكثر سلاسة. إذا لم يحافظ الحاسوب على 60 FPS تصبح اللعبة أبطأ، كما في Resident Evil 4 Ultimate HD Edition (2014).", L"مع توليد الإطارات (FSR 3.1)، إذا حافظ الحاسوب على 60 FPS يمكن أن تصل اللعبة إلى 120 FPS.",
+    L"30 FPS هو الأصلي: نفس تجربة PlayStation 3 حيث تعمل اللعبة بدقة 720p و30 إطارًا في الثانية.", L"\u064a\u064f\u0641\u0639\u0651\u0644 \u0648\u0636\u0639 60 FPS \u0627\u0644\u0631\u0633\u0648\u0645 \u0627\u0644\u0645\u062a\u062d\u0631\u0643\u0629 \u0648\u0627\u0644\u0627\u0646\u062a\u0642\u0627\u0644\u0627\u062a \u0627\u0644\u0633\u0644\u0633\u0629 \u062a\u0644\u0642\u0627\u0626\u064a\u064b\u0627. \u0642\u062f \u064a\u0635\u0644 \u0627\u0644\u0639\u0631\u0636 \u0625\u0644\u0649 120 FPS \u0628\u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u062a\u0648\u0644\u064a\u062f \u0627\u0644\u0625\u0637\u0627\u0631\u0627\u062a FSR 3.1.", L"مع توليد الإطارات (FSR 3.1)، إذا حافظ الحاسوب على 60 FPS يمكن أن تصل اللعبة إلى 120 FPS.",
     L"المزامنة العمودية", L"متوقفة", L"مفعّلة", L"مع المزامنة العمودية لا تتمزق الصورة؛ وإذا لم يحافظ الحاسوب على 60 إطارًا في الثانية فإن بعض الإطارات تنتظر التحديث التالي للشاشة. لا تعمل مع توليد الإطارات.",
 };
 static_assert(sizeof k_str_ar / sizeof k_str_ar[0] == S_COUNT, "k_str_ar: one text per StrId");
@@ -2834,7 +2834,7 @@ static const wchar_t* const k_str_zh[] = {
     L"关闭",
     L"FSR 3.1",
     L"快捷键", L"游戏快捷键", L"游戏中可在键盘和手柄上使用的快捷键。", L"键盘", L"手柄", L"功能", L"打开游戏选项菜单（画面、音频、SRT、退出）。", L"打开物品菜单，把武器和物品放入物品栏。需在“%s”中启用。", L"打开测试地图窗口以前往某个房间。需在“%s”中启用。", L"显示或隐藏 SRT 面板（体力、物品栏和敌人）。", L"立即开启或关闭模组纹理。", L"截图，保存在游戏旁边的 screenshots 文件夹中。", L"手柄：先按住四个肩键，再按所示按键。",
-    L"30 FPS 是原版：与 PlayStation 3 相同的体验，游戏以 720p、30 FPS 运行。", L"60 FPS 让游戏更流畅。如果电脑无法稳定在 60 FPS，游戏会变慢，就像《Resident Evil 4 Ultimate HD Edition》（2014）。", L"开启帧生成（FSR 3.1）后，如果电脑能稳定在 60 FPS，游戏最高可达 120 FPS。",
+    L"30 FPS 是原版：与 PlayStation 3 相同的体验，游戏以 720p、30 FPS 运行。", L"\u9009\u62e960 FPS\u4f1a\u81ea\u52a8\u542f\u7528\u6d41\u7545\u52a8\u753b\u548c\u8fc7\u6e21\u3002\u4f7f\u7528FSR 3.1\u5e27\u751f\u6210\uff0c\u8f93\u51fa\u6700\u9ad8\u53ef\u8fbe120 FPS\u3002", L"开启帧生成（FSR 3.1）后，如果电脑能稳定在 60 FPS，游戏最高可达 120 FPS。",
     L"垂直同步", L"关闭", L"开启", L"开启垂直同步后画面不会撕裂；如果电脑无法保持 60 FPS，部分帧会等待屏幕的下一次刷新。不能与帧生成同时使用。",
 };
 static_assert(sizeof k_str_zh / sizeof k_str_zh[0] == S_COUNT, "k_str_zh: one text per StrId");
@@ -3104,7 +3104,7 @@ static const wchar_t* const k_str_ko[] = {
     L"끄기",
     L"FSR 3.1",
     L"단축키", L"게임 단축키", L"플레이 중 키보드와 컨트롤러에서 쓸 수 있는 단축키입니다.", L"키보드", L"컨트롤러", L"기능", L"게임 옵션 메뉴를 엽니다(화면, 오디오, SRT, 종료).", L"아이템 메뉴를 열어 무기와 아이템을 인벤토리에 넣습니다. %s에서 켜세요.", L"테스트 맵 창을 열어 방으로 이동합니다. %s에서 켜세요.", L"SRT 패널(체력, 인벤토리, 적)을 표시하거나 숨깁니다.", L"모드 텍스처를 즉시 켜거나 끕니다.", L"스크린샷을 찍습니다. 게임 옆 screenshots 폴더에 저장됩니다.", L"컨트롤러: 먼저 숄더 버튼 네 개를 누른 채로 표시된 버튼을 누르세요.",
-    L"30 FPS는 원본입니다. 게임이 720p, 30 FPS로 실행되는 PlayStation 3과 같은 경험입니다.", L"60 FPS는 더 부드럽습니다. PC가 60 FPS를 유지하지 못하면 Resident Evil 4 Ultimate HD Edition(2014)처럼 게임이 느려집니다.", L"프레임 생성(FSR 3.1)을 켜면 PC가 60 FPS를 유지할 경우 게임이 최대 120 FPS까지 나올 수 있습니다.",
+    L"30 FPS는 원본입니다. 게임이 720p, 30 FPS로 실행되는 PlayStation 3과 같은 경험입니다.", L"60 FPS\ub97c \uc120\ud0dd\ud558\uba74 \ubd80\ub4dc\ub7ec\uc6b4 \uc560\ub2c8\uba54\uc774\uc158\uacfc \uc804\ud658\uc774 \uc790\ub3d9\uc73c\ub85c \uc801\uc6a9\ub429\ub2c8\ub2e4. FSR 3.1 \ud504\ub808\uc784 \uc0dd\uc131\uc73c\ub85c \ucd5c\ub300 120 FPS \ucd9c\ub825\uc774 \uac00\ub2a5\ud569\ub2c8\ub2e4.", L"프레임 생성(FSR 3.1)을 켜면 PC가 60 FPS를 유지할 경우 게임이 최대 120 FPS까지 나올 수 있습니다.",
     L"수직 동기화", L"끔", L"켬", L"수직 동기화를 켜면 화면이 찢어지지 않습니다. PC가 60 FPS를 유지하지 못하면 일부 프레임은 다음 화면 갱신을 기다립니다. 프레임 생성과 함께 사용할 수 없습니다.",
 };
 static_assert(sizeof k_str_ko / sizeof k_str_ko[0] == S_COUNT, "k_str_ko: one text per StrId");
@@ -3374,7 +3374,7 @@ static const wchar_t* const k_str_ru[] = {
     L"Выкл.",
     L"FSR 3.1",
     L"Горячие клавиши", L"ГОРЯЧИЕ КЛАВИШИ ИГРЫ", L"Сочетания, которые работают во время игры на клавиатуре и геймпаде.", L"Клавиатура", L"Геймпад", L"Действие", L"Открывает меню настроек игры (экран, звук, SRT, выход).", L"Открывает меню предметов, чтобы положить оружие и предметы в инвентарь. Включите в разделе «%s».", L"Открывает окно тестовых карт, чтобы перейти в комнату. Включите в разделе «%s».", L"Показывает или скрывает панель SRT (здоровье, инвентарь и враги).", L"Сразу включает или выключает текстуры мода.", L"Делает скриншот; он сохраняется в папку screenshots рядом с игрой.", L"На геймпаде: сначала зажмите четыре плечевые кнопки, затем нажмите указанную кнопку.",
-    L"30 FPS — оригинал: тот же опыт, что на PlayStation 3, где игра идёт в 720p при 30 FPS.", L"60 FPS делает игру плавнее. Если ПК не держит 60 FPS, игра замедляется, как в Resident Evil 4 Ultimate HD Edition (2014).", L"С генерацией кадров (FSR 3.1), если ПК держит 60 FPS, игра может достигать 120 FPS.",
+    L"30 FPS — оригинал: тот же опыт, что на PlayStation 3, где игра идёт в 720p при 30 FPS.", L"60 FPS \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438 \u0432\u043a\u043b\u044e\u0447\u0430\u0435\u0442 \u043f\u043b\u0430\u0432\u043d\u044b\u0435 \u0430\u043d\u0438\u043c\u0430\u0446\u0438\u0438 \u0438 \u043f\u0435\u0440\u0435\u0445\u043e\u0434\u044b. \u0413\u0435\u043d\u0435\u0440\u0430\u0446\u0438\u044f \u043a\u0430\u0434\u0440\u043e\u0432 FSR 3.1 \u043f\u043e\u0437\u0432\u043e\u043b\u044f\u0435\u0442 \u0432\u044b\u0432\u043e\u0434\u0438\u0442\u044c \u0434\u043e 120 FPS.", L"С генерацией кадров (FSR 3.1), если ПК держит 60 FPS, игра может достигать 120 FPS.",
     L"VSync", L"Выкл.", L"Вкл.", L"С VSync изображение не разрывается; если ПК не держит 60 FPS, некоторые кадры ждут следующего обновления экрана. Не работает вместе с генерацией кадров.",
 };
 static_assert(sizeof k_str_ru / sizeof k_str_ru[0] == S_COUNT, "k_str_ru: one text per StrId");
@@ -3388,4 +3388,151 @@ static const wchar_t* const* const k_str[LANG_COUNT] = {
 inline const wchar_t* srt_credit_text(int lang) {
     if(lang<0||lang>=LANG_COUNT)lang=LANG_EN;
     return lang==LANG_EN?L"by Kastiel":k_str[lang][S_CREDIT_KASTIEL];
+}
+
+/* Original PS3 text selection: independent of launcher language and PT-BR. */
+static const wchar_t* const k_original_language_text[LANG_COUNT][4] = {
+    {L"Idioma original", L"Automático", L"Apenas EU + Original. Automático mantém o inglês. Selecione antes de iniciar o jogo.", L"Inglês"},
+    {L"Original language", L"Automatic", L"EU + Original only. Automatic keeps English. Select before starting the game.", L"English"},
+    {L"Idioma original", L"Automático", L"Solo EU + Original. Automático mantiene el inglés. Selecciona antes de iniciar el juego.", L"Inglés"},
+    {L"オリジナルの言語", L"自動", L"EU版＋オリジナルのみ。自動は英語を維持します。ゲーム開始前に選択してください。", L"英語"},
+    {L"Langue d’origine", L"Automatique", L"EU + Original uniquement. Automatique conserve l’anglais. Choisir avant de démarrer le jeu.", L"Anglais"},
+    {L"Originalsprache", L"Automatisch", L"Nur EU + Original. Automatisch behält Englisch bei. Vor dem Spielstart auswählen.", L"Englisch"},
+    {L"Lingua originale", L"Automatico", L"Solo EU + Originale. Automatico mantiene l’inglese. Selezionare prima di avviare il gioco.", L"Inglese"},
+    {L"Język oryginalny", L"Automatyczny", L"Tylko EU + Oryginalne. Automatyczny zachowuje angielski. Wybierz przed uruchomieniem gry.", L"Angielski"},
+    {L"Orijinal dil", L"Otomatik", L"Yalnızca EU + Orijinal. Otomatik İngilizceyi korur. Oyunu başlatmadan önce seçin.", L"İngilizce"},
+    {L"اللغة الأصلية", L"تلقائي", L"للنسخة الأوروبية والنص الأصلي فقط. التلقائي يبقي الإنجليزية. اختر قبل بدء اللعبة.", L"الإنجليزية"},
+    {L"原版语言", L"自动", L"仅限欧版＋原版文本。自动保留英语。请在启动游戏前选择。", L"英语"},
+    {L"원본 언어", L"자동", L"유럽판 + 원본만 지원합니다. 자동은 영어를 유지합니다. 게임 시작 전에 선택하세요.", L"영어"},
+    {L"Язык оригинала", L"Автоматически", L"Только EU + Оригинал. Автоматически сохраняет английский. Выберите до запуска игры.", L"Английский"}
+};
+
+// Order matches Lang and Enhancement.
+inline const wchar_t* enhancement_text(int language,int option,bool description) {
+    static const wchar_t* const texts[LANG_COUNT][6][2]={
+        {
+            {L"Animações suaves a 60 FPS",L"Câmeras, personagens, objetos e cenas. Selecione também 60 FPS."},
+            {L"Confirmação aprimorada",L"Preserva toques curtos e permite confirmar textos enquanto corre e na tela inicial. Reinicie o jogo."},
+            {L"Pular avisos iniciais",L"Ignora o aviso inicial de salvamento e a solicitação da PSN para jogar offline. Reinicie o jogo."},
+            {L"Profundidade de campo",L"Remove o desfoque de profundidade original."},
+            {L"Contador de munição legível",L"Exibe munição carregada e reserva abaixo da arma. Reinicie o jogo."},
+            {L"Ocultar launcher ao jogar",L"Oculta ao jogar ou retomar. As configurações continuam acessíveis; reaparece ao sair."},
+        },
+        {
+            {L"Smooth 60 FPS animation",L"Cameras, actors, objects and cutscenes. Also select 60 FPS."},
+            {L"Improved confirmation input",L"Preserve short presses and confirm text while holding Run or at the title screen. Restart the game."},
+            {L"Skip startup notices",L"Skip the initial save notice and PSN prompt to continue offline. Restart the game."},
+            {L"Depth of field",L"Remove the original depth-of-field blur."},
+            {L"Readable ammunition counter",L"Show loaded rounds and carried reserve below the weapon. Restart the game."},
+            {L"Hide launcher while playing",L"Hide on Play or Resume. Settings remain accessible; the launcher returns after exiting."},
+        },
+        {
+            {L"Animaciones fluidas a 60 FPS",L"Cámaras, personajes, objetos y escenas. Selecciona también 60 FPS."},
+            {L"Confirmación mejorada",L"Conserva pulsaciones breves y permite confirmar textos al correr y en la pantalla inicial. Reinicia el juego."},
+            {L"Omitir avisos iniciales",L"Omite el aviso inicial de guardado y la pregunta de PSN para jugar sin conexión. Reinicia el juego."},
+            {L"Profundidad de campo",L"Elimina el desenfoque de profundidad original."},
+            {L"Contador de munición legible",L"Muestra la munición cargada y la reserva bajo el arma. Reinicia el juego."},
+            {L"Ocultar launcher al jugar",L"Se oculta al jugar o reanudar. Los ajustes siguen accesibles; reaparece al salir."},
+        },
+        {
+            {L"滑らかな60 FPSアニメーション",L"カメラ、キャラクター、オブジェクト、イベントシーン。フレーム上限も60 FPSに設定してください。"},
+            {L"決定入力を改善",L"短い入力を保持し、走るボタンを押したままの文章送りとタイトル画面での決定を可能にします。ゲームの再起動が必要です。"},
+            {L"起動時の通知を省略",L"最初のセーブ通知とPSNへの接続確認を省略し、オフラインで続行します。ゲームの再起動が必要です。"},
+            {L"被写界深度",L"元の被写界深度によるぼかしを除去します。"},
+            {L"見やすい弾数表示",L"装填済みの弾数と所持する予備弾数を武器の下に表示します。ゲームの再起動が必要です。"},
+            {L"プレイ中はランチャーを隠す",L"開始・再開時に非表示にします。設定は引き続き開けます。終了後に再表示されます。"},
+        },
+        {
+            {L"Animations fluides à 60 FPS",L"Caméras, personnages, objets et cinématiques. Sélectionnez aussi 60 FPS."},
+            {L"Confirmation améliorée",L"Conserve les appuis brefs et permet de confirmer les textes en courant et à l’écran titre. Redémarrez le jeu."},
+            {L"Ignorer les avis initiaux",L"Ignore l’avis initial de sauvegarde et la demande PSN pour continuer hors ligne. Redémarrez le jeu."},
+            {L"Profondeur de champ",L"Supprime le flou de profondeur de champ d’origine."},
+            {L"Compteur de munitions lisible",L"Affiche les munitions chargées et la réserve sous l’arme. Redémarrez le jeu."},
+            {L"Masquer le lanceur en jouant",L"Masqué au lancement et à la reprise. Les réglages restent accessibles ; il revient après la fermeture du jeu."},
+        },
+        {
+            {L"Flüssige 60-FPS-Animationen",L"Kamera, Figuren, Objekte und Zwischensequenzen. Zusätzlich 60 FPS auswählen."},
+            {L"Verbesserte Bestätigungseingaben",L"Kurze Tastendrücke erhalten, Texte trotz gehaltener Lauftaste und am Titelbild bestätigen. Spielneustart nötig."},
+            {L"Startmeldungen überspringen",L"Anfänglichen Speicherhinweis und PSN-Abfrage überspringen, um offline fortzufahren. Spielneustart nötig."},
+            {L"Tiefenunschärfe",L"Den ursprünglichen Tiefenunschärfeeffekt entfernen."},
+            {L"Lesbare Munitionsanzeige",L"Geladene Munition und mitgeführte Reserve unter der Waffe anzeigen. Spielneustart nötig."},
+            {L"Launcher beim Spielen ausblenden",L"Beim Starten und Fortsetzen ausblenden. Einstellungen bleiben erreichbar; nach Spielende erscheint er wieder."},
+        },
+        {
+            {L"Animazioni fluide a 60 FPS",L"Telecamere, personaggi, oggetti e filmati di gioco. Seleziona anche 60 FPS."},
+            {L"Conferma migliorata",L"Conserva le pressioni brevi e consente di confermare testi correndo e nella schermata iniziale. Riavvia il gioco."},
+            {L"Salta avvisi iniziali",L"Salta l’avviso iniziale di salvataggio e la richiesta PSN per continuare offline. Riavvia il gioco."},
+            {L"Profondità di campo",L"Rimuove la sfocatura della profondità di campo originale."},
+            {L"Contatore munizioni leggibile",L"Mostra munizioni caricate e riserva sotto l’arma. Riavvia il gioco."},
+            {L"Nascondi launcher durante il gioco",L"Si nasconde all’avvio e alla ripresa. Le impostazioni restano accessibili; riappare all’uscita."},
+        },
+        {
+            {L"Płynne animacje 60 FPS",L"Kamery, postacie, obiekty i przerywniki. Wybierz również 60 FPS."},
+            {L"Ulepszone zatwierdzanie",L"Zachowuje krótkie naciśnięcia i pozwala zatwierdzać tekst podczas biegu oraz ekran tytułowy. Uruchom grę ponownie."},
+            {L"Pomiń komunikaty startowe",L"Pomija początkowy komunikat zapisu i pytanie o PSN, aby grać offline. Uruchom grę ponownie."},
+            {L"Głębia ostrości",L"Usuwa oryginalne rozmycie głębi ostrości."},
+            {L"Czytelny licznik amunicji",L"Pokazuje załadowaną amunicję i zapas pod bronią. Uruchom grę ponownie."},
+            {L"Ukryj launcher podczas gry",L"Ukrywa przy starcie i wznowieniu. Ustawienia pozostają dostępne; launcher wraca po wyjściu."},
+        },
+        {
+            {L"Akıcı 60 FPS animasyonlar",L"Kameralar, karakterler, nesneler ve ara sahneler. Ayrıca 60 FPS seçin."},
+            {L"Geliştirilmiş onay girdisi",L"Kısa basışları korur; koşarken metinleri ve başlık ekranını onaylamayı sağlar. Oyunu yeniden başlatın."},
+            {L"Başlangıç bildirimlerini atla",L"Çevrimdışı devam etmek için ilk kayıt bildirimini ve PSN sorusunu atlar. Oyunu yeniden başlatın."},
+            {L"Alan derinliği",L"Orijinal alan derinliği bulanıklığını kaldırır."},
+            {L"Okunaklı mühimmat sayacı",L"Silahtaki mühimmatı ve taşınan yedeği silahın altında gösterir. Oyunu yeniden başlatın."},
+            {L"Oynarken başlatıcıyı gizle",L"Başlatırken ve devam ederken gizlenir. Ayarlar erişilebilir kalır; çıkışta yeniden görünür."},
+        },
+        {
+            {L"حركة سلسة بمعدل 60 FPS",L"الكاميرات والشخصيات والعناصر والمشاهد. اختر أيضًا حد 60 FPS."},
+            {L"تحسين إدخال التأكيد",L"يحفظ الضغطات القصيرة ويتيح تأكيد النص أثناء الجري وفي شاشة العنوان. أعد تشغيل اللعبة."},
+            {L"تخطي إشعارات البداية",L"يتخطى إشعار الحفظ الأول وطلب PSN للمتابعة دون اتصال. أعد تشغيل اللعبة."},
+            {L"عمق المجال",L"يزيل ضبابية عمق المجال الأصلية."},
+            {L"عداد ذخيرة واضح",L"يعرض الذخيرة المحشوة والاحتياطية أسفل السلاح. أعد تشغيل اللعبة."},
+            {L"إخفاء المشغّل أثناء اللعب",L"يختفي عند البدء والاستئناف. تبقى الإعدادات متاحة ويظهر مجددًا بعد الخروج."},
+        },
+        {
+            {L"流畅的60 FPS动画",L"摄像机、角色、物件和即时演算过场。请同时将帧率上限设为60 FPS。"},
+            {L"改善确认输入",L"保留短按输入，允许按住奔跑键时推进文本，并在标题画面使用确认键。需要重启游戏。"},
+            {L"跳过启动提示",L"跳过最初的保存提示和PSN登录询问，以离线方式继续。需要重启游戏。"},
+            {L"景深",L"移除原版景深模糊效果。"},
+            {L"清晰的弹药计数",L"在武器下方显示已装填弹药和携带的备用弹药。需要重启游戏。"},
+            {L"游戏时隐藏启动器",L"开始或继续游戏时隐藏。仍可打开设置，退出游戏后会重新显示。"},
+        },
+        {
+            {L"부드러운 60 FPS 애니메이션",L"카메라, 캐릭터, 사물 및 실시간 컷신. 프레임 제한도 60 FPS로 설정하세요."},
+            {L"확인 입력 개선",L"짧은 입력을 유지하고 달리기 버튼을 누른 채 텍스트를 넘기거나 타이틀 화면에서 확인할 수 있습니다. 게임을 재시작하세요."},
+            {L"시작 알림 건너뛰기",L"첫 저장 알림과 PSN 로그인 질문을 건너뛰고 오프라인으로 진행합니다. 게임을 재시작하세요."},
+            {L"피사계 심도",L"원래의 피사계 심도 흐림 효과를 제거합니다."},
+            {L"읽기 쉬운 탄약 표시",L"무기 아래에 장전된 탄약과 소지한 예비 탄약을 표시합니다. 게임을 재시작하세요."},
+            {L"플레이 중 런처 숨기기",L"시작하거나 재개할 때 숨깁니다. 설정은 계속 열 수 있으며 게임 종료 후 다시 표시됩니다."},
+        },
+        {
+            {L"Плавные анимации 60 FPS",L"Камеры, персонажи, объекты и игровые сцены. Также выберите 60 FPS."},
+            {L"Улучшенный ввод подтверждения",L"Сохраняет короткие нажатия, позволяет подтверждать текст при беге и на титульном экране. Перезапустите игру."},
+            {L"Пропуск стартовых уведомлений",L"Пропускает первое уведомление о сохранении и запрос PSN для игры без сети. Перезапустите игру."},
+            {L"Глубина резкости",L"Убирает исходное размытие глубины резкости."},
+            {L"Читаемый счётчик патронов",L"Показывает заряженные патроны и запас под оружием. Перезапустите игру."},
+            {L"Скрывать лаунчер во время игры",L"Скрывает при запуске и продолжении. Настройки остаются доступны; после выхода лаунчер возвращается."},
+        },
+    };
+    if(language<0||language>=LANG_COUNT)language=LANG_EN;
+    return texts[language][option][description];
+}
+
+inline const wchar_t* cv_dof_help(int language){
+    static const wchar_t* rows[]={
+        L"Desfoca partes fora de foco da cena, como o fundo. Desligue para uma imagem mais n\u00edtida. Reinicie o jogo para aplicar.",
+        L"Blurs out-of-focus parts of a scene, such as the background. Turn it off for a sharper image. Restart the game to apply.",
+        L"Desenfoca las zonas fuera de foco, como el fondo. Desact\u00edvalo para una imagen m\u00e1s n\u00edtida. Reinicia el juego para aplicar.",
+        L"\u80cc\u666f\u306a\u3069\u3001\u30d4\u30f3\u30c8\u306e\u5408\u3063\u3066\u3044\u306a\u3044\u90e8\u5206\u3092\u307c\u304b\u3057\u307e\u3059\u3002\u7121\u52b9\u306b\u3059\u308b\u3068\u753b\u50cf\u304c\u9bae\u660e\u306b\u306a\u308a\u307e\u3059\u3002\u9069\u7528\u306b\u306f\u30b2\u30fc\u30e0\u306e\u518d\u8d77\u52d5\u304c\u5fc5\u8981\u3067\u3059\u3002",
+        L"Floute les zones hors mise au point, comme le fond. D\u00e9sactivez pour une image plus nette. Red\u00e9marrez le jeu pour appliquer.",
+        L"Zeichnet unscharfe Bildbereiche wie den Hintergrund weich. F\u00fcr ein sch\u00e4rferes Bild ausschalten. Zum Anwenden das Spiel neu starten.",
+        L"Sfoca le parti fuori fuoco, come lo sfondo. Disattivala per un\u2019immagine pi\u00f9 nitida. Riavvia il gioco per applicare.",
+        L"Rozmywa obszary poza ostro\u015bci\u0105, np. t\u0142o. Wy\u0142\u0105cz, aby uzyska\u0107 ostrzejszy obraz. Uruchom gr\u0119 ponownie, aby zastosowa\u0107.",
+        L"Arka plan gibi odak d\u0131\u015f\u0131ndaki alanlar\u0131 bulan\u0131kla\u015ft\u0131r\u0131r. Daha net g\u00f6r\u00fcnt\u00fc i\u00e7in kapat\u0131n. Uygulamak i\u00e7in oyunu yeniden ba\u015flat\u0131n.",
+        L"\u062a\u064f\u0645\u0648\u0651\u0647 \u0627\u0644\u0623\u062c\u0632\u0627\u0621 \u063a\u064a\u0631 \u0627\u0644\u0648\u0627\u0642\u0639\u0629 \u0641\u064a \u0628\u0624\u0631\u0629 \u0627\u0644\u062a\u0631\u0643\u064a\u0632\u060c \u0645\u062b\u0644 \u0627\u0644\u062e\u0644\u0641\u064a\u0629. \u0639\u0637\u0651\u0644\u0647\u0627 \u0644\u0635\u0648\u0631\u0629 \u0623\u0648\u0636\u062d. \u0623\u0639\u062f \u062a\u0634\u063a\u064a\u0644 \u0627\u0644\u0644\u0639\u0628\u0629 \u0644\u062a\u0637\u0628\u064a\u0642 \u0627\u0644\u062a\u063a\u064a\u064a\u0631.",
+        L"\u6a21\u7cca\u80cc\u666f\u7b49\u7126\u70b9\u4ee5\u5916\u7684\u533a\u57df\u3002\u5173\u95ed\u53ef\u4f7f\u753b\u9762\u66f4\u6e05\u6670\u3002\u91cd\u542f\u6e38\u620f\u540e\u751f\u6548\u3002",
+        L"\ubc30\uacbd\ucc98\ub7fc \ucd08\uc810\uc774 \ub9de\uc9c0 \uc54a\ub294 \ubd80\ubd84\uc744 \ud750\ub9ac\uac8c \ud569\ub2c8\ub2e4. \ub044\uba74 \ud654\uba74\uc774 \ub354 \uc120\uba85\ud574\uc9d1\ub2c8\ub2e4. \uc801\uc6a9\ud558\ub824\uba74 \uac8c\uc784\uc744 \ub2e4\uc2dc \uc2dc\uc791\ud558\uc138\uc694.",
+        L"\u0420\u0430\u0437\u043c\u044b\u0432\u0430\u0435\u0442 \u043e\u0431\u043b\u0430\u0441\u0442\u0438 \u0432\u043d\u0435 \u0444\u043e\u043a\u0443\u0441\u0430, \u043d\u0430\u043f\u0440\u0438\u043c\u0435\u0440 \u0444\u043e\u043d. \u0412\u044b\u043a\u043b\u044e\u0447\u0438\u0442\u0435 \u0434\u043b\u044f \u0431\u043e\u043b\u0435\u0435 \u0447\u0451\u0442\u043a\u043e\u0433\u043e \u0438\u0437\u043e\u0431\u0440\u0430\u0436\u0435\u043d\u0438\u044f. \u0414\u043b\u044f \u043f\u0440\u0438\u043c\u0435\u043d\u0435\u043d\u0438\u044f \u043f\u0435\u0440\u0435\u0437\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u0435 \u0438\u0433\u0440\u0443."
+    };return rows[language>=0&&language<LANG_COUNT?language:LANG_EN];
 }

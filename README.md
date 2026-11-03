@@ -18,16 +18,18 @@ Replay the PS3 version on PC. Practice routes with a native SRT, room selection 
 > [!IMPORTANT]
 > **No game files are included.** This repository and its releases contain only the port: no game data, no game executable and no code generated from it. You need your **own original copy** of the PS3 game (PSN release). *Resident Evil*, *Code: Veronica* and all related names, characters and images are trademarks and copyrights of **Capcom**. This is a fan project. It is **not affiliated with, authorized or endorsed by Capcom or Sony Interactive Entertainment**.
 
-## Downloads — v1.1.11
+## Downloads — v1.5.0
 
-New in v1.1.11: a ready-made **HD texture pack** (4K-class images by **ewgeha**, **SonicB00M** and **JuanchoTexHD**, adapted to this project by Kastiel) for the US, EU and JP versions, with credits in [TEXTURAS-HD-COMUNIDADE.md](projects/code_veronica/TEXTURAS-HD-COMUNIDADE.md); a **faster launcher** that now **comes back when you close the game window**; the **F9 texture switch fixed**; and the Modern movement option now says its gameplay is similar to Resident Evil HD Remaster and Resident Evil 0 HD Remaster. Optional modern controls inspired by **Resident Evil HD Remaster** and **Resident Evil 0 HD Remaster**, with remappable analog sticks, are now available. Keyboard defaults: **WASD for the left stick, arrow keys for the D-pad**. Enable Modern under **Recomp Settings → Gameplay → Movement style**; Classic remains the default. Saved mappings are preserved; use **Restore defaults** to adopt the new keyboard layout.
+**v1.5.0:** native 60 FPS smoothing for **EU/US/JP**, smoother inventory transitions with equip/unequip fixes, FSR 3.1 Frame Generation alongside smoothing, fixed European door skipping, a lighter appearance preview and reorganized Recomp Settings. **30 FPS and Classic movement remain the initial defaults.** Game-text selection supports EU/US; the additional US languages use your registered EU installation, while JP remains Japanese only. AVX2 and automatic SSE4.1 compatibility builds are included.
 
-[**RE Code Veronica Recomp Release v1.1.11**](https://github.com/kastieloficial/RE-Code-Veronica-PS3-HD-Recomp-PC/releases/tag/v1.1.11)
+Special thanks to **[Lyxodius](https://github.com/Lyxodius)** for **[PR #36](https://github.com/kastieloficial/RE-Code-Veronica-PS3-HD-Recomp-PC/pull/36)**, reviewed and extended by Kastiel for this release. Read the [complete English/Portuguese changelog](projects/code_veronica/distribution/NOTAS-RELEASE-v1.5.0.md).
+
+[**RE Code Veronica Recomp Release v1.5.0**](https://github.com/kastieloficial/RE-Code-Veronica-PS3-HD-Recomp-PC/releases/tag/v1.5.0)
 
 | Download | Contents |
 |---|---|
-| [CodeVeronica-PC-v1.1.11.zip](https://github.com/kastieloficial/RE-Code-Veronica-PS3-HD-Recomp-PC/releases/download/v1.1.11/CodeVeronica-PC-v1.1.11.zip) | Windows port with launcher and EU/JP/US support. Extract everything and open **Code Veronica.exe**. |
-| [Veronica-PKG-Extractor-v1.0.1.zip](https://github.com/kastieloficial/RE-Code-Veronica-PS3-HD-Recomp-PC/releases/download/v1.1.11/Veronica-PKG-Extractor-v1.0.1.zip) | Separate, unchanged PKG preparation tool for your own game; RPCS3 extraction is also supported. |
+| [CodeVeronica-PC-v1.5.0.zip](https://github.com/kastieloficial/RE-Code-Veronica-PS3-HD-Recomp-PC/releases/download/v1.5.0/CodeVeronica-PC-v1.5.0.zip) | Windows port with launcher and EU/JP/US support. Extract everything and open **Code Veronica.exe**. |
+| [Veronica-PKG-Extractor-v1.0.1.zip](https://github.com/kastieloficial/RE-Code-Veronica-PS3-HD-Recomp-PC/releases/download/v1.5.0/Veronica-PKG-Extractor-v1.0.1.zip) | Separate, unchanged PKG preparation tool for your own game; RPCS3 extraction is also supported. |
 | [HD texture pack (Google Drive)](https://drive.google.com/file/d/1t6yVG1yEC5dl3Td6jT4rhFj1EEwmbsAZ/view?usp=sharing) | Optional community HD textures for the US, EU and JP versions, adapted to this project. Credits, channels and install steps: [TEXTURAS-HD-COMUNIDADE.md](projects/code_veronica/TEXTURAS-HD-COMUNIDADE.md). |
 | [CodeVeronica-LiveSplit-Speedrun-v1.0.zip](https://github.com/kastiellcontato-design/Code-Veronica-Recomp/releases/download/v1.0/CodeVeronica-LiveSplit-Speedrun-v1.0.zip) | Previous LiveSplit Any%/S-Rank split lists and setup instructions. |
 
@@ -165,7 +167,7 @@ The launcher can also check the GitHub releases and update itself (it can be tur
 - Its own launcher, available in **13 languages**: Português (Brasil), English, Español, 日本語, Français, Deutsch, Italiano, Polski, Türkçe, العربية, 简体中文, 한국어 and Русский.
 - Game library with the three regions, version and license checks, and region flags.
 - Stays open during play as the **in-game options menu** (`Insert`/`F5`), so settings can be changed without leaving the game.
-- Pages: Games, Graphics, Saves & captures, Controls, Shortcuts, Patches, Mods, SRT, Cheats, Performance and Advanced (language, shader cache, live game log viewer).
+- Pages: Games, Graphics, HUD, Saves & captures, Controls, Shortcuts, Patches, Mods, SRT, Cheats, Performance and Advanced (language, shader cache, live game log viewer).
 - Optional pause when the game window loses focus.
 
 ### Graphics and performance
@@ -176,7 +178,7 @@ The launcher can also check the GitHub releases and update itself (it can be tur
 - **Sharpening** with **AMD FSR 1 RCAS**, from 10% to 100%.
 - **Frame limit**:
   - **30 FPS (original)**: the same experience as the PS3, where the game runs at 30 FPS.
-  - **60 FPS**: the game logic stays at its original 30 Hz and the extra frames come from **interpolating character and object poses**, so the timing of the game is kept. Interpolation runs on the CPU by default, with an experimental GPU mode. If the PC cannot hold 60 FPS, the game runs slower.
+  - **60 FPS**: the game logic stays at its original 30 Hz and the extra frames come from **interpolating character and object poses**, so the timing of the game is kept. The integrated native smoothing path is selected automatically for EU/US/JP.
 - **AMD FSR 3.1 Frame Generation** (optional, 60 FPS mode only): up to 120 FPS when the PC holds 60 FPS.
 - **VSync** (60 FPS mode): no tearing. It cannot be used together with frame generation.
 - Performance overlay with FPS, frame time, CPU, GPU, RAM, VRAM and SPU/RSX load, in any corner.
@@ -319,7 +321,7 @@ A few examples of the launcher and gameplay. Additional screens are collected in
 
 ## Known issues
 
-The port is a work in progress. Graphics and lighting glitches can still appear, 60 FPS is not guaranteed on every PC, and most of the gameplay testing has been done on the Japanese version (Europe and America share the same code). Please report problems with your `run-log.txt` and a description of what happened.
+The port remains a work in progress. Local gameplay tests cover EU, US and JP, but a full playthrough on every hardware configuration is not verified. Graphics or compatibility issues can still occur and 60 FPS is not guaranteed on every PC. Please report the region, PC specifications, `run-log.txt` and what happened.
 
 ## Building from source
 

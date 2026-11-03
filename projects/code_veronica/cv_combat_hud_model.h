@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cmath>
+#include <string>
 #include "cv_srt.h"
 namespace cv_combat_hud {
 // Native inventory uses absolute HP (EU 0019EDA4, US 0019D34C, JP 0019D3F4),
@@ -34,6 +35,16 @@ inline Weapon weapon(const cv_srt_state& s){
  // Some copies use the alternate native magnum-ammunition record.
  if(w.id==0x20)for(int i=0;i<CV_SRT_INVENTORY_SIZE;i++)if(s.inventory[i].id==0xd)w.reserve+=s.inventory[i].quantity;
  return w;
+}
+// Reserve means matching loose ammunition carried in the inventory, excluding
+// rounds already loaded in this or another weapon. Melee/lighter have no count.
+inline std::wstring ammo_label(const Weapon& w){
+ if(!w.id||w.id==8||w.id==0x37)return {};
+ if(w.infinite)return L"∞";
+ const auto suffix=w.percent?L"%":L"";
+ auto label=std::to_wstring(std::max(0,w.loaded))+suffix;
+ if(w.reserve_known&&w.reserve>0)label+=L"/"+std::to_wstring(w.reserve)+suffix;
+ return label;
 }
 inline float life_pulse(uint64_t now){return .90f+.10f*std::cos(float(now%1600)*(6.283185307f/1600.f));}
 inline float resolution_scale(int index){const float heights[]={480,720,1080,1440,2160};return heights[std::clamp(index,0,4)]/1080.f;}

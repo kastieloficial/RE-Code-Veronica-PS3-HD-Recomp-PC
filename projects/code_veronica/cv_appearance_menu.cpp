@@ -60,9 +60,9 @@ int pc_row=0;
 cv_appearance::AppearancePreview appearance_preview;
 bool appearance_assets_attempted=false;
 unsigned appearance_choice=0;
-constexpr int kSettingCount=11, kResetColorsRow=kSettingCount+1;
+constexpr int kSettingCount=9, kResetColorsRow=kSettingCount;
 constexpr int kBackRow=kResetColorsRow+1, kPcRowCount=kBackRow+1;
-std::array<int,kSettingCount> values={1,0,0,80,50,100,0,1,1,0,0}; // neutral brightness, contrast and saturation
+std::array<int,kSettingCount> values={1,0,0,80,50,100,0,1,1}; // neutral brightness, contrast and saturation
 int pc_adjust_direction=0;
 ULONGLONG pc_adjust_started=0;
 
@@ -106,7 +106,7 @@ void sound(const ppu_context* caller,int id) {
 }
 void read_settings() {
     const int packed=cv_pc_settings_read(),effects=cv_pc_settings_effects_read();
-    values={ (packed>>4)&7, (packed>>8)&3, packed&3, (packed>>10)&255, (packed>>18)&255, cv_pc_settings_saturation_read(), effects&127,cv_enhanced_get(11),cv_enhanced_get(12),cv_enhanced_get(13),cv_enhanced_get(14) };
+    values={ (packed>>4)&7, (packed>>8)&3, packed&3, (packed>>10)&255, (packed>>18)&255, cv_pc_settings_saturation_read(), effects&127,cv_enhanced_get(11),cv_enhanced_get(12) };
     values[0]=std::clamp(values[0],0,4); values[1]=std::clamp(values[1],0,2); values[2]=std::clamp(values[2],0,2);
     values[3]=std::clamp(values[3],0,160); values[4]=std::clamp(values[4],0,130); values[5]=std::clamp(values[5],0,200);
     values[6]=std::clamp(values[6],0,100)/10*10;
@@ -147,7 +147,7 @@ uint32_t tab_buttons(unsigned port){
 std::string tr(cv_enhanced_text::Id id){
     return cv_enhanced_text::utf8(cv_enhanced_language(),id);
 }
-int menu_rows(){return pc_tab==0?kPcRowCount:pc_tab==1?4:3;}
+int menu_rows(){return pc_tab==0?kPcRowCount:pc_tab==1?4:6;}
 bool menu_back(){return pc_row==menu_rows()-1;}
 int tab_direction(uint32_t input,bool q,bool e){
  int direction=(input&(1u<<PB_L1))?-1:(input&(1u<<PB_R1))?1:0;
@@ -177,7 +177,7 @@ int tab_hint_kind(){
 }
 void draw_tabs(cv_menu_text::TextBatch& batch){
  using namespace cv_enhanced_text;
- batch.text(cv_enhanced_language()==0?"CONFIGURAÇÕES DO RECOMP":"RECOMP SETTINGS",320,78,0xDFFFFFFF,1.08f,true);
+ batch.text(cv_enhanced_language()==0?"CONFIGURA\xC3\x87\xC3\x95" "ES DO RECOMP":"RECOMP SETTINGS",320,78,0xDFFFFFFF,1.08f,true);
  const Id names[]={Graphics,Audio,Gameplay};
  const int kind=tab_hint_kind();
  const char* left=kind==PAD_KIND_XINPUT?"LB":kind==PAD_KIND_SWITCH?"L":kind==PAD_KIND_DS4||kind==PAD_KIND_DUALSENSE?"L1":"Q";
@@ -185,33 +185,64 @@ void draw_tabs(cv_menu_text::TextBatch& batch){
  batch.text(left,34,114,0xFFDCCEB1,.48f);batch.text(right,578,114,0xFFDCCEB1,.48f);
  for(int i=0;i<3;i++)batch.text(tr(names[i]),146.f+i*172,111,selected_color(pc_tab==i),.62f,true,155);
 }
-void draw_extra(cv_menu_text::TextBatch& batch){
+void draw_appearance(cv_menu_text::TextBatch& batch,const ppu_context* caller){
+    if(!appearance_assets_attempted){
+        appearance_assets_attempted=true;
+        if(const char* root=std::getenv("PS3_VFS_ROOT"))try{
+            if(!appearance_preview.open(cv_appearance::appearance_system_directory(std::filesystem::path(root))))
+                std::fprintf(stderr,"[appearance] Preview unavailable: %s\n",appearance_preview.error().c_str());
+        }catch(const std::exception& e){std::fprintf(stderr,"[appearance] Preview unavailable: %s\n",e.what());}
+    }
+    batch.text(std::string("< ")+cv_appearance::catalog[appearance_choice].name+" >",32,179,selected_color(pc_row==0),.43f,false,335);
+    if(pc_row==0){
+        appearance_preview.select(appearance_choice);
+        appearance_preview.append(batch.quads,390,135,230,225);
+        batch.text(tr(appearance_preview.error().empty()?cv_enhanced_text::Preview:cv_enhanced_text::NoPreview),505,369,0xCFDCCEB1,.45f,true,230);
+    }
+}
+void draw_extra(cv_menu_text::TextBatch& batch,const ppu_context* caller){
  using namespace cv_enhanced_text;
  for(int row=0;row<menu_rows();row++){
-  float y=174.f+row*48;auto color=selected_color(pc_row==row);
-  Id id=pc_tab==1?(row==0?Music:row==1?Effects:row==2?Restore:Back):(row==0?Battle:Back);
-  batch.text(pc_tab==2&&row==1?modern_text(0):tr(id),32,y,color,.70f,false,365);
-  if(pc_tab==1&&row<2){
-   int v=cv_enhanced_get(8+row);batch.text("< "+std::to_string(v)+"% >",456,y,color,.7f,false,145);
-   batch.quads.push_back({40,y+31,520,3,0x6FAFAFAF,0xFFFFFFFF});
-   if(v)batch.quads.push_back({40,y+31,520.f*v/100,3,0xFFDCCEB1,0xFFFFFFFF});
-  }else if(pc_tab==2&&row==0)batch.text("< "+tr(cv_enhanced_get(10)?On:Off)+" >",444,y,color,.64f,false,162);
-  if(pc_tab==2&&row==1)batch.text("< "+modern_text(cv_modern_get()?2:1)+" >",444,y,color,.64f,false,162);
+  const float y=pc_tab==1?174.f+row*48:row==0?151.f:213.f+(row-1)*31;
+  const auto color=selected_color(pc_row==row);
+  if(pc_tab==1){
+   const Id id=row==0?Music:row==1?Effects:row==2?Restore:Back;
+   batch.text(tr(id),32,y,color,.70f,false,365);
+   if(row<2){
+    const int v=cv_enhanced_get(8+row);batch.text("< "+std::to_string(v)+"% >",456,y,color,.7f,false,145);
+    batch.quads.push_back({40,y+31,520,3,0x6FAFAFAF,0xFFFFFFFF});
+    if(v)batch.quads.push_back({40,y+31,520.f*v/100,3,0xFFDCCEB1,0xFFFFFFFF});
+   }
+  }else{
+   const Id names[]={Appearance,Back,CombatHUD,ManualReload,Battle,Back};
+   batch.text(row==1?modern_text(0):tr(names[row]),32,y,color,.62f,false,219);
+   if(row>0&&row<5){
+    const std::string v=row==1?modern_text(cv_modern_get()?2:1):tr(cv_enhanced_get(row==2?13:row==3?14:10)?On:Off);
+    batch.text("< "+v+" >",255,y,color,.58f,false,125);
+   }
+  }
  }
- if(pc_tab==2&&pc_row==1){   /* two lines: how it moves, and which games it follows */
-  batch.text(modern_text(3),320,363,0xCFDCCEB1,.51f,true,570);
-  batch.text(modern_text(4),320,386,0xCFDCCEB1,.51f,true,570);
- }else batch.text(tr(pc_tab==1?MusicHelp:BattleHelp),320,386,0xCFDCCEB1,.51f,true,570);
- batch.text(tr(Adjust),320,417,0xBFCFCFCF,.5f,true);
+ if(pc_tab==2){
+  draw_appearance(batch,caller);
+  if(pc_row==1){batch.text(modern_text(3),320,389,0xCFDCCEB1,.47f,true,590);batch.text(modern_text(4),320,407,0xCFDCCEB1,.45f,true,590);}
+  else batch.text(pc_row==0?cv_appearance::status():tr(pc_row==2?HUDHelp:pc_row==3?ReloadHelp:BattleHelp),320,408,0xCFDCCEB1,.47f,true,590);
+ }else batch.text(tr(MusicHelp),320,386,0xCFDCCEB1,.51f,true,570);
+ batch.text(tr(Adjust),320,426,0xBFCFCFCF,.48f,true);
 }
-bool extra_input(uint32_t input,uint32_t repeat){
+bool extra_input(ppu_context* ctx,uint32_t input,uint32_t repeat){
  if(pc_tab==0)return false;
  if(repeat&kUp)pc_row=(pc_row+menu_rows()-1)%menu_rows();
  else if(repeat&kDown)pc_row=(pc_row+1)%menu_rows();
  else if(pc_tab==1&&pc_row<2&&((repeat&(kLeft|kRight))||(input&kConfirm))){int which=8+pc_row;cv_pc_settings_change(which,std::clamp(cv_enhanced_get(which)+((repeat&kLeft)?-5:5),0,100));}
  else if(pc_tab==1&&pc_row==2&&(input&kConfirm)){cv_pc_settings_change(8,100);cv_pc_settings_change(9,100);}
+ else if(pc_tab==2&&pc_row==0&&!cv_appearance::busy()&&((repeat&(kLeft|kRight))||(input&kConfirm))){
+  if(repeat&(kLeft|kRight))appearance_choice=(appearance_choice+((repeat&kRight)?1:cv_appearance::appearance_count-1))%cv_appearance::appearance_count;
+  const bool ok=cv_appearance::request(ctx,appearance_choice,appearance_preview.asset(appearance_choice));sound(ctx,ok?3:0);
+ }
  else if(pc_tab==2&&pc_row==1&&((repeat&(kLeft|kRight))||(input&kConfirm)))cv_modern_change(!cv_modern_get());
- else if(pc_tab==2&&pc_row==0&&((repeat&(kLeft|kRight))||(input&kConfirm)))cv_pc_settings_change(10,!cv_enhanced_get(10));
+ else if(pc_tab==2&&pc_row>=2&&pc_row<=4&&((repeat&(kLeft|kRight))||(input&kConfirm))){
+  const int which=pc_row==2?13:pc_row==3?14:10;cv_pc_settings_change(which,!cv_enhanced_get(which));
+ }
  return true;
 }
 
@@ -222,7 +253,7 @@ bool extra_input(uint32_t input,uint32_t repeat){
  * backend draws our batch over this same frame of the game's. */
 void draw_entry(const ppu_context* caller,uint32_t screen,uint32_t fade_bits) {
     if(screen!=0) { rsx_d3d12_set_ui_quads(nullptr,0); return; }
-    TextBatch batch; batch.text(cv_enhanced_language()==0?"CONFIGURAÇÕES DO RECOMP":"RECOMP SETTINGS",32,310,selected_color(pc_selected));
+    TextBatch batch; batch.text(cv_enhanced_language()==0?"CONFIGURA\xC3\x87\xC3\x95" "ES DO RECOMP":"RECOMP SETTINGS",32,310,selected_color(pc_selected));
     /* The black layer: the rows darken under it as it thickens. */
     float fade; std::memcpy(&fade,&fade_bits,4);
     const float shade=1.f-std::clamp(fade,0.f,1.f);
@@ -246,9 +277,10 @@ void draw_settings(const ppu_context* caller) {
     rsx_d3d12_set_ui_retained(1);
     TextBatch batch;
     draw_tabs(batch);
-    if(pc_tab){draw_extra(batch);batch.submit(caller);auto work=call_context(caller);invoke(&work,CV_FN_MENU_FRAME);return;}
+    cv_appearance::frame(const_cast<ppu_context*>(caller),true);
+    if(pc_tab){draw_extra(batch,caller);batch.submit(caller);auto work=call_context(caller);invoke(&work,CV_FN_MENU_FRAME);return;}
     using namespace cv_enhanced_text;
-    const std::string labels[]={tr(Resolution),tr(AA),tr(Mode),tr(Brightness),tr(Contrast),tr(Saturation),tr(Sharpness),tr(FilmFilter),tr(DynamicShadows),tr(CombatHUD),tr(ManualReload),tr(Reset),tr(Back)};
+    const std::string labels[]={tr(Resolution),tr(AA),tr(Mode),tr(Brightness),tr(Contrast),tr(Saturation),tr(Sharpness),tr(FilmFilter),tr(DynamicShadows),tr(Reset),tr(Back)};
     char brightness[24],contrast[24],saturation[24],sharpness[24];
     std::snprintf(brightness,sizeof brightness,"%+d%%",-80+values[3]);
     std::snprintf(contrast,sizeof contrast,"%d%%",50+values[4]);
@@ -256,34 +288,14 @@ void draw_settings(const ppu_context* caller) {
     if(values[6])std::snprintf(sharpness,sizeof sharpness,"%d%%",values[6]);
     else std::snprintf(sharpness,sizeof sharpness,"%s",off.c_str());
     const std::string on=tr(On);
-    const char* current[]={resolution[values[0]],aa[values[1]],mode[values[2]],brightness,contrast,saturation,sharpness,values[7]?on.c_str():off.c_str(),values[8]?on.c_str():off.c_str(),values[9]?on.c_str():off.c_str(),values[10]?on.c_str():off.c_str()};
-    if(!appearance_assets_attempted) {
-        appearance_assets_attempted=true;
-        const char* root=std::getenv("PS3_VFS_ROOT");
-        if(root) {
-            try {
-                const auto system=cv_appearance::appearance_system_directory(std::filesystem::path(root));
-                if(!appearance_preview.open(system))
-                    std::fprintf(stderr,"[appearance] Preview unavailable: %s\n",appearance_preview.error().c_str());
-            } catch(const std::exception& e) {
-                std::fprintf(stderr,"[appearance] Preview unavailable: %s\n",e.what());
-            }
-        }
+    const char* current[]={resolution[values[0]],aa[values[1]],mode[values[2]],brightness,contrast,saturation,sharpness,values[7]?on.c_str():off.c_str(),values[8]?on.c_str():off.c_str()};
+    for(int row=0;row<kPcRowCount;row++) {
+        const auto color=selected_color(pc_row==row);const float y=146.f+row*23.f;
+        batch.text(labels[row],32,y,color,.65f,false,305);
+        if(row<kSettingCount)batch.text(std::string("< ")+current[row]+" >",350,y,color,.63f,false,250);
     }
-    cv_appearance::frame(const_cast<ppu_context*>(caller),true);
-    batch.text(tr(cv_enhanced_text::Appearance),32,137,selected_color(pc_row==0),.78f);
-    batch.text(std::string("< ")+cv_appearance::catalog[appearance_choice].name+" >",32,157,selected_color(pc_row==0),.46f);
-    for(int row=1;row<kPcRowCount;row++) {
-        const int setting=row-1;const uint32_t color=selected_color(pc_row==row);
-        const float y=187.f+setting*20.f;
-        batch.text(labels[setting],32,y,color,.57f,false,219);
-        if(setting<kSettingCount)batch.text(std::string("< ")+current[setting]+" >",255,y,color,.55f);
-    }
-    appearance_preview.select(appearance_choice);
-    appearance_preview.append(batch.quads,384,125,240,280);
-    batch.text(appearance_preview.error().empty()?tr(cv_enhanced_text::Preview):tr(cv_enhanced_text::NoPreview),504,408,0xCFDCCEB1,.47f,true);
-    batch.text(pc_row==8?tr(RestartApply):pc_row==9?tr(ShadowHelp):pc_row==10?tr(HUDHelp):pc_row==11?tr(ReloadHelp):cv_appearance::status(),320,425,0xCFDCCEB1,.40f,true);
-    batch.text(tr(cv_enhanced_text::Adjust),320,443,0xBFCFCFCF,.53f,true);
+    if(pc_row==7||pc_row==8)batch.text(tr(pc_row==7?RestartApply:ShadowHelp),320,407,0xCFDCCEB1,.45f,true,590);
+    batch.text(tr(cv_enhanced_text::Adjust),320,426,0xBFCFCFCF,.48f,true);
     batch.submit(caller);
     auto work=call_context(caller);invoke(&work,CV_FN_MENU_FRAME);
 }
@@ -329,20 +341,12 @@ void CV_FN_MENU_INPUT(ppu_context* ctx) {
             consume(input_address,repeat_address);ctx->gpr[4]=0;
         } else {
             if(!cv_appearance::busy() && tab_change) {pc_tab=(pc_tab+tab_change+3)%3;pc_row=0;pc_adjust_direction=0;sound(ctx,2);}
-            else if(extra_input(input,repeat)) {}
+            else if(extra_input(ctx,input,repeat)) {}
             else if(repeat&kUp) {pc_row=(pc_row+kPcRowCount-1)%kPcRowCount;pc_adjust_direction=0;sound(ctx,2);}
             else if(repeat&kDown) {pc_row=(pc_row+1)%kPcRowCount;pc_adjust_direction=0;sound(ctx,2);}
             else if(pc_row==kResetColorsRow && (input&kConfirm)) { reset_colors();sound(ctx,3); }
-            else if(pc_row==0 && !cv_appearance::busy() && (repeat&(kLeft|kRight))) {
-                appearance_choice=(appearance_choice+((repeat&kRight)?1:cv_appearance::appearance_count-1))%cv_appearance::appearance_count;
-                const bool ok=cv_appearance::request(ctx,appearance_choice,appearance_preview.asset(appearance_choice));
-                sound(ctx,ok?3:0);
-            } else if(pc_row==0 && !cv_appearance::busy() && (input&kConfirm)) {
-                const bool ok=cv_appearance::request(ctx,appearance_choice,appearance_preview.asset(appearance_choice));
-                sound(ctx,ok?3:0);
-            }
-            else if(pc_row>0 && pc_row<=kSettingCount && ((repeat&(kLeft|kRight)) || (input&kConfirm))) {
-                const int setting=pc_row-1;
+            else if(pc_row>=0 && pc_row<kSettingCount && ((repeat&(kLeft|kRight)) || (input&kConfirm))) {
+                const int setting=pc_row;
                 if(setting<3||setting>=6) {
                     const int limit=setting==0?5:setting==6?11:setting>=7?2:3;
                     const int step=(repeat&kLeft)?-1:1,unit=setting==6?10:1;
@@ -378,8 +382,8 @@ void CV_FN_MENU_INPUT(ppu_context* ctx) {
     static uint32_t last_screen=~0u,last_fade=0,last_frame=0;
     const uint32_t frame=cellGcm_flip_submit_count();
     static const bool interpolated=[] {
-        const char* fps=std::getenv("CV_FPS_TEST_60"),*pose=std::getenv("CV_RENDER_INTERPOLATION");
-        return fps&&std::strcmp(fps,"1")==0&&pose&&std::strcmp(pose,"1")==0;
+        const char* fps=std::getenv("CV_FPS_TEST_60"),*pose=std::getenv("CV_RENDER_INTERPOLATION"),*smooth=std::getenv("CV_SMOOTH_ANIMATION");
+        return fps&&std::strcmp(fps,"1")==0&&((pose&&std::strcmp(pose,"1")==0)||(smooth&&std::strcmp(smooth,"1")==0));
     }();
     const uint32_t screen=rsx_ui_menu_contiguous(frame,last_frame,interpolated)?last_screen:~0u,fade=last_fade;
     last_screen=vm_read32(kScreen);last_fade=vm_read32(kFade);last_frame=frame;

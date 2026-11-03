@@ -4,7 +4,8 @@
 #include <limits>
 namespace cv_appearance {
 namespace {
-constexpr unsigned W=512,H=592;
+// Menu-only preview: quarter the raster work; gameplay assets stay original.
+constexpr unsigned W=256,H=296;
 struct Screen {float x,y,z,u,v,light;};
 float edge(const Screen& a,const Screen& b,float x,float y){return (x-a.x)*(b.y-a.y)-(y-a.y)*(b.x-a.x);}
 uint32_t sample(const PreviewTexture& t,float u,float v,float light){
@@ -31,7 +32,9 @@ void render_preview(const PreviewModel& model,float yaw,std::vector<rsx_ui_quad>
  const float radius=std::hypot(hi[0]-lo[0],hi[2]-lo[2])*.5f,body_height=hi[1]-lo[1];
  if(radius<=0||body_height<=0)return;
  const float scale=std::min((W-12)/(2*radius),(H-12)/body_height),cs=std::cos(yaw),sn=std::sin(yaw);
- std::vector<float> depth(size_t(W)*H,INFINITY);std::vector<uint32_t> image(size_t(W)*H,0);
+ static thread_local std::vector<float> depth(size_t(W)*H);
+ static thread_local std::vector<uint32_t> image(size_t(W)*H);
+ std::fill(depth.begin(),depth.end(),INFINITY);std::fill(image.begin(),image.end(),0);
  auto transform=[&](const PreviewVertex& v){
   const float px=v.x-(lo[0]+hi[0])*.5f,pz=v.z-(lo[2]+hi[2])*.5f;
   const float nx=v.nx*cs+v.nz*sn,nz=-v.nx*sn+v.nz*cs;

@@ -1,3 +1,10 @@
+NOVIDADES DA v1.5.0
+Suavização nativa a 60 FPS para EU/US/JP, ativada automaticamente ao escolher 60 FPS. Inventário, abas, inspeção e arquivos mais fluidos; fundos estáveis ao equipar e desequipar. A geração de quadros FSR 3.1 funciona junto da suavização, podendo chegar a 120 FPS apresentados nas cenas compatíveis.
+Corrigida a opção de pular portas na europeia. Configurações do Recomp visíveis e reorganizadas; prévia de aparência mais leve. Profundidade de campo opcional com explicação. Melhorias de comandos/confirmação e do tempo de jogo.
+Textos EU/US: Original, Português (Brasil), inglês, francês, alemão, italiano e espanhol. Os idiomas adicionais da americana usam sua instalação europeia cadastrada no launcher; a conversão cria um cache local e preserva os dados de gameplay americanos. A japonesa permanece somente em japonês.
+30 FPS e movimento Clássico continuam como padrões iniciais. Configurações existentes são preservadas. Inclui executáveis AVX2 e compatibilidade SSE4.1 automática nas três regiões.
+Agradecimento especial a Lyxodius pela PR #36, revisada e ampliada por Kastiel. Changelog completo em português e inglês no CHANGELOG.md. Veronica PKG Extractor v1.0.1 em ZIP separado.
+
 NOVIDADES DA v1.1.11
 Corrigido o liga/desliga das texturas (F9): ao desligar, as texturas voltam ao original na hora, e ao ligar de novo elas voltam, sem precisar reiniciar o jogo. Texto em português do jogo ligado não atrapalha mais.
 A opção de movimento moderno, dentro do jogo, agora informa que a jogabilidade é parecida com a de Resident Evil HD Remaster e Resident Evil 0 HD Remaster. O menu Recomp Settings dentro do jogo segue o texto do jogo: português com a tradução PT-BR ligada, inglês nos demais casos.

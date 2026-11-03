@@ -71,11 +71,13 @@ void CV_OG_MENU_COLOR(ppu_context*) {}
 void CV_FN_MENU_FRAME(ppu_context*) {}
 void CV_FN_MENU_SOUND(ppu_context*) {}
 
-int main(int argc,char**) {
+int main(int argc,char** argv) {
     const bool interp=argc>1;
+    const bool native=interp&&std::strcmp(argv[1],"native")==0;
+    _putenv_s("PS3_SYSTEM_LANGUAGE",native?"4":"1");
     _putenv_s("CV_FPS_TEST_60",interp?"1":"");
-    _putenv_s("CV_RENDER_INTERPOLATION",interp?"1":"");
-    flip_step=interp?4:1;
+    _putenv_s("CV_RENDER_INTERPOLATION",interp&&!native?"1":"0");
+    flip_step=native?2:interp?4:1;
     uint32_t stamps[8]={};uint8_t valid[8]={};
     auto publish=[&](uint32_t f){stamps[f%8]=f;valid[f%8]=1;};
     publish(100);
@@ -230,7 +232,8 @@ int main(int argc,char**) {
     CV_FN_MENU_RESET(&ctx);assert(pad_keyboard_reserved_keys()==0);
     pc_open=true;pc_tab=0;pc_row=0;
     std::puts("[pc-menu-test] PASS: Q/E exclusively switch tabs despite Cancel/Confirm mappings; hold/focus/other keys/physical pad/reset/close preserved");
-    if(const char* folder=std::getenv("CV_MENU_TEST_PREVIEW")){
+    if(const auto folder_value=menu_environment("CV_MENU_TEST_PREVIEW");!folder_value.empty()){
+      const char* folder=folder_value.c_str();
       CLSID encoder={0x557cf400,0x1a04,0x11d3,{0x9a,0x73,0x00,0x00,0xf8,0x1e,0xf3,0x2e}};
       for(int lang:{0,1,3,9})for(int tab=0;tab<3;tab++){
         language=lang;pc_tab=tab;pc_row=0;draw_settings(&ctx);
