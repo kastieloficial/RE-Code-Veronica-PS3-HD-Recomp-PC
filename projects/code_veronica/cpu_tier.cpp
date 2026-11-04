@@ -11,6 +11,10 @@
  * __attribute__((constructor)) (.CRT$XCU), so no code built for AVX2 runs
  * first. This file itself is built without /arch.
  *
+ * CV_CPU_UNIFIED: one executable for every processor. It carries the SPU code
+ * twice (AVX2 and SSE4.1, tools/spu_cpu_variant.py); this check only refuses a
+ * processor without SSE4.1 and records which copy spu_cpu_select.c registers.
+ *
  * CV_CPU_FORCE_COMPAT=1 takes the compatibility path on any processor (tests).
  */
 #include <windows.h>
@@ -52,7 +56,10 @@ Cpu probe()
     ExitProcess(1);
 }
 
-#if !defined(CV_CPU_COMPAT)
+/* Set by check() before any constructor runs: the AVX2 SPU code may be used. */
+int s_haswell;
+
+#if !defined(CV_CPU_COMPAT) && !defined(CV_CPU_UNIFIED)
 /* "...\CodeVeronicaPort_US.exe" -> "...\CodeVeronicaPort_US_SSE4.exe" */
 std::wstring compat_sibling()
 {
@@ -97,10 +104,14 @@ std::wstring arguments()
 void check()
 {
     const Cpu cpu = probe();
-#if defined(CV_CPU_COMPAT)
+#if defined(CV_CPU_COMPAT) || defined(CV_CPU_UNIFIED)
     if (!cpu.sse41)
         refuse(L"Este processador nao tem SSE4.1, o minimo que o jogo precisa.\n\n"
                L"This processor lacks SSE4.1, the minimum the game needs.");
+#if defined(CV_CPU_UNIFIED)
+    const char* force = std::getenv("CV_CPU_FORCE_COMPAT");
+    s_haswell = cpu.haswell && !(force && *force == '1');
+#endif
 #else
     const char* force = std::getenv("CV_CPU_FORCE_COMPAT");
     if (cpu.haswell && !(force && *force == '1')) return;
@@ -116,6 +127,9 @@ void check()
 void __cdecl check_entry() { check(); }
 
 }  // namespace
+
+/* 1: register the AVX2 SPU code; 0: the SSE4.1 copy (CV_CPU_UNIFIED). */
+extern "C" int cv_cpu_haswell(void) { return s_haswell; }
 
 /* .CRT$XCB runs before .CRT$XCU, where the compiler puts every dynamic
  * initializer and constructor function. Entries there are void(*)(void). */

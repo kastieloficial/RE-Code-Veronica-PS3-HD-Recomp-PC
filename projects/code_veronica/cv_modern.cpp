@@ -54,6 +54,9 @@ extern "C" uint32_t cv_controls_input(uint32_t pad){
  // mode-selection pass, but does not suspend input conversion. Rejecting it
  // here alternates modern/tank inputs and resets the walk on every step.
  if(!readable(actor,0x400)||vm_read32(EXP_PLAYER_PTR-8)!=state||!readable(state+0x1b0c0,0x28)||vm_read8(actor+12)!=1||vm_read8(actor+13)!=0||(pad&0x10)){reset();return pad;}
+ // A room text or choice box ("Push which button?") reads the d-pad itself:
+ // converting the stick to walk/turn keys leaves only the far direction working.
+ if(readable(state,0x1b07c)&&(vm_read32(state+0x70)&0x200)){reset();return pad;}
  const auto axes=cv_modern_axes();if(!(axes&0x10000)){reset();return pad;}
  float x=(int(axes&255)-128)/127.f,y=(128-int((axes>>8)&255))/127.f;bool moving=stick(x,y);const bool analog=moving&&(axes&0x20000);
  if(!moving&&(pad&15)){x=float(bool(pad&8))-float(bool(pad&4));y=float(bool(pad&1))-float(bool(pad&2));moving=x!=0||y!=0;}

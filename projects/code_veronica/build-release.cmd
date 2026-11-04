@@ -117,9 +117,9 @@ if "%CV_BUILD_US%"=="1" (
  cmake --build build-release-us -j 6 || exit /b 1
 )
 
-rem Compatibility executables (*_SSE4.exe) for processors without AVX2:
-rem CV_BUILD_COMPAT=1 builds EU, plus US/JP when CV_BUILD_US/CV_BUILD_JP
-rem are set. The normal executables start these by themselves (cpu_tier.cpp).
+rem Legacy compatibility executables (*_SSE4.exe), no longer needed or packaged:
+rem since v1.5.2 the normal executables carry the SSE4.1 SPU code themselves
+rem (CV_CPU_UNIFIED). CV_BUILD_COMPAT=1 still builds them, for comparison only.
 if "%CV_BUILD_COMPAT%"=="1" (
  if not exist build-release-sse4\CMakeCache.txt (
   cmake -S . -B build-release-sse4 -G Ninja ^

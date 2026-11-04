@@ -20,7 +20,8 @@ def main():
     # which reuse the objects of build-release*-sse4 (build-release.cmd with
     # CV_BUILD_COMPAT=1), never the AVX2 ones.
     every={'eu','us','jp','eu-sse4','us-sse4','jp-sse4'}
-    selected=set(sys.argv[1:]) or every
+    # *-sse4 only on request: CV_CPU_UNIFIED executables already run without AVX2.
+    selected=set(sys.argv[1:]) or {'eu','us','jp'}
     if not selected <= every:raise ValueError('Regions must be eu, us, jp, eu-sse4, us-sse4 or jp-sse4')
     variants=[(r,s,c,compat) for compat in (False,True)
               for r,s,c in [('JP','_jp','build-release-jp'),('EU','','build-release'),('US','_us','build-release-us')]]

@@ -83,6 +83,14 @@ option(CV_CPU_COMPAT "Build the SSE4.1 executables for processors without AVX2" 
 if(CV_CPU_COMPAT AND CMAKE_C_COMPILER_ID MATCHES "Clang" AND MSVC)
     add_compile_options("-msse4.1")
 endif()
+# CV_CPU_UNIFIED (default): one executable per region for every processor. The
+# lifted SPU images are built twice, for AVX2 and for SSE4.1 (a renamed copy,
+# tools/spu_cpu_variant.py), and spu_cpu_select.c registers the one this
+# processor runs. The SPU runtime is built once, for SSE4.1. No *_SSE4.exe.
+option(CV_CPU_UNIFIED "One executable with AVX2 and SSE4.1 SPU code, chosen at start" ON)
+if(CV_CPU_COMPAT OR NOT WIN32 OR NOT (CMAKE_C_COMPILER_ID MATCHES "Clang" AND MSVC))
+    set(CV_CPU_UNIFIED OFF)
+endif()
 
 add_subdirectory("${PS3RECOMP_DIR}" "${CMAKE_BINARY_DIR}/ps3recomp_sdk"
                  EXCLUDE_FROM_ALL)
@@ -108,18 +116,28 @@ endif()
 set(SPU_ARCH "AVX2" CACHE STRING "clang-cl /arch for SPU code (empty = SSE2)")
 # The compatibility build takes SSE4.1 from add_compile_options above instead.
 set(SPU_ARCH_FLAGS "")
+#   SPU_COMPAT_FLAGS: the SSE4.1 copy of the lifted images (CV_CPU_UNIFIED).
+#   SPU_RUNTIME_FLAGS: the SPU runtime, shared by both copies there.
+set(SPU_COMPAT_FLAGS "")
 if(CMAKE_C_COMPILER_ID MATCHES "Clang" AND MSVC)
     if(CV_CPU_COMPAT)
         set(SPU_ARCH_FLAGS "/clang:-ffp-contract=off")
     elseif(SPU_ARCH)
         set(SPU_ARCH_FLAGS "/arch:${SPU_ARCH}" "/clang:-ffp-contract=off")
     endif()
+    if(CV_CPU_UNIFIED)
+        set(SPU_COMPAT_FLAGS "-msse4.1" "/clang:-ffp-contract=off")
+    endif()
 endif()
-if(SPU_ARCH_FLAGS)
+set(SPU_RUNTIME_FLAGS ${SPU_ARCH_FLAGS})
+if(CV_CPU_UNIFIED)
+    set(SPU_RUNTIME_FLAGS ${SPU_COMPAT_FLAGS})
+endif()
+if(SPU_RUNTIME_FLAGS)
     file(GLOB SPU_RUNTIME_SOURCES "${PS3RECOMP_DIR}/runtime/spu/*.c")
     set_property(SOURCE ${SPU_RUNTIME_SOURCES}
         TARGET_DIRECTORY ps3recomp_runtime
-        APPEND PROPERTY COMPILE_OPTIONS ${SPU_ARCH_FLAGS})
+        APPEND PROPERTY COMPILE_OPTIONS ${SPU_RUNTIME_FLAGS})
 endif()
 
 # ---------------------------------------------------------------------------
@@ -197,11 +215,48 @@ if(PORT_ENABLE_SPU)
         # has been run, so each is included only if it is actually here.
         foreach(gen IN ITEMS spu_workloads.c jobmods_register.c taskset_policy_bytes.c)
             if(EXISTS "${SPU_DIR}/${gen}")
-                list(APPEND SPU_SOURCES "${SPU_DIR}/${gen}")
+                if(NOT (CV_CPU_UNIFIED AND gen STREQUAL "spu_workloads.c"))
+                    list(APPEND SPU_SOURCES "${SPU_DIR}/${gen}")
+                endif()
             else()
                 message(STATUS "  (no ${gen} -- not registered)")
             endif()
         endforeach()
+        # CV_CPU_UNIFIED: the registration table without its constructor
+        # (AVX2), and a renamed SSE4.1 copy of every image and of the table.
+        set(SPU_COMPAT_SOURCES "")
+        if(CV_CPU_UNIFIED)
+            if(NOT EXISTS "${SPU_DIR}/spu_workloads.c")
+                message(FATAL_ERROR "CV_CPU_UNIFIED needs ${SPU_DIR}/spu_workloads.c")
+            endif()
+            find_package(Python3 COMPONENTS Interpreter REQUIRED)
+            set(SPU_VARIANT_DIR "${CMAKE_CURRENT_BINARY_DIR}/spu_sse4")
+            set(SPU_VARIANT_OUTPUTS "${SPU_VARIANT_DIR}/spu_workloads_avx2.c"
+                                    "${SPU_VARIANT_DIR}/spu_workloads_sse4.c")
+            foreach(lifted IN LISTS SPU_LIFTED)
+                get_filename_component(image_dir "${lifted}" DIRECTORY)
+                get_filename_component(image "${image_dir}" NAME)
+                list(APPEND SPU_VARIANT_OUTPUTS "${SPU_VARIANT_DIR}/${image}/spu_recomp.c")
+                list(APPEND SPU_COMPAT_SOURCES "${SPU_VARIANT_DIR}/${image}/spu_recomp.c")
+                if(EXISTS "${image_dir}/spu_recomp.h")
+                    list(APPEND SPU_VARIANT_OUTPUTS "${SPU_VARIANT_DIR}/${image}/spu_recomp.h")
+                endif()
+            endforeach()
+            file(GLOB SPU_LIFTED_HEADERS CONFIGURE_DEPENDS "${SPU_DIR}/*/spu_recomp.h")
+            add_custom_command(
+                OUTPUT ${SPU_VARIANT_OUTPUTS}
+                COMMAND "${Python3_EXECUTABLE}" -I
+                        "${CMAKE_CURRENT_SOURCE_DIR}/tools/spu_cpu_variant.py"
+                        --spu-dir "${SPU_DIR}" --out-dir "${SPU_VARIANT_DIR}"
+                DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tools/spu_cpu_variant.py"
+                        "${SPU_DIR}/spu_workloads.c" ${SPU_LIFTED} ${SPU_LIFTED_HEADERS}
+                COMMENT "Generating the SSE4.1 copy of the lifted SPU code"
+                VERBATIM)
+            list(APPEND SPU_SOURCES "${SPU_VARIANT_DIR}/spu_workloads_avx2.c")
+            list(APPEND SPU_COMPAT_SOURCES "${SPU_VARIANT_DIR}/spu_workloads_sse4.c")
+            list(APPEND SPU_SOURCES ${SPU_COMPAT_SOURCES})
+            message(STATUS "Lifted SPU:      AVX2 and SSE4.1 copies (CV_CPU_UNIFIED)")
+        endif()
     else()
         message(STATUS "Lifted SPU:      none found in ${SPU_DIR}")
     endif()
@@ -250,6 +305,7 @@ endif()
 add_executable(${PROJECT_NAME}
     main.cpp
     $<$<PLATFORM_ID:Windows>:cpu_tier.cpp>
+    $<$<BOOL:${CV_CPU_UNIFIED}>:spu_cpu_select.c>
     $<$<PLATFORM_ID:Windows>:cv_discord.cpp>
     launcher.cpp
     cv_texture_export.cpp
@@ -289,8 +345,17 @@ if(SPU_SOURCES)
         COMPILE_DEFINITIONS SPU_USE_DISPATCH_MT)
     if(NOT MSVC OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         set_source_files_properties(${SPU_SOURCES} PROPERTIES COMPILE_OPTIONS "-O2")
+        # CV_CPU_UNIFIED: AVX2 for the original images and their table only;
+        # the SSE4.1 copy and the shared musttail dispatcher run everywhere.
+        set(SPU_AVX2_SOURCES ${SPU_SOURCES})
+        if(CV_CPU_UNIFIED)
+            set(SPU_SHARED_SOURCES ${SPU_COMPAT_SOURCES} "${PS3RECOMP_DIR}/runtime/spu/spu_dispatch_mt.c")
+            list(REMOVE_ITEM SPU_AVX2_SOURCES ${SPU_SHARED_SOURCES})
+            set_property(SOURCE ${SPU_SHARED_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
+                ${SPU_COMPAT_FLAGS})
+        endif()
         if(SPU_ARCH_FLAGS)   # see SPU_ARCH above
-            set_property(SOURCE ${SPU_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
+            set_property(SOURCE ${SPU_AVX2_SOURCES} APPEND PROPERTY COMPILE_OPTIONS
                 ${SPU_ARCH_FLAGS})
         endif()
     endif()
@@ -403,6 +468,9 @@ elseif(NOT CV_REGION_LC STREQUAL "eu")
 endif()
 
 # The compatibility build sits beside the normal one as *_SSE4.exe.
+if(CV_CPU_UNIFIED)
+    set_property(SOURCE cpu_tier.cpp APPEND PROPERTY COMPILE_DEFINITIONS CV_CPU_UNIFIED=1)
+endif()
 if(CV_CPU_COMPAT)
     target_compile_definitions(${PROJECT_NAME} PRIVATE CV_CPU_COMPAT=1)
     get_target_property(CV_OUT_NAME ${PROJECT_NAME} OUTPUT_NAME)

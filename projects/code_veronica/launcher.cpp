@@ -1256,7 +1256,7 @@ void section(Graphics& gr, const std::wstring& t, float x, float y, float w, con
 
 
 /* Release shown under the sidebar, beside the credit. Bump it per release. */
-const wchar_t* const k_launcher_version = L"v1.5.1";
+const wchar_t* const k_launcher_version = L"v1.5.2";
 extern "C" const wchar_t* cv_launcher_version(void) { return k_launcher_version; }   /* cv_discord.cpp */
 
 /* ---------------------------------------------------------------- updates
@@ -1970,18 +1970,18 @@ void patch_card(Graphics& gr, float x, float y, float w, float h, bool on, bool 
     GraphicsPath* cp = round_rect(card, 6);
     SolidBrush cb(hot ? C_HOVER : C_PANEL); gr.FillPath(&cb, cp);
     Pen cbd(on ? C_RED : C_FIELD_BD, 1); gr.DrawPath(&cbd, cp); delete cp;
-    RectF sw(x + w - 70, y + (h - 26) / 2, 48, 26);
-    GraphicsPath* sp = round_rect(sw, 13);
+    RectF sw(x + w - 56, y + (h - 22) / 2, 40, 22);
+    GraphicsPath* sp = round_rect(sw, 11);
     SolidBrush sb(on ? C_RED : usable ? Color(255, 60, 52, 52) : Color(255, 40, 36, 36)); gr.FillPath(&sb, sp); delete sp;
     SolidBrush knob(usable ? C_TEXT : Color(255, 90, 84, 84));
-    gr.FillEllipse(&knob, on ? sw.X + sw.Width - 23 : sw.X + 3, sw.Y + 3, 20.0f, 20.0f);
+    gr.FillEllipse(&knob, on ? sw.X + sw.Width - 19 : sw.X + 3, sw.Y + 3, 16.0f, 16.0f);
     const Color foot_c = foot_warn ? C_RED_HI : Color(255, 120, 110, 104);
-    text(gr, title, x + 18, y + 8, body, usable ? C_TEXT : C_DIM, StringAlignmentNear, w - 120, 24);
-    text(gr, desc, x + 18, y + 32, fsm, C_DIM, StringAlignmentNear, w - 120, 20);
+    text(gr, title, x + 14, y + 5, body, usable ? C_TEXT : C_DIM, StringAlignmentNear, w - 90, 22);
+    text(gr, desc, x + 14, y + 26, fsm, C_DIM, StringAlignmentNear, w - 90, 20);
     if (h < 70)   /* compact: the foot on the title's line, at the right */
-        text(gr, foot, x + 18, y + 10, fsm, foot_c, StringAlignmentFar, w - 100, 20);
+        text(gr, foot, x + 14, y + 7, fsm, foot_c, StringAlignmentFar, w - 80, 20);
     else
-        text(gr, foot, x + 18, y + 52, fsm, foot_c, StringAlignmentNear, w - 120, 20);
+        text(gr, foot, x + 14, y + 46, fsm, foot_c, StringAlignmentNear, w - 90, 20);
     if (usable) hit(x, y, w, h, id);
 }
 
@@ -1994,9 +1994,9 @@ void scan_patch_dir()
 void draw_enhancement(Graphics& gr,float x,float& y,float w,int option,const Font& body,const Font& fsm) {
     if(option==E_SMOOTH)return;
     const bool usable=!g.running||option==E_HIDE;
-    option_card(gr,x,y,w,94,g.s.enhancements[option],usable?ID_ENHANCEMENT+option:-1,
+    option_card(gr,x,y,w,56,g.s.enhancements[option],usable?ID_ENHANCEMENT+option:-1,
                 enhancement_text(g_lang,option,false),enhancement_text(g_lang,option,true),body,fsm);
-    y+=112;
+    y+=62;
 }
 void draw_patches(Graphics& gr, const Font& head, const Font& body, const Font& fsm)
 {
@@ -2009,9 +2009,9 @@ void draw_patches(Graphics& gr, const Font& head, const Font& body, const Font& 
     /* the port's own patches: two lines each, the credit beside the title */
     for (int i = 0; i < NPATCHES; i++) {
         if (is_cheat(i)) continue;   /* on the Cheats page */
-        patch_card(gr, x, y, w, 58, g.s.patch[i], true, ID_PATCH + i, T(k_patches[i].title), T(k_patches[i].desc),
+        patch_card(gr, x, y, w, 50, g.s.patch[i], true, ID_PATCH + i, T(k_patches[i].title), T(k_patches[i].desc),
                    T(k_patches[i].credit), false, body, fsm);
-        y += 66;
+        y += 56;
     }
     draw_enhancement(gr,x,y,w,E_NOTICES,body,fsm);
     /* patches from files: made by the player or shared by others */
@@ -2366,57 +2366,57 @@ void draw_avancado(Graphics& gr, const Font& head, const Font& body, const Font&
     const float w = W - SIDE - 64.0f;
     section(gr, T(S_ADV_LAUNCHER), x, y, w, head);
     text(gr, T(S_ADV_HINT), x, y + 32, fsm, C_DIM, StringAlignmentNear, w, 20);
-    y += 70;
+    y += 60;
     text(gr, T(S_LANG), x, y, body, C_TEXT, StringAlignmentNear, 240, 30);
     dropdown(gr, RectF(x + 250, y, 260, 30), lang_choice_name(), ID_DD_LANG, body);
     text(gr, T(S_LANG_HINT), x, y + 28, fsm, C_DIM, StringAlignmentNear, 240, 20);
-    y += 62;
+    y += 54;
     /* Updates from the GitHub releases (cv_updater.h) */
-    option_card(gr, x, y, w, 84, g.s.check_updates, ID_UPD_TOGGLE, ux(upd_text::OPTION), ux(upd_text::OPTION_DESC), body, fsm);
-    y += 98;
+    option_card(gr, x, y, w, 52, g.s.check_updates, ID_UPD_TOGGLE, ux(upd_text::OPTION), ux(upd_text::OPTION_DESC), body, fsm);
+    y += 58;
     {
         const bool busy = g_upd.step != UPD_NONE;
-        button(gr, RectF(x, y, 220, 34), ux(upd_text::CHECK_NOW), ID_UPD_CHECK, body, false, !g.running && !busy);
+        button(gr, RectF(x, y, 220, 30), ux(upd_text::CHECK_NOW), ID_UPD_CHECK, body, false, !g.running && !busy);
         const std::wstring st = g_upd.step == UPD_CHECKING && g_upd.manual ? ux(upd_text::CHECKING) : g_upd.status;
-        text(gr, st, x + 236, y, body, C_DIM, StringAlignmentNear, w - 236, 34);
+        text(gr, st, x + 236, y, body, C_DIM, StringAlignmentNear, w - 236, 30);
     }
-    y += 60;
+    y += 44;
     /* "Playing ..." on Discord (cv_discord.cpp) */
-    option_card(gr, x, y, w, 84, g.s.discord, ID_DISCORD, cv_discord_text::texts[g_lang][cv_discord_text::OPTION],
+    option_card(gr, x, y, w, 52, g.s.discord, ID_DISCORD, cv_discord_text::texts[g_lang][cv_discord_text::OPTION],
                 cv_discord_text::texts[g_lang][cv_discord_text::OPTION_DESC], body, fsm);
-    y += 98;
+    y += 58;
     draw_enhancement(gr,x,y,w,E_HIDE,body,fsm);
     section(gr, T(S_ADV_FILES), x, y, w, head);
-    y += 46;
-    button(gr, RectF(x, y, 280, 34), T(S_CLEAR_CACHE), ID_CACHE_CLEAR, body, false, !g.running);
-    button(gr, RectF(x + 292, y, 150, 34), T(S_OPEN_FOLDER), ID_CACHE_OPEN, body);
-    y += 46;
+    y += 36;
+    button(gr, RectF(x, y, 280, 30), T(S_CLEAR_CACHE), ID_CACHE_CLEAR, body, false, !g.running);
+    button(gr, RectF(x + 292, y, 150, 30), T(S_OPEN_FOLDER), ID_CACHE_OPEN, body);
+    y += 38;
     std::wstring st = g.cache_msg;
     if (g.running) st = T(S_CACHE_RUNNING);
     else if (st.empty()) st = L"shader_cache"; // stable folder name, no automatic count
     text(gr, st, x, y, body, g.running ? C_RED_HI : C_TEXT, StringAlignmentNear, w, 24);
-    text(gr, cache_dir().wstring(), x, y + 26, fsm, C_DIM, StringAlignmentNear, w, 20);
-    text(gr, T(S_CACHE_HINT), x, y + 48, fsm, C_DIM, StringAlignmentNear, w, 20);
-    y += 80;
+    text(gr, cache_dir().wstring(), x, y + 22, fsm, C_DIM, StringAlignmentNear, w, 20);
+    text(gr, T(S_CACHE_HINT), x, y + 40, fsm, C_DIM, StringAlignmentNear, w, 20);
+    y += 68;
     /* The performance overlay: a switch, then what it shows */
     section(gr, T(S_OV_TITLE), x, y, w, head);
-    y += 46;
+    y += 36;
     {
         const bool on = g.s.overlay, hot = g.hover == ID_OVERLAY;
-        RectF card(x, y, w, 64);
+        RectF card(x, y, w, 52);
         GraphicsPath* cp = round_rect(card, 6);
         SolidBrush cb(hot ? C_HOVER : C_PANEL); gr.FillPath(&cb, cp);
         Pen cbd(on ? C_RED : C_FIELD_BD, 1); gr.DrawPath(&cbd, cp); delete cp;
-        RectF sw(x + w - 70, y + 19, 48, 26);
-        GraphicsPath* sp = round_rect(sw, 13);
+        RectF sw(x + w - 56, y + 15, 40, 22);
+        GraphicsPath* sp = round_rect(sw, 11);
         SolidBrush sb(on ? C_RED : Color(255, 60, 52, 52)); gr.FillPath(&sb, sp); delete sp;
         SolidBrush knob(C_TEXT);
-        gr.FillEllipse(&knob, on ? sw.X + sw.Width - 23 : sw.X + 3, sw.Y + 3, 20.0f, 20.0f);
-        text(gr, T(S_OV_SHOW), x + 18, y + 8, body, C_TEXT, StringAlignmentNear, w - 120, 24);
-        text(gr, T(S_OV_DESC), x + 18, y + 34, fsm, C_DIM, StringAlignmentNear, w - 120, 20);
-        hit(x, y, w, 64, ID_OVERLAY);
+        gr.FillEllipse(&knob, on ? sw.X + sw.Width - 19 : sw.X + 3, sw.Y + 3, 16.0f, 16.0f);
+        text(gr, T(S_OV_SHOW), x + 14, y + 5, body, C_TEXT, StringAlignmentNear, w - 90, 22);
+        text(gr, T(S_OV_DESC), x + 14, y + 26, fsm, C_DIM, StringAlignmentNear, w - 90, 20);
+        hit(x, y, w, 52, ID_OVERLAY);
     }
-    y += 78;
+    y += 60;
     /* one tick box per item, dimmed while the overlay is off */
     StringFormat sf(StringFormat::GenericTypographic());
     float cx = x + 4;
@@ -2438,7 +2438,7 @@ void draw_avancado(Graphics& gr, const Font& head, const Font& body, const Font&
         hit(cx, y, 24 + m.Width + 8, 28, ID_OVERLAY_ITEM + i);
         cx += 24 + m.Width + 26;
     }
-    y += 40;
+    y += 34;
     /* where it sits, and its numbers side by side or one under the other:
      * one row, each name followed by its list */
     {   /* then its size, and the box behind it or the numbers alone */
@@ -2456,23 +2456,23 @@ void draw_avancado(Graphics& gr, const Font& head, const Font& body, const Font&
             label_width[i%2]=std::max(label_width[i%2],std::min(measured.Width+12,col*0.55f));
         }
         for (int i = 0; i < 4; i++) {
-            if (i == 2) y += 44;
+            if (i == 2) y += 38;
             const float cx0 = x + (i % 2) * (col + 24);
             const float lw=label_width[i%2];
             text(gr, names[i], cx0, y, body, C_TEXT, StringAlignmentNear, lw, 32);
             dropdown(gr, RectF(cx0 + lw, y, col - lw, 32), values[i], ids[i], body);
         }
     }
-    y += 50;
+    y += 46;
     /* The game's log: view it live, copy it, save a copy */
     section(gr, T(S_LOG_TITLE), x, y, w, head);
-    y += 46;
+    y += 36;
     static const std::wstring lp = log_file_path(); // stdout destination is stable for this process
-    button(gr, RectF(x, y, 150, 34), T(S_LOG_VIEW), ID_LOG_VIEW, body);
-    button(gr, RectF(x + 160, y, 150, 34), T(S_LOG_COPY), ID_LOG_COPY, body, false, !lp.empty());
-    button(gr, RectF(x + 320, y, 170, 34), T(S_LOG_SAVE), ID_LOG_SAVE, body, false, !lp.empty());
-    button(gr, RectF(x + 500, y, 150, 34), T(S_OPEN_FOLDER), ID_LOG_FOLDER, body, false, !lp.empty());
-    y += 44;
+    button(gr, RectF(x, y, 150, 30), T(S_LOG_VIEW), ID_LOG_VIEW, body);
+    button(gr, RectF(x + 160, y, 150, 30), T(S_LOG_COPY), ID_LOG_COPY, body, false, !lp.empty());
+    button(gr, RectF(x + 320, y, 170, 30), T(S_LOG_SAVE), ID_LOG_SAVE, body, false, !lp.empty());
+    button(gr, RectF(x + 500, y, 150, 30), T(S_OPEN_FOLDER), ID_LOG_FOLDER, body, false, !lp.empty());
+    y += 38;
     std::wstring log_note = g.log_msg;
     if (log_note.empty()) {
         if (lp.empty()) log_note = T(log_to_console() ? S_LOG_CONSOLE : S_LOG_NONE);
@@ -2491,18 +2491,20 @@ void option_card(Graphics& gr, float x, float y, float w, float h, bool on, int 
     GraphicsPath* cp = round_rect(card, 6);
     SolidBrush cb(hot ? C_HOVER : C_PANEL); gr.FillPath(&cb, cp);
     Pen cbd(on ? C_RED : C_FIELD_BD, 1); gr.DrawPath(&cbd, cp); delete cp;
-    RectF sw(x + w - 70, y + (h - 26) / 2, 48, 26);
-    GraphicsPath* sp = round_rect(sw, 13);
+    RectF sw(x + w - 56, y + (h - 22) / 2, 40, 22);
+    GraphicsPath* sp = round_rect(sw, 11);
     SolidBrush sb(on ? C_RED : Color(255, 60, 52, 52)); gr.FillPath(&sb, sp); delete sp;
     SolidBrush knob(C_TEXT);
-    gr.FillEllipse(&knob, on ? sw.X + sw.Width - 23 : sw.X + 3, sw.Y + 3, 20.0f, 20.0f);
-    text(gr, title, x + 18, y + 8, body, C_TEXT, StringAlignmentNear, w - 120, 24);
-    {
+    gr.FillEllipse(&knob, on ? sw.X + sw.Width - 19 : sw.X + 3, sw.Y + 3, 16.0f, 16.0f);
+    if (desc.empty()) {
+        text(gr, title, x + 14, y, body, C_TEXT, StringAlignmentNear, w - 90, h);
+    } else {
+        text(gr, title, x + 14, y + 5, body, C_TEXT, StringAlignmentNear, w - 90, 22);
         const std::wstring t = g_lang == LANG_AR ? L"\u202B" + desc + L"\u202C" : desc;
         StringFormat sf; sf.SetAlignment(StringAlignmentNear); sf.SetLineAlignment(StringAlignmentNear);
         sf.SetTrimming(StringTrimmingEllipsisWord);
         SolidBrush db(C_DIM);
-        gr.DrawString(t.c_str(), -1, &fsm, RectF(x + 18, y + 34, w - 120, h - 40), &sf, &db);
+        gr.DrawString(t.c_str(), -1, &fsm, RectF(x + 14, y + 25, w - 90, h - 27), &sf, &db);
     }
     hit(x, y, w, h, id);
 }
@@ -2558,42 +2560,42 @@ std::vector<int> quick_item_choices(){return {0,-1,55,8,9,131,10,5,33,4,32,6,7,3
 std::wstring quick_item_label(int id){if(id==0)return quick_text::get(g_lang,quick_text::Auto);if(id<0)return quick_text::get(g_lang,quick_text::Empty);return cv_srt_i18n::item(id,cv_srt_i18n::Language(g_lang));}
 void draw_hud_page(Graphics& gr,const Font& head,const Font& body,const Font& fsm){
  using namespace cv_enhanced_text;const float x=SIDE+32.f,w=W-SIDE-64.f,gap=20,cw=(w-gap)/2;
- section(gr,L"HUD",x,24,w,head);text(gr,get(g_lang,HUDPageHint),x,58,fsm,C_DIM,StringAlignmentNear,w,42);
- option_card(gr,x,116,w,94,g.s.combat_hud,ID_HUD_ENABLED,get(g_lang,CombatHUD),get(g_lang,HUDHelp),body,fsm);
- option_card(gr,x,228,w,94,g.s.manual_reload,ID_HUD_RELOAD,get(g_lang,ManualReload),get(g_lang,ReloadHelp),body,fsm);
- option_card(gr,x,340,w,94,g.s.quick.on,ID_QUICK_ON,quick_text::get(g_lang,quick_text::Title),quick_text::get(g_lang,quick_text::Help),body,fsm);
- float y=452;
+ section(gr,L"HUD",x,24,w,head);text(gr,get(g_lang,HUDPageHint),x,58,fsm,C_DIM,StringAlignmentNear,w,24);
+ option_card(gr,x,90,w,56,g.s.combat_hud,ID_HUD_ENABLED,get(g_lang,CombatHUD),get(g_lang,HUDHelp),body,fsm);
+ option_card(gr,x,152,w,56,g.s.manual_reload,ID_HUD_RELOAD,get(g_lang,ManualReload),get(g_lang,ReloadHelp),body,fsm);
+ option_card(gr,x,214,w,56,g.s.quick.on,ID_QUICK_ON,quick_text::get(g_lang,quick_text::Title),quick_text::get(g_lang,quick_text::Help),body,fsm);
+ float y=276;
  draw_enhancement(gr,x,y,w,E_AMMO,body,fsm);
- y+=14;
+ y+=10;
  auto capture=[&](float bx,float by,float width,int id,int clear,bool active,int value,bool pad){
-  RectF r(bx,by,width-38,38);field(gr,r,g.hover==id,active);const bool has=pad?value>=0:value>0;
-  if(has&&!active){if(pad)btn_glyph(gr,icon_layout(),shown_button(value),r.X+8,r.Y+7,24);else key_glyph(gr,value,r.X+8,r.Y+7,24);}
+  RectF r(bx,by,width-34,32);field(gr,r,g.hover==id,active);const bool has=pad?value>=0:value>0;
+  if(has&&!active){if(pad)btn_glyph(gr,icon_layout(),shown_button(value),r.X+7,r.Y+4,24);else key_glyph(gr,value,r.X+7,r.Y+4,24);}
   const auto label=active?T(pad?S_PRESS_BTN:S_PRESS_KEY):has?(pad?pb_name(icon_layout(),shown_button(value)):key_name(value)):std::wstring(L"—");
-  text(gr,label,r.X+(has&&!active?39:9),r.Y,body,active?C_RED_HI:C_TEXT,StringAlignmentNear,r.Width-47,r.Height);hit(r.X,r.Y,r.Width,r.Height,id);button(gr,RectF(bx+width-32,by,32,38),L"×",clear,body);
+  text(gr,label,r.X+(has&&!active?39:9),r.Y,body,active?C_RED_HI:C_TEXT,StringAlignmentNear,r.Width-47,r.Height);hit(r.X,r.Y,r.Width,r.Height,id);button(gr,RectF(bx+width-30,by,30,32),L"×",clear,body);
  };
  if(g.s.manual_reload){
-  section(gr,get(g_lang,ReloadBindings),x,y,w,body);y+=34;text(gr,get(g_lang,ReloadBindingsHint),x,y,fsm,C_DIM,StringAlignmentNear,w,58);y+=68;
-  text(gr,T(S_COL_KB),x,y,body,C_TEXT,StringAlignmentNear,cw,26);text(gr,T(S_COL_PAD),x+cw+gap,y,body,C_TEXT,StringAlignmentNear,cw,26);y+=32;
-  capture(x,y,cw,ID_HUD_RELOAD_KEY,ID_HUD_RELOAD_KEY_CLEAR,g.cap==CAP_RELOAD_KEY,g.s.reload_key,false);capture(x+cw+gap,y,cw,ID_HUD_RELOAD_BUTTON,ID_HUD_RELOAD_BUTTON_CLEAR,g.cap==CAP_RELOAD_BTN,g.s.reload_button,true);y+=54;
-  button(gr,RectF(x,y,180,34),T(S_RESTORE),ID_HUD_RELOAD_RESET,body);y+=66;
+  section(gr,get(g_lang,ReloadBindings),x,y,w,body);y+=30;text(gr,get(g_lang,ReloadBindingsHint),x,y,fsm,C_DIM,StringAlignmentNear,w,34);y+=38;
+  text(gr,T(S_COL_KB),x,y,fsm,C_DIM,StringAlignmentNear,cw,20);text(gr,T(S_COL_PAD),x+cw+gap,y,fsm,C_DIM,StringAlignmentNear,cw,20);y+=22;
+  capture(x,y,cw,ID_HUD_RELOAD_KEY,ID_HUD_RELOAD_KEY_CLEAR,g.cap==CAP_RELOAD_KEY,g.s.reload_key,false);capture(x+cw+gap,y,cw,ID_HUD_RELOAD_BUTTON,ID_HUD_RELOAD_BUTTON_CLEAR,g.cap==CAP_RELOAD_BTN,g.s.reload_button,true);y+=40;
+  button(gr,RectF(x,y,160,28),T(S_RESTORE),ID_HUD_RELOAD_RESET,body);y+=44;
  }
  if(g.s.quick.on){
-  section(gr,quick_text::get(g_lang,quick_text::Open),x,y,w,body);y+=37;
-  text(gr,T(S_COL_KB),x,y,fsm,C_DIM,StringAlignmentNear,cw,26);text(gr,T(S_COL_PAD),x+cw+gap,y,fsm,C_DIM,StringAlignmentNear,cw,26);y+=30;
-  capture(x,y,cw,ID_QUICK_KEY,ID_QUICK_KEY_CLEAR,g.cap==CAP_QUICK_KEY,g.s.quick.key,false);capture(x+cw+gap,y,cw,ID_QUICK_BUTTON,ID_QUICK_BUTTON_CLEAR,g.cap==CAP_QUICK_BTN,g.s.quick.button,true);y+=64;
-  section(gr,quick_edit_text::get(g_lang,quick_edit_text::Edit),x,y,w,body);y+=34;
-  text(gr,quick_edit_text::get(g_lang,quick_edit_text::ChooseHelp),x,y,fsm,C_DIM,StringAlignmentNear,w,48);y+=56;
-  capture(x,y,cw,ID_QUICK_EDIT_KEY,ID_QUICK_EDIT_KEY_CLEAR,g.cap==CAP_QUICK_EDIT_KEY,g.s.quick.edit_key,false);capture(x+cw+gap,y,cw,ID_QUICK_EDIT_BUTTON,ID_QUICK_EDIT_BUTTON_CLEAR,g.cap==CAP_QUICK_EDIT_BTN,g.s.quick.edit_button,true);y+=59;
-  section(gr,quick_edit_text::get(g_lang,quick_edit_text::Confirm),x,y,w,body);y+=37;
-  capture(x,y,cw,ID_QUICK_CONFIRM_KEY,ID_QUICK_CONFIRM_KEY_CLEAR,g.cap==CAP_QUICK_CONFIRM_KEY,g.s.quick.confirm_key,false);capture(x+cw+gap,y,cw,ID_QUICK_CONFIRM_BUTTON,ID_QUICK_CONFIRM_BUTTON_CLEAR,g.cap==CAP_QUICK_CONFIRM_BTN,g.s.quick.confirm_button,true);y+=60;
-  text(gr,quick_edit_text::get(g_lang,quick_edit_text::SwapHelp),x,y,fsm,C_DIM,StringAlignmentNear,w,48);y+=61;
-  section(gr,quick_text::get(g_lang,quick_text::Select),x,y,w,body);y+=35;
-  text(gr,quick_text::get(g_lang,quick_text::SelectHelp),x,y,fsm,C_DIM,StringAlignmentNear,w,55);y+=65;
+  section(gr,quick_text::get(g_lang,quick_text::Open),x,y,w,body);y+=30;
+  text(gr,T(S_COL_KB),x,y,fsm,C_DIM,StringAlignmentNear,cw,20);text(gr,T(S_COL_PAD),x+cw+gap,y,fsm,C_DIM,StringAlignmentNear,cw,20);y+=22;
+  capture(x,y,cw,ID_QUICK_KEY,ID_QUICK_KEY_CLEAR,g.cap==CAP_QUICK_KEY,g.s.quick.key,false);capture(x+cw+gap,y,cw,ID_QUICK_BUTTON,ID_QUICK_BUTTON_CLEAR,g.cap==CAP_QUICK_BTN,g.s.quick.button,true);y+=42;
+  section(gr,quick_edit_text::get(g_lang,quick_edit_text::Edit),x,y,w,body);y+=30;
+  text(gr,quick_edit_text::get(g_lang,quick_edit_text::ChooseHelp),x,y,fsm,C_DIM,StringAlignmentNear,w,24);y+=26;
+  capture(x,y,cw,ID_QUICK_EDIT_KEY,ID_QUICK_EDIT_KEY_CLEAR,g.cap==CAP_QUICK_EDIT_KEY,g.s.quick.edit_key,false);capture(x+cw+gap,y,cw,ID_QUICK_EDIT_BUTTON,ID_QUICK_EDIT_BUTTON_CLEAR,g.cap==CAP_QUICK_EDIT_BTN,g.s.quick.edit_button,true);y+=42;
+  section(gr,quick_edit_text::get(g_lang,quick_edit_text::Confirm),x,y,w,body);y+=30;
+  capture(x,y,cw,ID_QUICK_CONFIRM_KEY,ID_QUICK_CONFIRM_KEY_CLEAR,g.cap==CAP_QUICK_CONFIRM_KEY,g.s.quick.confirm_key,false);capture(x+cw+gap,y,cw,ID_QUICK_CONFIRM_BUTTON,ID_QUICK_CONFIRM_BUTTON_CLEAR,g.cap==CAP_QUICK_CONFIRM_BTN,g.s.quick.confirm_button,true);y+=42;
+  text(gr,quick_edit_text::get(g_lang,quick_edit_text::SwapHelp),x,y,fsm,C_DIM,StringAlignmentNear,w,34);y+=40;
+  section(gr,quick_text::get(g_lang,quick_text::Select),x,y,w,body);y+=30;
+  text(gr,quick_text::get(g_lang,quick_text::SelectHelp),x,y,fsm,C_DIM,StringAlignmentNear,w,34);y+=38;
   const float qw=(w-3*16)/4;
-  for(int d=0;d<4;d++){float bx=x+d*(qw+16);text(gr,quick_text::get(g_lang,quick_text::Up+d),bx,y,body,C_TEXT,StringAlignmentNear,qw,28);capture(bx,y+32,qw,ID_QUICK_DIR+d,ID_QUICK_DIR_CLEAR+d,g.cap==CAP_QUICK_DIR&&g.cap_slot==d,g.s.quick.keys[d],false);}y+=101;
-  section(gr,quick_text::get(g_lang,quick_text::Slots),x,y,w,body);y+=35;text(gr,quick_text::get(g_lang,quick_text::SlotHelp),x,y,fsm,C_DIM,StringAlignmentNear,w,48);y+=58;
-  for(int d=0;d<4;d++){text(gr,quick_text::get(g_lang,quick_text::Up+d),x,y,body,C_TEXT,StringAlignmentNear,100,36);dropdown(gr,RectF(x+115,y,w-115,36),quick_item_label(g.s.quick.items[d]),ID_QUICK_SLOT+d,body);y+=48;}
-  button(gr,RectF(x,y+8,180,34),T(S_RESTORE),ID_QUICK_RESET,body);y+=62;
+  for(int d=0;d<4;d++){float bx=x+d*(qw+16);text(gr,quick_text::get(g_lang,quick_text::Up+d),bx,y,fsm,C_DIM,StringAlignmentNear,qw,20);capture(bx,y+22,qw,ID_QUICK_DIR+d,ID_QUICK_DIR_CLEAR+d,g.cap==CAP_QUICK_DIR&&g.cap_slot==d,g.s.quick.keys[d],false);}y+=68;
+  section(gr,quick_text::get(g_lang,quick_text::Slots),x,y,w,body);y+=30;text(gr,quick_text::get(g_lang,quick_text::SlotHelp),x,y,fsm,C_DIM,StringAlignmentNear,w,34);y+=38;
+  for(int d=0;d<4;d++){text(gr,quick_text::get(g_lang,quick_text::Up+d),x,y,body,C_TEXT,StringAlignmentNear,100,30);dropdown(gr,RectF(x+115,y,w-115,30),quick_item_label(g.s.quick.items[d]),ID_QUICK_SLOT+d,body);y+=38;}
+  button(gr,RectF(x,y+4,160,28),T(S_RESTORE),ID_QUICK_RESET,body);y+=46;
  }
  g_page_end=y+24;
 }
@@ -2605,64 +2607,62 @@ void draw_srt(Graphics& gr,const Font& head,const Font& body,const Font& fsm)
     const float x=SIDE+32.f,w=W-SIDE-64.f,col=(w-24)/2,right=x+col+24;
     /* Upper case like the other pages' section titles. */
     auto heading=[&](const wchar_t* t,float top){std::wstring s=t;CharUpperBuffW(s.data(),(DWORD)s.size());section(gr,s,x,top,w,head);};
-    auto label=[&](const std::wstring& t,float left,float top){text(gr,t,left,top,body,C_TEXT,StringAlignmentNear,col,24);};
     StringFormat sf;sf.SetLineAlignment(StringAlignmentNear);SolidBrush brush(C_DIM);
     auto note=[&](const wchar_t* t,RectF r){const std::wstring s=g_lang==LANG_AR?L"‫"+std::wstring(t)+L"‬":std::wstring(t);gr.DrawString(s.c_str(),-1,&fsm,r,&sf,&brush);};
-    section(gr,T(S_SRT_TITLE),x,34,w,head);
-    text(gr,T(S_SRT_INTRO),x,70,fsm,C_DIM,StringAlignmentNear,w,24);
-    option_card(gr,x,104,w,84,g.s.srt,ID_SRT,T(S_SRT_ENABLE),T(S_SRT_HOTKEY),body,fsm);
-    /* What it shows: five switches and the enemy count, two by two. */
-    float y=214;
-    heading(slt(st::SEC_SHOW),y);y+=46;
+    section(gr,T(S_SRT_TITLE),x,24,w,head);
+    text(gr,T(S_SRT_INTRO),x,58,fsm,C_DIM,StringAlignmentNear,w,24);
+    option_card(gr,x,88,w,52,g.s.srt,ID_SRT,T(S_SRT_ENABLE),T(S_SRT_HOTKEY),body,fsm);
+    /* Three columns: what it shows, how it looks, where it goes. */
+    const float c3=(w-2*12)/3,x2=x+c3+12,x3=x2+c3+12;
+    const float cols3[3]={x,x2,x3};
+    auto label3=[&](const std::wstring& t,float left,float top){text(gr,t,left,top,fsm,C_DIM,StringAlignmentNear,c3,20);};
+    float y=156;
+    heading(slt(st::SEC_SHOW),y);y+=38;
     const int names[]={S_SRT_NAME,S_SRT_HEALTH,S_SRT_TIME,S_SRT_STATS,S_SRT_INVENTORY};
-    for(int i=0;i<5;i++)option_card(gr,i%2?right:x,y+(i/2)*70.f,col,58,g.s.srt_parts[i],ID_SRT_PART+i,T(names[i]),L"",body,fsm);
+    for(int i=0;i<5;i++)option_card(gr,cols3[i%3],y+(i/3)*42.f,c3,36,g.s.srt_parts[i],ID_SRT_PART+i,T(names[i]),L"",body,fsm);
     {
-        const float top=y+140,dw=std::min(200.f,col*0.45f);
-        RectF card(right,top,col,58);GraphicsPath* cp=round_rect(card,6);
+        const float top=y+42,dw=std::min(110.f,c3*0.4f);
+        RectF card(x3,top,c3,36);GraphicsPath* cp=round_rect(card,6);
         SolidBrush cb(C_PANEL);gr.FillPath(&cb,cp);Pen cbd(C_FIELD_BD,1);gr.DrawPath(&cbd,cp);delete cp;
-        text(gr,T(S_SRT_ENEMIES),right+18,top+8,body,C_TEXT,StringAlignmentNear,col-dw-48,24);
-        dropdown(gr,RectF(right+col-18-dw,top+13,dw,32),srt_enemy_value(g.s.srt_enemies),ID_DD_SRT_ENEMIES,body);
+        text(gr,T(S_SRT_ENEMIES),x3+14,top,body,C_TEXT,StringAlignmentNear,c3-dw-34,36);
+        dropdown(gr,RectF(x3+c3-10-dw,top+3,dw,30),srt_enemy_value(g.s.srt_enemies),ID_DD_SRT_ENEMIES,body);
     }
-    y+=224;
-    /* How it looks: language, boss bar, size, background, border. */
-    heading(slt(st::SEC_LOOK),y);y+=46;
-    label(T(S_SRT_LANGUAGE),x,y);
-    dropdown(gr,RectF(x,y+29,col,32),srt_language_value(),ID_DD_SRT_LANGUAGE,body);
-    label(T(S_SRT_BOSS_BAR),right,y);
-    dropdown(gr,RectF(right,y+29,col,32),T(S_SRT_BOSS_PANEL+g.s.srt_boss_bar),ID_DD_SRT_BOSSBAR,body);
-    y+=85;
-    label((g.s.srt_free?slt(st::MAIN_SIZE):T(S_SRT_SCALE))+std::wstring(L"  (50–200%)"),x,y);
-    srt_slider(gr,ID_SRT_SCALE,RectF(x,y+29,col,32),g.s.srt_scale,50,200,body);
-    label(T(S_SRT_OPACITY)+std::wstring(L"  (0–100%)"),right,y);
-    srt_slider(gr,ID_SRT_OPACITY,RectF(right,y+29,col,32),g.s.srt_opacity,0,100,body);
-    y+=85;
-    option_card(gr,x,y,w,64,g.s.srt_border,ID_SRT_BORDER,T(S_SRT_BORDER),slt(st::BORDER_DESC),body,fsm);
-    y+=90;
-    /* Where it goes: game or window, a corner or anywhere, the inventory. */
-    heading(slt(st::SEC_PLACE),y);y+=46;
-    label(T(S_SRT_SHOW_IN),x,y);
-    dropdown(gr,RectF(x,y+29,col,32),T(g.s.srt_window?S_SRT_IN_WINDOW:S_SRT_IN_GAME),ID_DD_SRT_WINDOW,body);
-    label(T(S_SRT_CORNER),right,y);
-    dropdown(gr,RectF(right,y+29,col,32),(g.s.srt_free?slt(st::FREE):T(S_SRT_TL+g.s.srt_corner)),ID_DD_SRT_CORNER,body,!g.s.srt_free);
-    y+=61;
+    y+=92;
+    heading(slt(st::SEC_LOOK),y);y+=38;
+    label3(T(S_SRT_LANGUAGE),x,y);
+    dropdown(gr,RectF(x,y+21,c3,30),srt_language_value(),ID_DD_SRT_LANGUAGE,body);
+    label3(T(S_SRT_BOSS_BAR),x2,y);
+    dropdown(gr,RectF(x2,y+21,c3,30),T(S_SRT_BOSS_PANEL+g.s.srt_boss_bar),ID_DD_SRT_BOSSBAR,body);
+    label3(T(S_SRT_BORDER),x3,y);
+    option_card(gr,x3,y+21,c3,30,g.s.srt_border,ID_SRT_BORDER,slt(st::BORDER_DESC),L"",body,fsm);
+    y+=62;
+    label3((g.s.srt_free?slt(st::MAIN_SIZE):T(S_SRT_SCALE))+std::wstring(L"  (50–200%)"),x,y);
+    srt_slider(gr,ID_SRT_SCALE,RectF(x,y+19,col,32),g.s.srt_scale,50,200,body);
+    label3(T(S_SRT_OPACITY)+std::wstring(L"  (0–100%)"),right,y);
+    srt_slider(gr,ID_SRT_OPACITY,RectF(right,y+19,col,32),g.s.srt_opacity,0,100,body);
+    y+=60;
+    heading(slt(st::SEC_PLACE),y);y+=38;
+    label3(T(S_SRT_SHOW_IN),x,y);
+    dropdown(gr,RectF(x,y+21,c3,30),T(g.s.srt_window?S_SRT_IN_WINDOW:S_SRT_IN_GAME),ID_DD_SRT_WINDOW,body);
+    label3(T(S_SRT_CORNER),x2,y);
+    dropdown(gr,RectF(x2,y+21,c3,30),(g.s.srt_free?slt(st::FREE):T(S_SRT_TL+g.s.srt_corner)),ID_DD_SRT_CORNER,body,!g.s.srt_free);
+    label3(T(S_SRT_INV_POS),x3,y);
+    dropdown(gr,RectF(x3,y+21,c3,30),(g.s.srt_free&&g.s.srt_separate?slt(st::SEPARATE):T(g.s.srt_inventory_below?S_SRT_INV_BELOW:S_SRT_INV_SIDE)),ID_DD_SRT_INVPOS,body,!(g.s.srt_free&&g.s.srt_separate));
+    y+=58;
     if(g.s.srt_window){
         RectF used;gr.MeasureString(T(S_SRT_WINDOW_HINT),-1,&fsm,RectF(0,0,col,60),&sf,&used);
-        note(T(S_SRT_WINDOW_HINT),RectF(x,y+6,col,60));y+=6+used.Height;
+        note(T(S_SRT_WINDOW_HINT),RectF(x,y,col,60));y+=4+used.Height;
     }
-    y+=24;
-    option_card(gr,x,y,col,84,g.s.srt_free,ID_SRT_FREE,slt(st::FREE),slt(st::FREE_DESC),body,fsm);
-    option_card(gr,right,y,col,84,g.s.srt_separate,ID_SRT_SEPARATE,slt(st::SEPARATE),slt(st::SEPARATE_DESC),body,fsm);
-    y+=108;
-    /* Only one of the two applies: the inventory beside the panel, or apart with a size of its own. */
-    label(T(S_SRT_INV_POS),x,y);
-    dropdown(gr,RectF(x,y+29,col,32),(g.s.srt_free&&g.s.srt_separate?slt(st::SEPARATE):T(g.s.srt_inventory_below?S_SRT_INV_BELOW:S_SRT_INV_SIDE)),ID_DD_SRT_INVPOS,body,!(g.s.srt_free&&g.s.srt_separate));
-    label(slt(st::INV_SIZE)+std::wstring(L"  (50–200%)"),right,y);
-    srt_slider(gr,ID_SRT_INV_SCALE,RectF(right,y+29,col,32),g.s.srt_inventory_scale,50,200,body,g.s.srt_separate);
-    y+=61;
+    option_card(gr,x,y,col,52,g.s.srt_free,ID_SRT_FREE,slt(st::FREE),slt(st::FREE_DESC),body,fsm);
+    option_card(gr,right,y,col,52,g.s.srt_separate,ID_SRT_SEPARATE,slt(st::SEPARATE),slt(st::SEPARATE_DESC),body,fsm);
+    y+=62;
+    label3(slt(st::INV_SIZE)+std::wstring(L"  (50–200%)"),x,y);
+    srt_slider(gr,ID_SRT_INV_SCALE,RectF(x,y+19,col,32),g.s.srt_inventory_scale,50,200,body,g.s.srt_separate);
+    y+=58;
     if(g.s.srt_free){
         /* The preview, with its reset button and how to use it beside it. */
-        y+=24;
-        label(slt(st::PREVIEW),x,y);y+=29;
+        y+=8;
+        label3(slt(st::PREVIEW),x,y);y+=22;
         g_srt_preview_y=y;
         const auto area=srt_layout_preview();SolidBrush bg(C_FIELD);Pen edge(C_FIELD_BD);gr.FillRectangle(&bg,area);gr.DrawRectangle(&edge,area);
         for(int i=0;i<(g.s.srt_separate?2:1);i++){
@@ -2686,33 +2686,33 @@ float draw_map_selection(Graphics& gr,const Font& head,const Font& body,const Fo
 {
     namespace mt=cv_launcher_maps;
     auto tr=[](mt::Id id){return mt::get(g_lang,id);};
-    const float x=SIDE+32.f,w=W-SIDE-64.f,y=104,h=252;
+    const float x=SIDE+32.f,w=W-SIDE-64.f,y=88,h=196;
     std::wstring title=tr(mt::Title);CharUpperBuffW(title.data(),DWORD(title.size()));
-    section(gr,title,x,34,w,head);
-    text(gr,tr(mt::Intro),x,70,fsm,C_DIM,StringAlignmentNear,w,24);
+    section(gr,title,x,24,w,head);
+    text(gr,tr(mt::Intro),x,58,fsm,C_DIM,StringAlignmentNear,w,24);
     RectF card(x,y,w,h);GraphicsPath* cp=round_rect(card,6);
     SolidBrush fill(C_PANEL);gr.FillPath(&fill,cp);Pen border(C_FIELD_BD,1);gr.DrawPath(&border,cp);delete cp;
-    const float rowY=y+16,rowW=w-36;
-    RectF row(x+18,rowY,rowW,58);GraphicsPath* rp=round_rect(row,4);
+    const float rowY=y+10,rowW=w-36;
+    RectF row(x+18,rowY,rowW,44);GraphicsPath* rp=round_rect(row,4);
     SolidBrush rb(g.hover==ID_TEST_ENABLE?C_HOVER:C_FIELD);gr.FillPath(&rb,rp);gr.DrawPath(&border,rp);delete rp;
-    text(gr,tr(mt::Enable),row.X+16,row.Y,body,C_TEXT,StringAlignmentNear,rowW-230,58);
-    text(gr,tr(g.s.test_tools?mt::On:mt::Off),row.X+rowW-196,row.Y,fsm,C_DIM,StringAlignmentFar,110,58);
-    RectF sw(row.X+rowW-66,row.Y+16,48,26);GraphicsPath* sp=round_rect(sw,13);
+    text(gr,tr(mt::Enable),row.X+16,row.Y,body,C_TEXT,StringAlignmentNear,rowW-230,44);
+    text(gr,tr(g.s.test_tools?mt::On:mt::Off),row.X+rowW-170,row.Y,fsm,C_DIM,StringAlignmentFar,110,44);
+    RectF sw(row.X+rowW-54,row.Y+11,40,22);GraphicsPath* sp=round_rect(sw,11);
     SolidBrush sb(g.s.test_tools?C_RED:Color(255,60,52,52));gr.FillPath(&sb,sp);delete sp;
-    SolidBrush knob(C_TEXT);gr.FillEllipse(&knob,g.s.test_tools?sw.X+25:sw.X+3,sw.Y+3,20.f,20.f);
+    SolidBrush knob(C_TEXT);gr.FillEllipse(&knob,g.s.test_tools?sw.X+21:sw.X+3,sw.Y+3,16.f,16.f);
     hit(row.X,row.Y,row.Width,row.Height,ID_TEST_ENABLE);
-    text(gr,tr(g.running?mt::RunningHint:mt::StartHint),x+18,y+90,fsm,C_DIM,StringAlignmentNear,w-36,38);
-    gr.DrawLine(&border,x+18,y+148,x+w-18,y+148);
-    text(gr,tr(mt::Shortcuts),x+18,y+158,fsm,C_DIM,StringAlignmentNear,w-36,22);
+    text(gr,tr(g.running?mt::RunningHint:mt::StartHint),x+18,y+62,fsm,C_DIM,StringAlignmentNear,w-36,22);
+    gr.DrawLine(&border,x+18,y+90,x+w-18,y+90);
+    text(gr,tr(mt::Shortcuts),x+18,y+98,fsm,C_DIM,StringAlignmentNear,w-36,22);
     const float col=(w-36)/4;
     const wchar_t* labels[]={T(S_SC_COL_KEY),L"PlayStation",L"Xbox",L"Switch"};
     const wchar_t* keys[]={L"F7",L"R1 + R2 + L1 + L2 + ○",L"RB + RT + LB + LT + B",L"R + ZR + L + ZL + A"};
     for(int i=0;i<4;i++){
         const float cx=x+18+i*col;
-        text(gr,labels[i],cx,y+186,fsm,C_DIM,StringAlignmentNear,col-16,20);
-        if(!i)key_glyph(gr,VK_F7,cx,y+208,28);
-        else text(gr,keys[i],cx,y+208,fsm,C_TEXT,StringAlignmentNear,col-16,28);
-        if(i)gr.DrawLine(&border,cx-10,y+190,cx-10,y+236);
+        text(gr,labels[i],cx,y+124,fsm,C_DIM,StringAlignmentNear,col-16,20);
+        if(!i)key_glyph(gr,VK_F7,cx,y+146,28);
+        else text(gr,keys[i],cx,y+146,fsm,C_TEXT,StringAlignmentNear,col-16,28);
+        if(i)gr.DrawLine(&border,cx-10,y+128,cx-10,y+174);
     }
     return y+h;
 }
@@ -2721,17 +2721,17 @@ float draw_map_selection(Graphics& gr,const Font& head,const Font& body,const Fo
 void draw_inventario(Graphics& gr,const Font& head,const Font& body,const Font& fsm)
 {
     const float x=SIDE+32.f,w=W-SIDE-64.f;
-    const float top=draw_map_selection(gr,head,body,fsm)+28;
+    const float top=draw_map_selection(gr,head,body,fsm)+20;
     section(gr,T(S_ITEMS_TITLE),x,top,w,head);
-    text(gr,T(S_ITEMS_INTRO),x,top+36,fsm,C_DIM,StringAlignmentNear,w,24);
-    option_card(gr,x,top+70,w,84,g.s.items_menu,ID_ITEMS_ENABLE,T(S_ITEMS_ENABLE_T),T(S_ITEMS_ENABLE_D),body,fsm);
+    text(gr,T(S_ITEMS_INTRO),x,top+32,fsm,C_DIM,StringAlignmentNear,w,24);
+    option_card(gr,x,top+60,w,52,g.s.items_menu,ID_ITEMS_ENABLE,T(S_ITEMS_ENABLE_T),T(S_ITEMS_ENABLE_D),body,fsm);
     /* How to use it: one row per action, keyboard / PlayStation / Xbox / Switch side by side. */
-    const float y=top+176;
-    RectF card(x,y,w,236);GraphicsPath* cp=round_rect(card,6);
+    const float y=top+122;
+    RectF card(x,y,w,196);GraphicsPath* cp=round_rect(card,6);
     SolidBrush cb(C_PANEL);gr.FillPath(&cb,cp);Pen cbd(C_FIELD_BD,1);gr.DrawPath(&cbd,cp);delete cp;
-    text(gr,T(S_ITEMS_HOW_T),x+20,y+12,head,C_RED_HI,StringAlignmentNear,w-40,26);
+    text(gr,T(S_ITEMS_HOW_T),x+20,y+8,head,C_RED_HI,StringAlignmentNear,w-40,26);
     {
-        const float ax=x+20,kx=x+290,px=x+430,xx=x+600,sx=x+770,hy=y+46;
+        const float ax=x+20,kx=x+290,px=x+430,xx=x+600,sx=x+770,hy=y+38;
         text(gr,T(S_SC_COL_ACTION),ax,hy,fsm,C_DIM,StringAlignmentNear,260,20);
         text(gr,T(S_SC_COL_KEY),kx,hy,fsm,C_DIM,StringAlignmentNear,130,20);
         text(gr,L"PlayStation",px,hy,fsm,C_DIM,StringAlignmentNear,160,20);
@@ -2745,7 +2745,7 @@ void draw_inventario(Graphics& gr,const Font& head,const Font& body,const Font& 
             {lx(design::ITEM_PUT),L"Enter",L"\u2715",L"A",L"B"},
             {lx(design::ITEM_TAKE),L"R",L"\u25A1",L"X",L"Y"},
         };
-        SolidBrush line(Color(255,46,38,38));float ry=hy+26;
+        SolidBrush line(Color(255,46,38,38));float ry=hy+22;
         for(const Row& r:rows){
             gr.FillRectangle(&line,x+20,ry-3,w-40,1.f);
             text(gr,r.what,ax,ry,body,C_TEXT,StringAlignmentNear,260,30);
@@ -2753,51 +2753,51 @@ void draw_inventario(Graphics& gr,const Font& head,const Font& body,const Font& 
             text(gr,r.ps,px,ry,body,C_TEXT,StringAlignmentNear,160,30);
             text(gr,r.xb,xx,ry,body,C_TEXT,StringAlignmentNear,160,30);
             text(gr,r.sw,sx,ry,body,C_TEXT,StringAlignmentNear,w-(sx-x)-20,30);
-            ry+=30;
+            ry+=26;
         }
     }
     /* The warning, short, in the SRT's amber. */
-    RectF warn(x,y+252,w,52);GraphicsPath* wp=round_rect(warn,6);
+    RectF warn(x,y+204,w,40);GraphicsPath* wp=round_rect(warn,6);
     SolidBrush wb(Color(255,38,30,22));gr.FillPath(&wb,wp);Pen wbd(Color(255,120,90,40),1);gr.DrawPath(&wbd,wp);delete wp;
     SolidBrush bar(Color(255,226,172,82));gr.FillRectangle(&bar,warn.X,warn.Y,3.f,warn.Height);
     {
         const std::wstring t=g_lang==LANG_AR?L"\u202B"+std::wstring(lx(design::ITEM_WARN))+L"\u202C":lx(design::ITEM_WARN);
         StringFormat sf;sf.SetAlignment(StringAlignmentNear);sf.SetLineAlignment(StringAlignmentCenter);
-        SolidBrush tb(Color(255,226,190,130));gr.DrawString(t.c_str(),-1,&fsm,RectF(warn.X+18,warn.Y+6,warn.Width-32,warn.Height-12),&sf,&tb);
+        SolidBrush tb(Color(255,226,190,130));gr.DrawString(t.c_str(),-1,&fsm,RectF(warn.X+18,warn.Y+3,warn.Width-32,warn.Height-6),&sf,&tb);
     }
     /* Infinite health and ammunition (cv_cheats.cpp), moved here from Patches. */
     float cy=warn.Y+warn.Height;
     bool any=false;for(int i=0;i<NPATCHES;i++)any=any||is_cheat(i);
-    if(any){cy+=26;section(gr,T(S_ITEMS_CHEATS),x,cy,w,head);cy+=40;}
+    if(any){cy+=18;section(gr,T(S_ITEMS_CHEATS),x,cy,w,head);cy+=34;}
     for(int i=0;i<NPATCHES;i++) {
         if(!is_cheat(i))continue;
-        patch_card(gr,x,cy,w,58,g.s.patch[i],true,ID_PATCH+i,T(k_patches[i].title),T(k_patches[i].desc),
+        patch_card(gr,x,cy,w,50,g.s.patch[i],true,ID_PATCH+i,T(k_patches[i].title),T(k_patches[i].desc),
                    T(k_patches[i].credit),false,body,fsm);
-        cy+=66;
+        cy+=56;
     }
-    cy+=16;
-    option_card(gr,x,cy,w,90,g.s.battle_unlocked,ID_BATTLE,
+    cy+=4;
+    option_card(gr,x,cy,w,52,g.s.battle_unlocked,ID_BATTLE,
                 cv_enhanced_text::get(g_lang,cv_enhanced_text::Battle),
                 cv_enhanced_text::get(g_lang,cv_enhanced_text::BattleHelp),body,fsm);
-    cy+=106;
+    cy+=62;
     g_page_end=std::max(g_page_end,cy);
 }
 
 void draw_desempenho(Graphics& gr, const Font& head, const Font& body, const Font& fsm)
 {
-    float x = SIDE + 32.0f, y = 34;
+    float x = SIDE + 32.0f, y = 24;
     const float w = W - SIDE - 64.0f;
     section(gr, T(S_SH_TITLE), x, y, w, head);
-    text(gr, T(S_SH_HINT), x, y + 32, fsm, C_DIM, StringAlignmentNear, w, 20);
-    y += 74;
-    text(gr,cv_shader_text::get(g_lang,cv_shader_text::Title),x,y,body,C_TEXT,StringAlignmentNear,w,24);
-    dropdown(gr,RectF(x,y+28,w,34),cv_shader_text::get(g_lang,g.s.shader_compiler?cv_shader_text::FXC:cv_shader_text::DXC),ID_SHADER_COMPILER,body);
-    text(gr,cv_shader_text::get(g_lang,cv_shader_text::Help),x,y+71,fsm,C_DIM,StringAlignmentNear,w,50);y+=138;
+    text(gr, T(S_SH_HINT), x, y + 34, fsm, C_DIM, StringAlignmentNear, w, 20);
+    y += 66;
+    text(gr,cv_shader_text::get(g_lang,cv_shader_text::Title),x,y,body,C_TEXT,StringAlignmentNear,260,30);
+    dropdown(gr,RectF(x+270,y,w-270,30),cv_shader_text::get(g_lang,g.s.shader_compiler?cv_shader_text::FXC:cv_shader_text::DXC),ID_SHADER_COMPILER,body);
+    text(gr,cv_shader_text::get(g_lang,cv_shader_text::Help),x,y+36,fsm,C_DIM,StringAlignmentNear,w,34);y+=78;
     for (int i = 0; i < NSHADER_OPTS; i++) {
         /* Six cards end above the Jogar button (its top is H - 78). */
-        option_card(gr, x, y, w, 86, g.s.shader_opt[i], ID_SHADER_OPT + i,
+        option_card(gr, x, y, w, 56, g.s.shader_opt[i], ID_SHADER_OPT + i,
                     T(k_shader_opts[i].title), T(k_shader_opts[i].desc), body, fsm);
-        y += 94;
+        y += 62;
     }
     g_page_end=std::max(g_page_end,y+16);
 }
@@ -2900,33 +2900,33 @@ void draw_atalhos(Graphics& gr, const Font& head, const Font& body, const Font& 
 
 void draw_mods(Graphics& gr, const Font& head, const Font& body, const Font& fsm)
 {
-    float x = SIDE + 32.0f, y = 34;
+    float x = SIDE + 32.0f, y = 24;
     const float w = W - SIDE - 64.0f;
     section(gr, T(S_MODS_TITLE), x, y, w, head);
-    text(gr, T(S_MODS_HINT), x, y + 32, fsm, C_DIM, StringAlignmentNear, w, 20);
-    y += 74;
+    text(gr, T(S_MODS_HINT), x, y + 34, fsm, C_DIM, StringAlignmentNear, w, 20);
+    y += 66;
     const auto extraction=cv_texture_export_status();
     if (g.tex_rep < 0 || g.tex_root_name != texture_game_code()) scan_tex_dir();
     wchar_t note[512];
     swprintf(note, 512, T(S_TEX_COUNT_FMT), g.tex_rep, g.tex_root_name.c_str());
     path_row(gr, x, y, T(S_TEX_FOLDER), tex_folder().wstring(), note, true, ID_TEX_BROWSE, ID_TEX_OPEN, body, fsm, 220);
     if(g.running)text(gr,T(S_TEX_MOD_RESTART),x+225,y+57,fsm,C_DIM,StringAlignmentNear,w-225,20);
-    y += g.running?88:66;
+    y += g.running?76:60;
     swprintf(note, 512, T(S_TEX_DUMP_COUNT_FMT), g.tex_dumped);
     path_row(gr, x, y, T(S_TEX_DUMP_FOLDER), tex_dump_folder().wstring(), note, true, extraction.running?-1:ID_TEX_DUMP_BROWSE, ID_TEX_DUMP_OPEN, body, fsm, 220);
-    y += 70;
+    y += 60;
     const wchar_t* format_labels[LANG_COUNT]={L"Formato de exportação",L"Export format",L"Formato de exportación",L"書き出し形式",L"Format d’exportation",L"Exportformat",L"Formato di esportazione",L"Format eksportu",L"Dışa aktarma biçimi",L"صيغة التصدير",L"导出格式",L"내보내기 형식",L"Формат экспорта"};
     text(gr,format_labels[g_lang],x,y+7,body,C_TEXT,StringAlignmentNear,230,28);
     button(gr,RectF(x+250,y,100,32),L"PNG",ID_TEX_FORMAT_PNG,body,!g.s.tex_dds,!extraction.running);
     button(gr,RectF(x+362,y,100,32),L"DDS",ID_TEX_FORMAT_DDS,body,g.s.tex_dds,!extraction.running);
-    y+=50;
-    option_card(gr, x, y, w, 92, g.s.tex_replace, ID_TEX_REPLACE, T(S_TEX_REPLACE_T), T(S_TEX_REPLACE_D), body, fsm);
-    y += 104;
-    option_card(gr, x, y, w, 92, g.s.tex_dump, ID_TEX_DUMP, T(S_TEX_DUMP_T), T(S_TEX_DUMP_D), body, fsm);
-    y += 104;
-    option_card(gr, x, y, w, 108, g.s.tex_dump_all, ID_TEX_ALL, T(S_TEX_ALL_T), T(S_TEX_ALL_D), body, fsm);
-    y += 120;
-    button(gr, RectF(x, y, 260, 34), T(extraction.running?S_TEX_ALL_CANCEL:S_TEX_ALL_START), ID_TEX_ALL_RUN,
+    y+=44;
+    option_card(gr, x, y, w, 56, g.s.tex_replace, ID_TEX_REPLACE, T(S_TEX_REPLACE_T), T(S_TEX_REPLACE_D), body, fsm);
+    y += 62;
+    option_card(gr, x, y, w, 56, g.s.tex_dump, ID_TEX_DUMP, T(S_TEX_DUMP_T), T(S_TEX_DUMP_D), body, fsm);
+    y += 62;
+    option_card(gr, x, y, w, 56, g.s.tex_dump_all, ID_TEX_ALL, T(S_TEX_ALL_T), T(S_TEX_ALL_D), body, fsm);
+    y += 62;
+    button(gr, RectF(x, y, 260, 30), T(extraction.running?S_TEX_ALL_CANCEL:S_TEX_ALL_START), ID_TEX_ALL_RUN,
            body, false, extraction.running||g.s.tex_dump_all);
     if(extraction.running||extraction.finished){
         wchar_t progress[300];swprintf(progress,300,T(S_TEX_ALL_PROGRESS),extraction.files,extraction.total,
@@ -2936,9 +2936,9 @@ void draw_mods(Graphics& gr, const Font& head, const Font& body, const Font& fsm
         if(extraction.finished)text(gr,T(extraction.failed?S_TEX_ALL_FAILED:extraction.canceled?S_TEX_ALL_CANCELED:S_TEX_ALL_DONE),x,y,fsm,
             extraction.failed||extraction.errors?C_RED_HI:C_OK,StringAlignmentNear,w,40);
     }
-    y += 52;
+    y += 40;
     text(gr, T(S_TEX_HOTKEY), x, y, fsm, C_TEXT, StringAlignmentNear, w, 20);
-    y += 26;
+    y += 22;
     const std::wstring howto = g_lang == LANG_AR ? L"\u202B" + std::wstring(T(S_TEX_HOWTO)) + L"\u202C" : T(S_TEX_HOWTO);
     StringFormat sf; sf.SetAlignment(StringAlignmentNear); sf.SetLineAlignment(StringAlignmentNear);
     SolidBrush hb(C_DIM);

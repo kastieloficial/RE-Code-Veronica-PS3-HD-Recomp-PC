@@ -6,9 +6,10 @@ FILES=("CodeVeronicaPort.exe","CodeVeronicaPort_US.exe","CodeVeronicaPort_JP.exe
        "avcodec-61.dll","avutil-59.dll","swresample-5.dll","swscale-8.dll",
        "amd_fidelityfx_framegeneration_dx12.dll","dxcompiler.dll","dxil.dll",
        "AMD-FSR-LICENSE.md","SAVE-LIBRARY-NOTICES.txt")
-# Compatibility executables for processors without AVX2 (CV_CPU_COMPAT). The
-# normal ones start these by themselves; packaged when they were built.
-COMPAT=("CodeVeronicaPort_SSE4.exe","CodeVeronicaPort_US_SSE4.exe","CodeVeronicaPort_JP_SSE4.exe")
+# Compatibility executables for processors without AVX2 (CV_CPU_COMPAT). Since
+# v1.5.2 each regional executable carries the SSE4.1 SPU code itself
+# (CV_CPU_UNIFIED), so none are packaged, even if old ones remain in bin/.
+COMPAT=()
 def find_vc_redist():
     # Newest Visual Studio copy of the redistributable installer (Microsoft lets apps ship it).
     found=glob.glob(r'C:\Program Files*\Microsoft Visual Studio\*\*\VC\Redist\MSVC\*\vc_redist.x64.exe')
