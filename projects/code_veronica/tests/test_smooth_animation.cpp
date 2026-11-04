@@ -120,6 +120,35 @@ int main(int argc,char**) {
         native_scene_restore();assert(memory==before);
     }
     assert(draws==12);
+    // Character IDs 0 Claire, 1 Chris, 2 Steve, 3 Wesker (Battle Game).
+    // Use exactly the same captured endpoints, draw assertions and restore checks.
+    constexpr uint32_t real_markers[]={0x3D650,0x3C4FC,0x3A4D0,0x3E814};
+    for(unsigned character=0;character<4;character++) {
+        vm_write8(CV_SRT_CHARACTER,character);vm_write32(CV_SRT_RDX,real_markers[character]);scene_pose_have=scene_pose_pair=false;
+        assert(native_scene_ready());
+        for(unsigned wrong=0;wrong<4;wrong++)if(wrong!=character){vm_write32(CV_SRT_RDX,real_markers[wrong]);assert(!native_scene_ready());}
+        vm_write32(CV_SRT_RDX,real_markers[character]);
+        pose(0);native_scene_before();native_scene_after();assert(scene_pose_have);
+        pose(10);native_scene_before();native_scene_after();assert(scene_pose_pair);
+        write_float(CV_SCENE_CAMERA+0xC,20);
+        for(double phase:{0.0,.25,.5,.9}) {
+            auto snapshot=memory;expected=float(phase*10);
+            render_scene_between_ticks(&ctx,0,phase);native_scene_restore();assert(snapshot==memory);
+        }
+        // Character switch even with reused actor/model pointers must invalidate the pair.
+        vm_write8(CV_SRT_CHARACTER,(character+1)%4);vm_write32(CV_SRT_RDX,real_markers[(character+1)%4]);
+        unsigned prior=draws;render_scene_between_ticks(&ctx,0,.5);assert(draws==prior);
+        native_scene_before();native_scene_after();assert(scene_pose_have&&!scene_pose_pair);
+    }
+    for(unsigned invalid:{4u,255u}) {
+        vm_write8(CV_SRT_CHARACTER,invalid);assert(!native_scene_ready());
+        native_scene_before();native_scene_after();assert(!scene_pose_have);
+    }
+    vm_write8(CV_SRT_CHARACTER,0);vm_write32(CV_SRT_RDX,real_markers[0]);scene_pose_have=scene_pose_pair=false;
+    pose(0);native_scene_before();native_scene_after();pose(10);native_scene_before();native_scene_after();
+    puts("PASS: Claire Chris Steve Wesker, interpolated poses/camera, exact restore, character-switch invalidation, invalid IDs rejected");
+
+
     // Enemy bones and position share the camera phase, including catch-up draws.
     vm_write32(CV_SRT_ENEMY_COUNT,1);vm_write32(0x21B140u,1);vm_write32(CV_SRT_ENEMIES,1);
     vm_write32(CV_SRT_ENEMIES+4,0x10000);vm_write32(CV_SRT_ENEMIES+0x39c,7);

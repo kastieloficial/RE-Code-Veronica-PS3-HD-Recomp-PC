@@ -2,7 +2,11 @@
 
 bool native_scene_ready() {
     const uint32_t system=vm_read32(CV_SCENE_SYSTEM);
-    if(!system || vm_read32(CV_SRT_RDX)!=0x3D650 || vm_read8(CV_SRT_CHARACTER)!=0 || int32_t(vm_read32(CV_SRT_HEALTH))<=0)return false;
+    // Match the active character's live-room signature, as SRT and save tools do.
+    // Claire (including alternate outfit), Chris, Steve and Battle Game Wesker.
+    const unsigned character=vm_read8(CV_SRT_CHARACTER);
+    static constexpr uint32_t live_markers[]={0x3D650,0x3C4FC,0x3A4D0,0x3E814};
+    if(!system || character>=4 || vm_read32(CV_SRT_RDX)!=live_markers[character] || int32_t(vm_read32(CV_SRT_HEALTH))<=0)return false;
     const uint32_t tasks=vm_read32(system+0x64)&~vm_read32(system+0x68);
     const uint32_t camera_mode=vm_read32(system+0x74),control=vm_read32(system+0x70);
     // Script command 0012C864 mode 3 sets 0x44 and control bit 4. The
@@ -20,12 +24,14 @@ bool native_scene_ready() {
 }
 // Room numbers and camera IDs can be reused after loading. Match the actual
 // scene resources as well, and never carry render endpoints across a transition.
-static constexpr unsigned scene_words=5;
+static constexpr unsigned scene_words=6;
 bool scene_read(uint32_t* scene) {
     scene[0]=(uint32_t(vm_read8(CV_SRT_ROOM))<<16)|(uint32_t(vm_read8(CV_SRT_ROOM+1))<<8)|vm_read8(CV_SRT_ROOM+2);
     scene[1]=vm_read32(CV_SCENE_SYSTEM);scene[2]=vm_read32(CV_SCENE_CONFIG);scene[3]=vm_read32(CV_SCENE_RENDER);
     const uint32_t manager=vm_read32(CV_SCENE_ROOM_MANAGER);
     scene[4]=manager?vm_read32(manager+0x60):0;
+    // Never blend across a character switch even if actor/model storage is reused.
+    scene[5]=vm_read8(CV_SRT_CHARACTER);
     return scene[1]&&scene[2]&&scene[3]&&scene[4];
 }
 bool scene_matches(const uint32_t* scene) {
