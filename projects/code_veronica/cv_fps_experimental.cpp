@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
+#include <ctime>
 #include <chrono>
 #include <atomic>
 void CV_OG_FRAME_PACE(ppu_context*);

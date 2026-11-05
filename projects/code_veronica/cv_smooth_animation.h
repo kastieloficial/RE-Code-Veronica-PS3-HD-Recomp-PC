@@ -19,8 +19,12 @@ bool native_scene_ready() {
     // 001AF3E0/00146F90 call message update/draw routine 001611C8 for bit 9.
     // Scene preparation would free its text lists. Keep the original frame
     // until the message closes, without repeating its input/timer logic.
+    // Sniper Rifle / Linear Launcher scope view: control 0x00800000 and
+    // 6C 0x000800C0 are set only while the scope is up (player state 0x47).
+    // Its overlay is not rebuilt by the extra scene pass; keep original frames.
+    const bool scope_view=(control&0x00800000)||(vm_read32(system+0x6C)&0x000800C0);
     return (tasks&0x80)&&!(tasks&0x1803F)&&(!(camera_mode&7)||scripted_camera)&&
-        !(control&0x1C040308)&&!(vm_read32(system+0x6C)&0x300);
+        !(control&0x1C040308)&&!(vm_read32(system+0x6C)&0x300)&&!scope_view;
 }
 // Room numbers and camera IDs can be reused after loading. Match the actual
 // scene resources as well, and never carry render endpoints across a transition.
@@ -100,7 +104,28 @@ bool scene_camera_matches(const uint32_t* cut) {
     return vm_read32((CV_SCENE_CAMERA+0x4))==cut[0]&&vm_read32((CV_SCENE_CAMERA+0x8C))==cut[1]&&vm_read32((CV_SCENE_CAMERA+0xA4))==cut[2];
 }
 #include "cv_inspection_cut.h"
+// CV_SMOOTH_LOG=1: one line whenever the camera/player state changes.
+void native_scene_log() {
+    static const bool on=[] {const char* e=std::getenv("CV_SMOOTH_LOG");return e&&std::strcmp(e,"1")==0;}();
+    if(!on)return;
+    const uint32_t system=vm_read32(CV_SCENE_SYSTEM),actor=vm_read32(CV_SCENE_ACTOR);
+    if(!system||!actor)return;
+    uint32_t now[10]={vm_read32(system+0x64),vm_read32(system+0x68),vm_read32(system+0x6C),vm_read32(system+0x70),
+        vm_read32(system+0x74),vm_read32(actor+0xC),vm_read32(actor+0x8C),vm_read32(CV_SCENE_CAMERA+0x4),
+        vm_read32(CV_SCENE_CAMERA+0x8C),vm_read32(CV_SCENE_CAMERA+0xA4)};
+    static uint32_t last[10];
+    if(std::memcmp(now,last,sizeof now)==0)return;
+    std::memcpy(last,now,sizeof now);
+    // Own file, flushed per line: the game's stderr is not always captured.
+    static std::FILE* file=std::fopen("smooth-log.txt","w");
+    if(!file)return;
+    std::fprintf(file,"[SMOOTH-LOG] t=%ld ready=%d",(long)std::clock(),native_scene_ready()?1:0);
+    std::fprintf(file," tasks=%08X/%08X 6C=%08X ctl=%08X cam=%08X actor_c=%08X actor_8c=%08X cut=%08X/%08X/%08X\n",
+        now[0],now[1],now[2],now[3],now[4],now[5],now[6],now[7],now[8],now[9]);
+    std::fflush(file);
+}
 void native_scene_before() {
+    native_scene_log();
     const char* on=std::getenv("CV_SMOOTH_ANIMATION");
     inspection_before(on&&std::strcmp(on,"1")==0);
     scene_previous_valid=on&&std::strcmp(on,"1")==0&&native_scene_ready()&&scene_read(scene_scene);
