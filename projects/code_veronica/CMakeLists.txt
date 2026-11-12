@@ -984,6 +984,12 @@ add_custom_command(TARGET MyGameRecomp POST_BUILD
 add_custom_command(TARGET MyGameRecomp POST_BUILD
  COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/localization" "$<TARGET_FILE_DIR:MyGameRecomp>/../assets")
 
+# Pipelines recorded in earlier play sessions (tools/merge_pipeline_lists.py).
+# The renderer preloads them at the first start, so effects seen for the first
+# time (a shot in a new room) do not skip a draw while their shaders compile.
+add_custom_command(TARGET MyGameRecomp POST_BUILD
+ COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/shader-seed" "$<TARGET_FILE_DIR:MyGameRecomp>/../assets/shader-seed")
+
 # Regression for the HUD/inventory Caution mismatch, independent of a game dump.
 add_executable(code_veronica_hud_health_tests EXCLUDE_FROM_ALL tests/test_hud_health.cpp)
 target_include_directories(code_veronica_hud_health_tests PRIVATE "${PS3RECOMP_DIR}/libs/video")
