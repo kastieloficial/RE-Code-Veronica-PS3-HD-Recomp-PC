@@ -640,11 +640,11 @@ void cellPad_poll(void)
  * the pad again. Every 5 s: game reads/s, packets/s and the longest gap
  * between two reads. Lines go to input-log.txt (beside the game) and stderr. */
 #if PAD_BACKEND_XINPUT
-typedef struct { const char* name; WORD xi; u16 cell; } MeterBtn;   /* cell = DIGITAL2<<8 | DIGITAL1 */
+typedef struct { const char* name; uint32_t pb; u16 cell; } MeterBtn;   /* cell = DIGITAL2<<8 | DIGITAL1 */
 static const MeterBtn s_meter_btn[] = {
-    { "CIMA", XINPUT_GAMEPAD_DPAD_UP, 0x0010 }, { "BAIXO", XINPUT_GAMEPAD_DPAD_DOWN, 0x0040 },
-    { "ESQUERDA", XINPUT_GAMEPAD_DPAD_LEFT, 0x0080 }, { "DIREITA", XINPUT_GAMEPAD_DPAD_RIGHT, 0x0020 },
-    { "START", XINPUT_GAMEPAD_START, 0x0008 },
+    { "CIMA", 1u << PB_UP, 0x0010 }, { "BAIXO", 1u << PB_DOWN, 0x0040 },
+    { "ESQUERDA", 1u << PB_LEFT, 0x0080 }, { "DIREITA", 1u << PB_RIGHT, 0x0020 },
+    { "START", 1u << PB_START, 0x0008 },
 };
 enum { METER_N = sizeof s_meter_btn / sizeof s_meter_btn[0] };
 static SRWLOCK s_meter_lock = SRWLOCK_INIT;
@@ -672,15 +672,21 @@ static void meter_log(const char* fmt, ...)
 static DWORD WINAPI meter_thread(LPVOID arg)
 {
     (void)arg;
-    WORD prev = 0;
-    for (;;) {
-        XINPUT_STATE st; memset(&st, 0, sizeof st);
-        const WORD b = XInputGetState(0, &st) == ERROR_SUCCESS ? st.Gamepad.wButtons : 0;
+    uint32_t prev = 0; int said = 0;
+    for (;;) {   /* every controller the game can read (Xbox, DualShock, DualSense, Switch) */
+        uint32_t b = 0;
+        for (int k = 0; k < PAD_PHYS_MAX; k++) {
+            PadPhys pp;
+            if (pad_phys_poll(k, &pp)) {
+                b |= pp.buttons;
+                if (!said) { said = 1; meter_log("[INPUT] controle %d detectado (tipo %d)%c", k, pp.kind, 10); }
+            }
+        }
         if (b != prev) {
             const double now = meter_ms();
             AcquireSRWLockExclusive(&s_meter_lock);
             for (int i = 0; i < METER_N; i++) {
-                const WORD m = s_meter_btn[i].xi;
+                const uint32_t m = s_meter_btn[i].pb;
                 if ((b & m) && !(prev & m)) {
                     if (s_meter_pending[i]) {   /* pressed again before the game saw the last one */
                         s_meter_missed++;
@@ -702,7 +708,10 @@ static int meter_enabled(void)
         const char* e = getenv("CV_INPUT_METER");
         s_meter_on = e && e[0] == '1';
         if (s_meter_on) {
-            s_meter_f = fopen("input-log.txt", "a");
+            { char path[MAX_PATH]; const DWORD n = GetModuleFileNameA(NULL, path, MAX_PATH);
+              char* sl = (n && n < MAX_PATH) ? strrchr(path, 92) : NULL;
+              if (sl && (size_t)(sl - path) + 16 < sizeof path) { strcpy(sl + 1, "input-log.txt"); s_meter_f = fopen(path, "a"); }
+              else s_meter_f = fopen("input-log.txt", "a"); }
             meter_log("[INPUT] medidor ligado: cada aperto do D-pad/START, quanto tempo ficou apertado e quando o jogo recebeu%c", 10);
             HANDLE th = CreateThread(NULL, 0, meter_thread, NULL, 0, NULL);
             if (th) { SetThreadPriority(th, THREAD_PRIORITY_ABOVE_NORMAL); CloseHandle(th); }
