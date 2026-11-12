@@ -10,9 +10,10 @@ static void rsx_trophy_texture_release(rsx_trophy_texture* image){
  if(image->texture)image->texture->lpVtbl->Release(image->texture);
  if(image->upload)image->upload->lpVtbl->Release(image->upload);memset(image,0,sizeof(*image));
 }
-static int rsx_trophy_texture_upload(rsx_trophy_texture* image,ID3D12Device* device,ID3D12GraphicsCommandList* commands,
- const uint32_t* rgba,UINT w,UINT h,uint64_t generation){
- if(!rgba||!generation||!w||!h||w>1024||h>256)return 0;
+/* max_w/max_h: the largest image this owner may upload. */
+static int rsx_ui_texture_upload(rsx_trophy_texture* image,ID3D12Device* device,ID3D12GraphicsCommandList* commands,
+ const uint32_t* rgba,UINT w,UINT h,uint64_t generation,UINT max_w,UINT max_h){
+ if(!rgba||!generation||!w||!h||w>max_w||h>max_h)return 0;
  if(image->texture&&image->generation==generation)return 1;
  if(image->texture&&(image->width!=w||image->height!=h))rsx_trophy_texture_release(image);
  UINT pitch=(w*4+255)&~255u;
@@ -34,4 +35,8 @@ static int rsx_trophy_texture_upload(rsx_trophy_texture* image,ID3D12Device* dev
  D3D12_TEXTURE_COPY_LOCATION source={0},target={0};source.pResource=image->upload;source.Type=D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;source.PlacedFootprint.Footprint.Format=DXGI_FORMAT_R8G8B8A8_UNORM;source.PlacedFootprint.Footprint.Width=w;source.PlacedFootprint.Footprint.Height=h;source.PlacedFootprint.Footprint.Depth=1;source.PlacedFootprint.Footprint.RowPitch=pitch;
  target.pResource=image->texture;target.Type=D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;commands->lpVtbl->CopyTextureRegion(commands,&target,0,0,0,&source,0);
  barrier.Transition.StateBefore=D3D12_RESOURCE_STATE_COPY_DEST;barrier.Transition.StateAfter=D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;commands->lpVtbl->ResourceBarrier(commands,1,&barrier);image->generation=generation;return 1;
+}
+static int rsx_trophy_texture_upload(rsx_trophy_texture* image,ID3D12Device* device,ID3D12GraphicsCommandList* commands,
+ const uint32_t* rgba,UINT w,UINT h,uint64_t generation){
+ return rsx_ui_texture_upload(image,device,commands,rgba,w,h,generation,1024,256);
 }

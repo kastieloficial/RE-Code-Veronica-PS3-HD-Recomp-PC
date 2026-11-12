@@ -257,7 +257,7 @@ typedef struct {
 #define AA_SRV_BASE   (VTEX_SRV_BASE + MAX_DRAWS * 4)   /* anti-aliasing pass: 5 views */
 #define DISPLAY_SRV_BASE (AA_SRV_BASE + 8)   /* display pass: 5 views per frame slot */
 #define SPRITE_SRV    (DISPLAY_SRV_BASE + 5 * FRAME_COUNT)   /* the SRT's image atlas */
-#define SRV_HEAP_SIZE (SPRITE_SRV + 4)
+#define SRV_HEAP_SIZE (SPRITE_SRV + 3 + FRAME_COUNT)   /* + the shader screen's textures */
 
 /* Per-frame VP texture slot: a guest texture uploaded for this frame's VP
  * draws (re-uploaded every frame -- gcm/cube's plasma animates in guest
@@ -819,7 +819,9 @@ static void wait_for_gpu(void);
 static void srv_write(u32 heap_slot, ID3D12Resource* res, DXGI_FORMAT fmt, UINT mapping);
 #include "rsx_trophy_texture.h"
 static rsx_trophy_texture s_trophy_textures[FRAME_COUNT];
+static rsx_trophy_texture s_loading_textures[FRAME_COUNT];   /* the first-start shader screen */
 static QuadVb s_trophy_vbs;
+static QuadVb s_loading_vbs;
 static ID3D12PipelineState* s_spr_pso;
 static ID3D12Resource *s_spr_tex, *s_spr_up;
 static u64 s_spr_gen;
@@ -971,6 +973,28 @@ static void trophy_popup_draw(u32 fi,u32 w,u32 h,const float mvp[16]) {
  quad_vb_draw(fi,&s_trophy_vbs,0,1,mvp,s_spr_pso);
 }
 
+/* First-start shader screen (projects/code_veronica/cv_loading_screen.cpp):
+ * one full-window image while the shipped shader list builds. Returns 1 when
+ * it covers the window, so the corner note and the SRT stay hidden under it. */
+const rsx_ui_sprite* (*g_rsx_loading_hook)(uint32_t,uint32_t,const uint32_t**,uint32_t*,uint32_t*,uint64_t*);
+static int s_loading_screen_on;
+static void loading_screen_draw(u32 fi,u32 w,u32 h,const float mvp[16]) {
+ s_loading_screen_on=0;
+ if(!g_rsx_loading_hook)return;
+ const uint32_t* rgba=NULL;u32 aw=0,ah=0;u64 generation=0;
+ const rsx_ui_sprite* sp=g_rsx_loading_hook(w,h,&rgba,&aw,&ah,&generation);
+ if(!sp||!(sp->argb>>24)||!sprite_pso()||!rsx_ui_texture_upload(&s_loading_textures[fi],s_d3d.device,s_d3d.cmd_list,rgba,aw,ah,generation,2048,2048))return;
+ if(!quad_vb_reserve(fi,1,&s_loading_vbs))return;
+ UiVertex* vertices=(UiVertex*)s_loading_vbs.mapped[fi];static const unsigned order[6]={0,1,2,2,1,3};
+ for(unsigned k=0;k<6;k++){unsigned corner=order[k];UiVertex v={sp->x+((corner&2)?sp->w:0),sp->y+((corner&1)?sp->h:0),0,1,1,1,(sp->argb>>24)/255.f,(corner&2)?sp->u1:sp->u0,(corner&1)?sp->v1:sp->v0};vertices[k]=v;}
+ const u32 slot=SPRITE_SRV+3+fi;
+ srv_write(slot,s_loading_textures[fi].texture,DXGI_FORMAT_R8G8B8A8_UNORM,D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING);
+ ID3D12GraphicsCommandList* cl=s_d3d.cmd_list;D3D12_GPU_DESCRIPTOR_HANDLE handle;s_d3d.srv_heap->lpVtbl->GetGPUDescriptorHandleForHeapStart(s_d3d.srv_heap,&handle);handle.ptr+=(u64)slot*s_d3d.srv_inc;
+ cl->lpVtbl->SetDescriptorHeaps(cl,1,&s_d3d.srv_heap);cl->lpVtbl->SetGraphicsRootSignature(cl,s_d3d.root_signature);cl->lpVtbl->SetGraphicsRootDescriptorTable(cl,1,handle);
+ quad_vb_draw(fi,&s_loading_vbs,0,1,mvp,s_spr_pso);
+ s_loading_screen_on=(sp->argb>>24)>=250;
+}
+
 /* The game's UI batch: logical 640x480, centred at 4:3. */
 static void ui_batch_draw(u32 fi)
 {
@@ -1004,6 +1028,8 @@ static void perf_overlay_draw(u32 fi)
     if(s_qb_display) {w=s_qb_w;h=s_qb_h;}
     float mvp[16]={0};
     mvp[0]=2.f/(float)w;mvp[5]=-2.f/(float)h;mvp[10]=mvp[15]=1;mvp[12]=-1;mvp[13]=1;
+    loading_screen_draw(fi,w,h,mvp);
+    if(s_loading_screen_on){trophy_popup_draw(fi,w,h,mvp);return;}
     if(g_rsx_srt_hook) {
         const rsx_ui_quad* srt=g_rsx_srt_hook(w,h,&count);
         u32 ns=0,aw=0,ah=0;u64 gen=0;const uint32_t* atlas=NULL;
@@ -6638,6 +6664,9 @@ static void pl_tick(void)
         if (s_pl_seed_wait) s_pl_mode = 1;
     }
 }
+
+/* 1 while the game is held for the shipped list (the full shader screen). */
+int rsx_shader_preload_waiting(void) { return s_pl_started && s_pl_mode == 2 && s_pl_seed_wait && s_pl_threads_left > 0; }
 
 /* For the loading note (rsx_perf_overlay.c): 0 not started (or nothing to
  * load), 1 loading, 2 finished at *finished_ms (GetTickCount64). */
@@ -15191,6 +15220,8 @@ void rsx_d3d12_backend_shutdown(void)
         if(s_spr_vbs.vb[i])s_spr_vbs.vb[i]->lpVtbl->Release(s_spr_vbs.vb[i]);
         if(s_trophy_vbs.vb[i])s_trophy_vbs.vb[i]->lpVtbl->Release(s_trophy_vbs.vb[i]);
         rsx_trophy_texture_release(&s_trophy_textures[i]);
+        if(s_loading_vbs.vb[i])s_loading_vbs.vb[i]->lpVtbl->Release(s_loading_vbs.vb[i]);
+        rsx_trophy_texture_release(&s_loading_textures[i]);
     }
     if (s_d3d.depth_buffer) s_d3d.depth_buffer->lpVtbl->Release(s_d3d.depth_buffer);
     if (s_d3d.dsv_heap)     s_d3d.dsv_heap->lpVtbl->Release(s_d3d.dsv_heap);

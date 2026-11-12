@@ -526,6 +526,7 @@ extern "C" void cv_discord_start(const char* title_id);   /* cv_discord.cpp */
 extern "C" void rsx_d3d12_disable_forced_anisotropy(void);
 extern "C" void cv_modern_boot();
 extern "C" void cv_host_tuning_init(void);   /* cv_host_tuning.cpp */
+extern "C" void cv_loading_screen_init(void);   /* cv_loading_screen.cpp */
 int main(int argc, char** argv)
 {
     std::string eboot_path;
@@ -699,7 +700,8 @@ int main(int argc, char** argv)
     ppu_hle_init();          /* firmware import NID -> HLE handlers */
     ppu_sysprx_register();   /* boot-critical CRT */
 #ifdef _WIN32
-    cv_host_tuning_init();   /* CV_PIN, CV_PRIORITY */
+    cv_host_tuning_init();      /* CV_PIN, CV_PRIORITY */
+    cv_loading_screen_init();   /* the first-start shader screen */
 #endif
     ppu_fs_register();       /* cellFs over the game directory */
     ps3_sampler_start();     /* opt-in PS3_SAMPLE diagnostics */

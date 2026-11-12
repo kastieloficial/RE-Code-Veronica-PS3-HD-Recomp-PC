@@ -952,6 +952,13 @@ if(WIN32)
 endif()
 
 if(WIN32)
+ # First-start shader screen: Code: Veronica art and a Resident Evil style font, embedded.
+ configure_file(cv_loading_screen.rc.in "${CMAKE_CURRENT_BINARY_DIR}/cv_loading_screen.rc" @ONLY)
+ target_sources(MyGameRecomp PRIVATE cv_loading_screen.cpp "${CMAKE_CURRENT_BINARY_DIR}/cv_loading_screen.rc")
+ set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/cv_loading_screen.rc" PROPERTIES OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/loading/fundo.jpg;${CMAKE_CURRENT_SOURCE_DIR}/assets/loading/fonte-re.ttf")
+endif()
+
+if(WIN32)
  configure_file(cv_trophy_sound.rc.in "${CMAKE_CURRENT_BINARY_DIR}/cv_trophy_sound.rc" @ONLY)
  target_sources(MyGameRecomp PRIVATE cv_trophy_popup.cpp "${CMAKE_CURRENT_BINARY_DIR}/cv_trophy_sound.rc")
  set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/cv_trophy_sound.rc" PROPERTIES OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/trophy/Trofeu.wav")

@@ -1,0 +1,2 @@
+CV_LOADING_ART RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/assets/loading/fundo.jpg"
+CV_LOADING_FONT RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/assets/loading/fonte-re.ttf"

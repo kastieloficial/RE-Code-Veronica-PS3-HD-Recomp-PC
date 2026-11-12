@@ -3947,6 +3947,22 @@ void set_env_default(const char* k, const char* v) { if (!getenv(k)) _putenv_s(k
 void set_note_text_env()
 {
     set_env("SHADER_NOTE_TEXT", save_utf8(fs::path(std::wstring(T(S_SH_NOTE_LOADING)) + L"|" + T(S_SH_NOTE_LOADED))));
+    /* The first-start shader screen (cv_loading_screen.cpp): title|subtitle. */
+    { static const wchar_t* const screen[LANG_COUNT]={
+        L"COMPILANDO SHADERS|Só na primeira vez após instalar ou atualizar. O jogo começa assim que terminar.",
+        L"COMPILING SHADERS|Only on the first start after an install or update. The game starts when this is done.",
+        L"COMPILANDO SHADERS|Solo la primera vez tras instalar o actualizar. El juego empieza al terminar.",
+        L"シェーダーをコンパイル中|インストールまたは更新後の初回のみです。完了するとゲームが始まります。",
+        L"COMPILATION DES SHADERS|Uniquement au premier lancement après une installation ou une mise à jour. Le jeu démarre ensuite.",
+        L"SHADER WERDEN KOMPILIERT|Nur beim ersten Start nach Installation oder Update. Danach startet das Spiel.",
+        L"COMPILAZIONE SHADER|Solo al primo avvio dopo l'installazione o un aggiornamento. Il gioco parte al termine.",
+        L"KOMPILACJA SHADEROW|Tylko przy pierwszym uruchomieniu po instalacji lub aktualizacji. Gra ruszy po zakończeniu.",
+        L"SHADER DERLENIYOR|Yalnızca kurulum veya güncellemeden sonraki ilk açılışta. Bitince oyun başlar.",
+        L"جارٍ تجميع المظللات|فقط عند أول تشغيل بعد التثبيت أو التحديث. تبدأ اللعبة عند الانتهاء.",
+        L"正在编译着色器|仅在安装或更新后首次启动时进行。完成后游戏将开始。",
+        L"셰이더 컴파일 중|설치 또는 업데이트 후 처음 실행할 때만 진행됩니다. 완료되면 게임이 시작됩니다.",
+        L"КОМПИЛЯЦИЯ ШЕЙДЕРОВ|Только при первом запуске после установки или обновления. Игра начнётся по завершении."};
+      set_env("SHADER_SCREEN_TEXT", save_utf8(fs::path(std::wstring(screen[g_lang>=0&&g_lang<LANG_COUNT?g_lang:1])))); }
     set_env("SCREENSHOT_TEXT", save_utf8(fs::path(std::wstring(T(S_SHOT_SAVED)) + L"|" + T(S_SHOT_FAILED))));
 }
 
