@@ -1,7 +1,7 @@
 # Branch gow-melhorias (local, não publicado)
 
 Base: v1.5.3 (`325ae74`). Cada item tem seu commit e sua chave.
-`comparar-ab.cmd` abre o jogo com tudo desligado (A) ou tudo ligado (B).
+`comparar-A-normal.cmd` abre com tudo novo desligado; `comparar-B-melhorias.cmd`, com tudo ligado.
 
 | Item | Chave | Padrão |
 |---|---|---|
