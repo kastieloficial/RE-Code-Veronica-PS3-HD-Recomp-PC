@@ -13,6 +13,7 @@
 #include <time.h>
 #include "cellPad.h"
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -631,6 +632,125 @@ void cellPad_poll(void)
  * were fixed.) These used to be redeclared here with a 64-bit address
  * parameter, which conflicts with the header now that it is included. */
 
+/* CV_INPUT_METER=1: does every D-pad / START press reach the game?
+ * A thread reads XInput pad 0 every 2 ms on its own (the game's reads also
+ * poll the pad, so a tap between two of them is invisible to it) and logs
+ * each press: how long it was held and after how many ms the game first got
+ * it in a GetData packet, or MISSED if it was released before the game read
+ * the pad again. Every 5 s: game reads/s, packets/s and the longest gap
+ * between two reads. Lines go to input-log.txt (beside the game) and stderr. */
+#if PAD_BACKEND_XINPUT
+typedef struct { const char* name; WORD xi; u16 cell; } MeterBtn;   /* cell = DIGITAL2<<8 | DIGITAL1 */
+static const MeterBtn s_meter_btn[] = {
+    { "CIMA", XINPUT_GAMEPAD_DPAD_UP, 0x0010 }, { "BAIXO", XINPUT_GAMEPAD_DPAD_DOWN, 0x0040 },
+    { "ESQUERDA", XINPUT_GAMEPAD_DPAD_LEFT, 0x0080 }, { "DIREITA", XINPUT_GAMEPAD_DPAD_RIGHT, 0x0020 },
+    { "START", XINPUT_GAMEPAD_START, 0x0008 },
+};
+enum { METER_N = sizeof s_meter_btn / sizeof s_meter_btn[0] };
+static SRWLOCK s_meter_lock = SRWLOCK_INIT;
+static int s_meter_on = -1;
+static FILE* s_meter_f = NULL;
+static double s_meter_press_t[METER_N], s_meter_release_t[METER_N];
+static int s_meter_pending[METER_N];   /* pressed on the pad, not yet seen by the game */
+static unsigned s_meter_host_presses, s_meter_seen, s_meter_missed;
+static unsigned s_meter_reads, s_meter_packets; static double s_meter_last_read, s_meter_max_gap, s_meter_t_report;
+static u16 s_meter_last_guest;
+
+static double meter_ms(void)
+{
+    static LARGE_INTEGER f; LARGE_INTEGER c;
+    if (!f.QuadPart) QueryPerformanceFrequency(&f);
+    QueryPerformanceCounter(&c);
+    return (double)c.QuadPart * 1000.0 / (double)f.QuadPart;
+}
+static void meter_log(const char* fmt, ...)
+{
+    char line[256]; va_list ap; va_start(ap, fmt); vsnprintf(line, sizeof line, fmt, ap); va_end(ap);
+    fputs(line, stderr);
+    if (s_meter_f) { fputs(line, s_meter_f); fflush(s_meter_f); }
+}
+static DWORD WINAPI meter_thread(LPVOID arg)
+{
+    (void)arg;
+    WORD prev = 0;
+    for (;;) {
+        XINPUT_STATE st; memset(&st, 0, sizeof st);
+        const WORD b = XInputGetState(0, &st) == ERROR_SUCCESS ? st.Gamepad.wButtons : 0;
+        if (b != prev) {
+            const double now = meter_ms();
+            AcquireSRWLockExclusive(&s_meter_lock);
+            for (int i = 0; i < METER_N; i++) {
+                const WORD m = s_meter_btn[i].xi;
+                if ((b & m) && !(prev & m)) {
+                    if (s_meter_pending[i]) {   /* pressed again before the game saw the last one */
+                        s_meter_missed++;
+                        meter_log("[INPUT] %-8s PERDIDO (segurou %.0f ms; apertou de novo antes do jogo ler)%c",
+                                  s_meter_btn[i].name, s_meter_release_t[i] - s_meter_press_t[i], 10);
+                    }
+                    s_meter_press_t[i] = now; s_meter_release_t[i] = 0; s_meter_pending[i] = 1; s_meter_host_presses++;
+                } else if (!(b & m) && (prev & m)) s_meter_release_t[i] = now;
+            }
+            ReleaseSRWLockExclusive(&s_meter_lock);
+            prev = b;
+        }
+        Sleep(2);
+    }
+}
+static int meter_enabled(void)
+{
+    if (s_meter_on < 0) {
+        const char* e = getenv("CV_INPUT_METER");
+        s_meter_on = e && e[0] == '1';
+        if (s_meter_on) {
+            s_meter_f = fopen("input-log.txt", "a");
+            meter_log("[INPUT] medidor ligado: cada aperto do D-pad/START, quanto tempo ficou apertado e quando o jogo recebeu%c", 10);
+            HANDLE th = CreateThread(NULL, 0, meter_thread, NULL, 0, NULL);
+            if (th) { SetThreadPriority(th, THREAD_PRIORITY_ABOVE_NORMAL); CloseHandle(th); }
+        }
+    }
+    return s_meter_on;
+}
+/* Game side, port 0, the packet just built. */
+static void meter_guest(const CellPadData* d)
+{
+    const double now = meter_ms();
+    AcquireSRWLockExclusive(&s_meter_lock);
+    s_meter_reads++;
+    if (s_meter_last_read > 0 && now - s_meter_last_read > s_meter_max_gap) s_meter_max_gap = now - s_meter_last_read;
+    s_meter_last_read = now;
+    if (d->len > 0) {
+        s_meter_packets++;
+        const u16 g = (u16)((d->button[CELL_PAD_BTN_OFFSET_DIGITAL2] << 8) | (d->button[CELL_PAD_BTN_OFFSET_DIGITAL1] & 0xFF));
+        for (int i = 0; i < METER_N; i++) {
+            if (!s_meter_pending[i]) continue;
+            if (g & s_meter_btn[i].cell) {
+                s_meter_pending[i] = 0; s_meter_seen++;
+                const double held = s_meter_release_t[i] > 0 ? s_meter_release_t[i] - s_meter_press_t[i] : -1;
+                if (held >= 0) meter_log("[INPUT] %-8s ok: jogo recebeu %.0f ms depois do aperto (segurou %.0f ms)%c",
+                                         s_meter_btn[i].name, now - s_meter_press_t[i], held, 10);
+                else meter_log("[INPUT] %-8s ok: jogo recebeu %.0f ms depois do aperto (ainda apertado)%c",
+                               s_meter_btn[i].name, now - s_meter_press_t[i], 10);
+            } else if (s_meter_release_t[i] > 0 && now - s_meter_press_t[i] > 3.0) {
+                s_meter_pending[i] = 0; s_meter_missed++;
+                meter_log("[INPUT] %-8s PERDIDO: segurou %.0f ms e soltou antes de o jogo ler o controle%c",
+                          s_meter_btn[i].name, s_meter_release_t[i] - s_meter_press_t[i], 10);
+            }
+        }
+        s_meter_last_guest = g;
+    }
+    if (s_meter_t_report == 0) s_meter_t_report = now;
+    if (now - s_meter_t_report >= 5000.0) {
+        const double sec = (now - s_meter_t_report) / 1000.0;
+        if (s_meter_host_presses || s_meter_missed)
+            meter_log("[INPUT] resumo 5 s: apertos %u, jogo recebeu %u, perdidos %u | jogo leu o controle %.0f x/s (%.0f pacotes/s), maior intervalo %.0f ms%c",
+                      s_meter_host_presses, s_meter_seen, s_meter_missed, s_meter_reads / sec, s_meter_packets / sec, s_meter_max_gap, 10);
+        s_meter_host_presses = s_meter_seen = s_meter_missed = s_meter_reads = s_meter_packets = 0;
+        s_meter_max_gap = 0; s_meter_t_report = now;
+    }
+    ReleaseSRWLockExclusive(&s_meter_lock);
+}
+#endif
+
 s32 cellPadGetData(u32 port_no, CellPadData* data_guest)
 {
     { static int _once = 0;
@@ -960,6 +1080,9 @@ emit:
             else                        s_data_fresh[port_no] = 0;
         }
     }
+#if PAD_BACKEND_XINPUT
+    if (port_no == 0 && meter_enabled()) meter_guest(data);
+#endif
     {
         unsigned int ea = (unsigned int)(uintptr_t)data_guest;
         vm_write32((unsigned long long)ea + 0, (unsigned int)data->len);   /* len (s32) */
