@@ -9,6 +9,10 @@
 #include <stdarg.h>
 #include <stdio.h>
 
+/* Optional placement hook (CV_PIN, projects/code_veronica/cv_host_tuning.cpp):
+ * called with every named thread, so threads land on their own cores. */
+__declspec(selectany) void (*g_ps3_host_pin)(HANDLE, const char*) = 0;
+
 static inline void ps3_host_thread_name(HANDLE h, const char* fmt, ...)
 {
     typedef HRESULT (WINAPI *set_desc_fn)(HANDLE, PCWSTR);
@@ -19,12 +23,14 @@ static inline void ps3_host_thread_name(HANDLE h, const char* fmt, ...)
         fn = k ? (set_desc_fn)(void*)GetProcAddress(k, "SetThreadDescription") : NULL;
         looked = 1;
     }
-    if (!fn || !h) return;
+    if (!h) return;
     char s[96];
     va_list ap;
     va_start(ap, fmt);
     vsnprintf(s, sizeof s, fmt, ap);
     va_end(ap);
+    if (g_ps3_host_pin) g_ps3_host_pin(h, s);
+    if (!fn) return;
     wchar_t w[96];
     int i = 0;
     for (; s[i] && i < 95; i++) w[i] = (wchar_t)(unsigned char)s[i];

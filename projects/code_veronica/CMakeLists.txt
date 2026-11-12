@@ -305,6 +305,7 @@ endif()
 add_executable(${PROJECT_NAME}
     main.cpp
     $<$<PLATFORM_ID:Windows>:cpu_tier.cpp>
+    $<$<PLATFORM_ID:Windows>:cv_host_tuning.cpp>
     $<$<BOOL:${CV_CPU_UNIFIED}>:spu_cpu_select.c>
     $<$<PLATFORM_ID:Windows>:cv_discord.cpp>
     launcher.cpp
