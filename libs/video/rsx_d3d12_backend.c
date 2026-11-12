@@ -12591,6 +12591,18 @@ skip_dump_consider: ;
               fprintf(stderr, "[STATS] fps %.1f | worst %.1f ms | >=20ms %u | skip %ld | preload %s %d/%d%c",
                       n / (now - t0), worst * 1000.0, slow, (long)sk,
                       ps == 0 ? "off" : ps == 1 ? "loading" : "done", pd, pt, 10);
+              /* Also appended to stats-log.txt beside the game: run-log.txt is
+               * overwritten when the launcher comes back after the game closes. */
+              { static FILE* sf = NULL; static int opened = 0;
+                if (!opened) { opened = 1; sf = fopen("stats-log.txt", "a");
+                  if (sf) { SYSTEMTIME st; GetLocalTime(&st);
+                    fprintf(sf, "=== %04d-%02d-%02d %02d:%02d | %s | seed=%s pin=%s pace=%s pool=%s fg=%s%c",
+                            st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute,
+                            getenv("CV_SHADER_SEED") && getenv("CV_SHADER_SEED")[0] == '0' ? "A (normal)" : "B (melhorias)",
+                            getenv("CV_SHADER_SEED") ? getenv("CV_SHADER_SEED") : "-", getenv("CV_PIN") ? getenv("CV_PIN") : "-",
+                            getenv("CV_FRAME_PACE") ? getenv("CV_FRAME_PACE") : "-", getenv("SPU_TASK_POOL") ? getenv("SPU_TASK_POOL") : "-",
+                            getenv("CV_FSR_FRAME_GENERATION") ? getenv("CV_FSR_FRAME_GENERATION") : "-", 10); } }
+                if (sf) { fprintf(sf, "fps %.1f | worst %.1f ms | >=20ms %u | skip %ld%c", n / (now - t0), worst * 1000.0, slow, (long)sk, 10); fflush(sf); } }
               t0 = now; n = 0; slow = 0; worst = 0.0;
           }
       } }
