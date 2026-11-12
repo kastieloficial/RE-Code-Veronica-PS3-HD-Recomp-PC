@@ -233,8 +233,26 @@ static IAudioClient*        s_wasapi_client = NULL;
 static IAudioRenderClient*  s_wasapi_render = NULL;
 static HANDLE               s_wasapi_event  = NULL;
 static UINT32               s_wasapi_buf_frames = 0;
+static WCHAR                s_wasapi_dev_id[256];   /* endpoint the stream plays on */
+static volatile LONG        s_wasapi_lost = 0;      /* GetCurrentPadding failed: device gone */
 
 static void audio_backend_shutdown(void);
+
+/* Id of the current default render endpoint into out (empty on failure). */
+static void audio_default_id(WCHAR* out, size_t cap)
+{
+    out[0] = 0;
+    IMMDeviceEnumerator* en = NULL;
+    if (FAILED(CoCreateInstance(&CLSID_MMDeviceEnumerator, NULL, CLSCTX_ALL,
+                                &IID_IMMDeviceEnumerator, (void**)&en)) || !en) return;
+    IMMDevice* d = NULL;
+    if (SUCCEEDED(en->lpVtbl->GetDefaultAudioEndpoint(en, eRender, eConsole, &d)) && d) {
+        LPWSTR id = NULL;
+        if (SUCCEEDED(d->lpVtbl->GetId(d, &id)) && id) { wcsncpy(out, id, cap - 1); out[cap - 1] = 0; CoTaskMemFree(id); }
+        d->lpVtbl->Release(d);
+    }
+    en->lpVtbl->Release(en);
+}
 
 /* A failed Initialize is retried on a fresh client. Keep native stereo
  * 48 kHz float unchanged when supported; only unsupported formats request
@@ -315,6 +333,10 @@ static int audio_backend_init(void)
                    convert ? "converted" : "native", event ? "event" : "poll", hr);
         }
     }
+    { LPWSTR id = NULL; s_wasapi_dev_id[0] = 0;
+      if (SUCCEEDED(device->lpVtbl->GetId(device, &id)) && id) {
+          wcsncpy(s_wasapi_dev_id, id, 255); s_wasapi_dev_id[255] = 0; CoTaskMemFree(id); } }
+    InterlockedExchange(&s_wasapi_lost, 0);
     device->lpVtbl->Release(device);
     if (!initialized) {
         printf("[cellAudio] WASAPI Initialize failed: 0x%08lX\n", hr);
@@ -398,6 +420,7 @@ static int audio_backend_room(void)
          * change, sleep, ...): pace on the clock rather than spin. */
         static int _n = 0; if (_n++ < 4)
             fprintf(stderr, "[cellAudio] GetCurrentPadding failed 0x%08lX -- clock pacing%c", (unsigned long)hr, 10);
+        InterlockedExchange(&s_wasapi_lost, 1);
         return -1;
     }
     return (int)(s_wasapi_buf_frames - padding);
@@ -408,6 +431,31 @@ static void audio_backend_wait(void)
 {
     if (s_wasapi_event) WaitForSingleObject(s_wasapi_event, 10);
     else Sleep(1);
+}
+
+/* Mixer thread, about once a second: follow Windows when the default output
+ * changes (headphones -> speakers) or the device disappears, by reopening the
+ * stream on the new default. CV_AUDIO_FOLLOW_DEVICE=0 keeps the first device. */
+static void audio_backend_follow_default(void)
+{
+    static int on = -1; static ULONGLONG next = 0;
+    if (on < 0) { const char* e = getenv("CV_AUDIO_FOLLOW_DEVICE"); on = !(e && e[0] == '0'); }
+    if (!on) return;
+    const ULONGLONG now = GetTickCount64();
+    if (now < next) return;
+    next = now + 1000;
+    { static int com = 0; if (!com) { CoInitializeEx(NULL, COINIT_MULTITHREADED); com = 1; } }
+    if (!s_wasapi_lost && s_wasapi_client) {   /* cheap test only when nothing failed */
+        (void)audio_backend_room();
+    }
+    WCHAR id[256];
+    audio_default_id(id, 256);
+    if (!id[0]) return;
+    if (!s_wasapi_lost && s_wasapi_client && !wcscmp(id, s_wasapi_dev_id)) return;
+    fprintf(stderr, "[cellAudio] default output changed%s: reopening the stream%c",
+            s_wasapi_lost ? " (device lost)" : "", 10);
+    audio_backend_shutdown();
+    if (audio_backend_init() != 0) next = now + 3000;   /* try again later */
 }
 
 
@@ -691,6 +739,18 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
 {
     (void)arg;
     printf("[cellAudio] Mixing thread started\n");
+    /* CV_AUDIO_PRIO=1: the mixer as a multimedia (MMCSS "Pro Audio") thread at
+     * the highest priority, so a busy CPU does not starve the device. */
+    { const char* e = getenv("CV_AUDIO_PRIO");
+      if (e && e[0] == '1') {
+          SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+          typedef HANDLE (WINAPI *avset_fn)(LPCWSTR, LPDWORD);
+          HMODULE av = LoadLibraryA("avrt.dll");
+          avset_fn fn = av ? (avset_fn)(void*)GetProcAddress(av, "AvSetMmThreadCharacteristicsW") : NULL;
+          DWORD idx = 0;
+          const HANDLE h = fn ? fn(L"Pro Audio", &idx) : NULL;
+          fprintf(stderr, "[cellAudio] mixer priority highest%s%c", h ? ", MMCSS Pro Audio" : "", 10);
+      } }
 
     /* Pace to the device clock. The PS3 consumes one block every 5.33 ms;
      * the old Sleep(2)/Sleep(5) loop keyed on a queue depth the 1056-frame
@@ -727,6 +787,9 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
                     (long long)(blocks * CELL_AUDIO_BLOCK_SAMPLES * qf.QuadPart / CELL_AUDIO_SAMPLE_RATE);
         }
         blocks++;
+#if AUDIO_BACKEND_WASAPI
+        audio_backend_follow_default();
+#endif
         if (s_audio_paused) {
             memset(s_mix_buffer, 0, sizeof(float) * CELL_AUDIO_BLOCK_SAMPLES * 2);
             audio_backend_submit(s_mix_buffer, CELL_AUDIO_BLOCK_SAMPLES);
@@ -734,6 +797,23 @@ static unsigned __stdcall audio_mix_thread_func(void* arg)
         }
         /* Mix and submit one block */
         audio_mix_one_block();
+        /* CV_AUDIO_SMOOTH=1: a block that comes out silent right after sound
+         * (the guest mixer late by a block) fades the last block out over two
+         * blocks instead of cutting to silence, which clicks. */
+        { static int on = -1; static float last[CELL_AUDIO_BLOCK_SAMPLES * 2]; static int have = 0, tail = 0;
+          if (on < 0) { const char* e = getenv("CV_AUDIO_SMOOTH"); on = e && e[0] == '1'; }
+          if (on) {
+              const u32 n2 = CELL_AUDIO_BLOCK_SAMPLES * 2;
+              int nz = 0; for (u32 i = 0; i < n2; i++) if (s_mix_buffer[i] != 0.0f) { nz = 1; break; }
+              if (nz) { memcpy(last, s_mix_buffer, sizeof last); have = 1; tail = 0; }
+              else if (have && tail < 2) {
+                  for (u32 i = 0; i < n2; i++) {
+                      const float g = 1.0f - ((float)tail + (float)(i / 2) / CELL_AUDIO_BLOCK_SAMPLES) * 0.5f;
+                      s_mix_buffer[i] = last[i] * g;
+                  }
+                  if (++tail == 2) have = 0;
+              }
+          } }
         /* AUDIO_PEAK=1: report the mixed block's peak amplitude periodically so
          * "is any port producing sound" is answerable (LBP Bink movie audio). */
         { static int _ap = -1; if (_ap < 0) _ap = getenv("AUDIO_PEAK") ? 1 : 0;
