@@ -24,6 +24,7 @@ set "CV_AUDIO_PRIO=0"
 set "CV_AUDIO_SMOOTH=0"
 set "CV_NO_GHOSTING=0"
 set "CV_FG_GPU_CHECK=0"
+set "SPU_TASK_POOL=0"
 goto :abrir
 :ligado
 rem CV_PIN=auto so age em CPU de 6 nucleos (como no port do GoW).
@@ -34,6 +35,8 @@ set "CV_AUDIO_PRIO=1"
 set "CV_AUDIO_SMOOTH=1"
 set "CV_NO_GHOSTING=1"
 set "CV_FG_GPU_CHECK=1"
+rem Reaproveita threads das tarefas SPU (inicio 110 -> 15 us na tela inicial).
+set "SPU_TASK_POOL=1"
 :abrir
 start "" /D "%~dp0build-release\bin" "%~dp0build-release\bin\CodeVeronicaPort.exe"
 echo Launcher aberto. Esta janela fecha sozinha.
