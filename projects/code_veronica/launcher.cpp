@@ -2334,8 +2334,7 @@ void draw_controles(Graphics& gr, const Font& head, const Font& body, const Font
     srt_slider(gr, ID_RUMBLE, srt_slider_rect(ID_RUMBLE), g.s.rumble, 0, 200, body);
     text(gr, lx(design::RUMBLE_HINT), x, by + 34, fsm, C_DIM, StringAlignmentNear, W - SIDE - 64.0f, 20);
     text(gr, cv_axis_hints[g_lang], x, by + 64, fsm, C_DIM, StringAlignmentNear, W - SIDE - 64.0f, 52);
-    by += 134;
-    draw_enhancement(gr,x,by,W-SIDE-64.f,E_INPUT,body,fsm);
+    by += 134;   /* "Improved confirmation" follows 60 FPS on its own (launch env) */
 }
 
 /* Resolve the port independently of how a shortcut/editor launched it.
@@ -4141,7 +4140,10 @@ void start_game()
     }
 
     const bool smooth=s.fps==1&&!opt30_comparison();
-    for(int i=0;i<E_COUNT;i++)set_env(enhancement_env[i],(i==E_SMOOTH?smooth:s.enhancements[i])?"1":"0");
+    /* "Improved confirmation" is no longer a choice: it keeps short presses that
+     * fall between the 30 Hz logic ticks at 60 FPS (menus, inventory), and the
+     * game stays as it was at 30 FPS. */
+    for(int i=0;i<E_COUNT;i++)set_env(enhancement_env[i],(i==E_SMOOTH?smooth:i==E_INPUT?s.fps==1:s.enhancements[i])?"1":"0");
     set_env("CV_INVENTORY_UI_SMOOTH",smooth?"1":"0");
     set_env("CV_DEPTH_OF_FIELD",s.enhancements[E_DOF]?"0":"1");
     if(smooth){set_env("CV_POSE_REPLAY","0");set_env("CV_FIFO_NOTIFY","1");set_env("GCM_PARK_GRACE_MS","5000");set_env("SPU_TASK_POOL","1");}

@@ -19,9 +19,9 @@ python tools\merge_pipeline_lists.py --stats "%SEED%"
 echo.
 echo Pronto: %SEED% atualizado (anterior em %SEED%.bak).
 echo Para entregar: envie esse arquivo ou faca commit dele. Nao contem dados do jogo.
-pause
+if not "%CV_MERGE_NOPAUSE%"=="1" pause
 exit /b 0
 :erro
 echo Falhou ao juntar as listas; a lista embarcada nao foi alterada.
-pause
+if not "%CV_MERGE_NOPAUSE%"=="1" pause
 exit /b 1
