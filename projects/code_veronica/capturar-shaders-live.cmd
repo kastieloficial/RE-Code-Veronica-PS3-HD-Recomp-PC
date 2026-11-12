@@ -31,27 +31,36 @@ if !tent! geq 60 (
  echo  Abra o atalho de novo. Os shaders ja capturados continuam salvos.
  pause & exit /b 1
 )
-timeout /t 2 /nobreak >nul
+ping -n 3 127.0.0.1 >nul
 goto :aparece
 :jogando
 echo.
 echo  Launcher aberto. Jogue normalmente, pelo tempo que quiser.
 echo  Quando terminar, feche o jogo e depois o launcher.
 echo  NAO feche esta janela: ela junta os shaders no final.
+echo  Cada shader novo aparece abaixo assim que o jogo o grava.
 echo.
+call :contar
+set /a base=!conta!, antes=!conta!
 set /a seg=0
 :espera
 rem Duas checagens seguidas: o launcher reabre sozinho depois do jogo, e
 rem nesse instante pode nao haver nenhum processo por um momento.
 call :rodando
 if "!vivo!"=="1" goto :continua
-timeout /t 5 /nobreak >nul
+ping -n 6 127.0.0.1 >nul
 call :rodando
 if "!vivo!"=="1" goto :continua
 goto :fim
 :continua
-timeout /t 5 /nobreak >nul
+ping -n 6 127.0.0.1 >nul
 set /a seg+=5
+call :contar
+if !conta! gtr !antes! (
+ set /a novos=conta-antes, sessao=conta-base
+ echo  [!time:~0,8!] +!novos! shader^(s^) novo^(s^) capturado^(s^)  -  total nesta captura: !sessao!
+ set /a antes=conta
+)
 set /a resto=seg %% 60
 if !resto!==0 (set /a min=seg/60 & echo  ... jogando ha !min! min, aguardando o jogo e o launcher fecharem)
 goto :espera
@@ -64,6 +73,12 @@ explorer /select,"%~dp0shader-seed\pipelines-seed.list"
 echo.
 echo Lista pronta: %~dp0shader-seed\pipelines-seed.list
 pause
+exit /b 0
+
+:contar
+set "conta=!antes!"
+if not defined conta set "conta=0"
+for /f %%C in ('python "%~dp0tools\contar_shaders.py" "%~dp0shader-seed\pipelines-seed.list" "%~dp0build-release\bin\shader_cache" 2^>nul') do set "conta=%%C"
 exit /b 0
 
 :rodando
