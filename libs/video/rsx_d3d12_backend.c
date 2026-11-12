@@ -1816,6 +1816,40 @@ static HWND create_window(u32 width, u32 height, const char* title)
  * against 20 ms every refresh and 22 ms unsynced). VSYNC_INTERVAL=n forces
  * an interval for such comparisons. */
 void rsx_d3d12_set_vsync(int on) { InterlockedExchange(&s_vsync_live, on ? 1 : 0); }
+/* CV_FRAME_PACE=1: RTSS-style limiter for unsynced presents. A present that
+ * comes early waits for its slot (previous present + 1/CV_FRAME_PACE_HZ,
+ * default 60): a high-resolution waitable timer sleeps most of it, a short
+ * spin finishes it. A late present goes out at once and resets the slot, so
+ * it never adds latency to a slow frame. Off with vsync (the swap chain paces)
+ * and with FSR frame generation (FSR paces its own pairs). */
+static void frame_pace_wait(UINT interval)
+{
+    static int on = -1; static double period = 1.0 / 60.0, next = 0.0;
+    static HANDLE timer = NULL;
+    if (on < 0) {
+        const char* e = getenv("CV_FRAME_PACE"); on = e && e[0] == '1';
+        const char* hz = getenv("CV_FRAME_PACE_HZ");
+        if (hz && atof(hz) >= 20.0) period = 1.0 / atof(hz);
+        if (on) {
+            timer = CreateWaitableTimerExW(NULL, NULL, 0x00000002 /* CREATE_WAITABLE_TIMER_HIGH_RESOLUTION */, TIMER_ALL_ACCESS);
+            if (!timer) timer = CreateWaitableTimerW(NULL, TRUE, NULL);
+            fprintf(stderr, "[PACE] frame pacing on: %.2f ms slots%s%c", period * 1000.0, timer ? "" : " (no timer, Sleep)", 10);
+        }
+    }
+    if (!on || interval || s_fg_chain) { next = 0.0; return; }
+    double now = perf_now();
+    if (next > now && next - now < period * 1.5) {
+        const double left = next - now;
+        if (left > 0.0015) {
+            if (timer) {
+                LARGE_INTEGER due; due.QuadPart = -(LONGLONG)((left - 0.001) * 1e7);
+                if (SetWaitableTimer(timer, &due, 0, NULL, NULL, FALSE)) WaitForSingleObject(timer, 50);
+            } else Sleep((DWORD)((left - 0.0015) * 1000.0));
+        }
+        while ((now = perf_now()) < next) YieldProcessor();
+        next += period;
+    } else next = now + period;   /* late, or the first one: go now */
+}
 static UINT present_interval(void)
 {
     static int forced = -1;
@@ -12515,6 +12549,7 @@ skip_dump_consider: ;
     if (s_rb.present)
         { extern void ps3_ft(char); ps3_ft('R');
           const UINT _iv = present_interval();
+          frame_pace_wait(_iv);
           HRESULT _ph = _iv
               ? s_d3d.swap_chain->lpVtbl->Present(s_d3d.swap_chain, _iv, 0)
               : s_d3d.swap_chain->lpVtbl->Present(s_d3d.swap_chain, 0,
