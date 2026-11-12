@@ -6606,8 +6606,12 @@ static void pl_tick(void)
                 s_pl_nvs, s_pl_nfp, nt, s_pl_mode == 2 ? ", the game waits" : "", 10);
     }
     if (s_pl_mode == 2 && s_pl_threads_left > 0) {   /* hold the frame, a little at a time: the note stays drawn */
+        /* The shipped list holds each frame for half a second: the game is
+         * effectively paused on the note (two updates a second) instead of
+         * running slowly while it builds. */
+        const double hold = s_pl_seed_wait ? 0.5 : 0.1;
         const double t0 = perf_now();
-        while (s_pl_threads_left > 0 && perf_now() - t0 < 0.1) Sleep(2);
+        while (s_pl_threads_left > 0 && perf_now() - t0 < hold) Sleep(2);
     }
     pl_drain();
     if (s_pl_started && !s_pl_reported) {   /* progress, for support logs */
