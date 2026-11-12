@@ -1,7 +1,7 @@
 # Branch gow-melhorias (local, não publicado)
 
 Base: v1.5.3 (`325ae74`). Cada item tem seu commit e sua chave.
-`comparar-A-normal.cmd` abre com tudo novo desligado; `comparar-B-melhorias.cmd`, com tudo ligado.
+As chaves continuam valendo por variável de ambiente; os atalhos de comparação foram removidos.
 
 | Item | Chave | Padrão |
 |---|---|---|
