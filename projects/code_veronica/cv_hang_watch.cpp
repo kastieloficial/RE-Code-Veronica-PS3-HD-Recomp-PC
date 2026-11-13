@@ -265,6 +265,22 @@ DWORD WINAPI probe(LPVOID) {
             for (int k = 0; k < 3; k++) win.h[k] = std::move(win.h[k + 1]);
             win.h[3] = std::move(cur);
         }
+        if (tick == 11 || tick == 23) {   // mode dump: compare Battle Game against story runs
+            static FILE* md = fopen("timer-mode-dump.txt", "a");
+            if (md) {
+                fprintf(md, "RUN pid=%lu tick=%d room=%02X%02X%02X char=%u time=%u\n", GetCurrentProcessId(), tick + 1,
+                        vm_read8(CV_SRT_ROOM), vm_read8(CV_SRT_ROOM + 1), vm_read8(CV_SRT_ROOM + 2), vm_read8(CV_SRT_CHARACTER), vm_read32(CV_SRT_TIME));
+                struct Rng { uint32_t base, words; } rngs[3] = {
+                    {system, 0x2000 / 4}, {system ? system + 0x1A000 : 0, 0x2000 / 4}, {(CV_SRT_CHARACTER - 0x400) & ~3u, 0x1400 / 4}};
+                for (auto& r : rngs) {
+                    if (!r.base) continue;
+                    fprintf(md, "W %08X\n", r.base);
+                    for (uint32_t i = 0; i < r.words; i++) { uint32_t v = 0; if (safe_read(r.base + 4 * i, &v) && v) fprintf(md, "%X:%X ", i, v); }
+                    fprintf(md, "\n");
+                }
+                fflush(md);
+            }
+        }
         if (++tick < 5) continue;
         fprintf(f, "t=%d room=%02X%02X%02X status=%02X game_time=%u\n", tick, vm_read8(CV_SRT_ROOM), vm_read8(CV_SRT_ROOM + 1), vm_read8(CV_SRT_ROOM + 2), vm_read8(CV_SRT_STATUS), vm_read32(CV_SRT_TIME));
         int shown = 0;
