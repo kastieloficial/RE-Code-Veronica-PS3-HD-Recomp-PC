@@ -2,7 +2,7 @@
 
 ## English
 
-- **Shaders compiled before gameplay.** The package now ships a list of 5,503 shader combinations captured across the whole main campaign. On the first start, the game compiles them before play, on a loading screen with a progress bar, in the launcher's language. Later starts use the saved cache and open straight away. This removes most of the stutter the first time an area, enemy or effect appears. It works on any GPU; each machine compiles the list for its own driver.
+- **Shaders compiled before gameplay.** The package now ships a list of 5,517 shader combinations captured across the whole main campaign. On the first start, the game compiles them before play, on a loading screen with a progress bar, in the launcher's language. Later starts use the saved cache and open straight away. This removes most of the stutter the first time an area, enemy or effect appears. It works on any GPU; each machine compiles the list for its own driver.
 - **Audio follows the Windows output.** Switching from headphones to speakers (or any other default device) while the game is open now moves the game's sound with it.
 - **Better menu response at 60 FPS.** The input fix for menus and the inventory is now automatic with 60 FPS and off at 30 FPS. The separate option was removed from the launcher.
 - **Self-destruct countdowns visible at 60 FPS.** With native 60 FPS animation, the countdown timers (island, Antarctica and the final escape) disappeared, or showed only while aiming. The countdown is now drawn at the top of the screen during the whole sequence at 60 FPS. At 30 FPS the game draws its own, as before.
@@ -15,7 +15,7 @@ Downloads: extract the complete **CodeVeronica-PC-v1.5.4.zip** and open **Code V
 
 ## Português
 
-- **Shaders compilados antes de jogar.** O pacote agora traz uma lista de 5.503 combinações de shaders capturadas na campanha principal inteira. Na primeira abertura, o jogo compila todas antes de começar, numa tela de carregamento com barra de progresso, no idioma do launcher. Nas aberturas seguintes, ele usa o cache salvo e abre direto. Isso tira a maior parte das travadinhas da primeira vez que aparece uma área, um inimigo ou um efeito. Funciona em qualquer placa de vídeo: cada máquina compila a lista para o seu próprio driver.
+- **Shaders compilados antes de jogar.** O pacote agora traz uma lista de 5.517 combinações de shaders capturadas na campanha principal inteira. Na primeira abertura, o jogo compila todas antes de começar, numa tela de carregamento com barra de progresso, no idioma do launcher. Nas aberturas seguintes, ele usa o cache salvo e abre direto. Isso tira a maior parte das travadinhas da primeira vez que aparece uma área, um inimigo ou um efeito. Funciona em qualquer placa de vídeo: cada máquina compila a lista para o seu próprio driver.
 - **O áudio segue a saída do Windows.** Se você trocar do fone para a caixa de som (ou qualquer outro dispositivo padrão) com o jogo aberto, o som do jogo vai junto.
 - **Menus mais responsivos em 60 FPS.** A correção de entrada nos menus e no inventário agora liga sozinha em 60 FPS e fica desligada em 30 FPS. A opção separada saiu do launcher.
 - **Contagens de autodestruição visíveis em 60 FPS.** Com a animação nativa 60 FPS, os cronômetros de autodestruição (ilha, Antártida e fuga final) sumiam ou só apareciam mirando. Agora a contagem aparece no alto da tela durante toda a sequência, em 60 FPS. Em 30 FPS, o próprio jogo desenha o cronômetro, como antes.
