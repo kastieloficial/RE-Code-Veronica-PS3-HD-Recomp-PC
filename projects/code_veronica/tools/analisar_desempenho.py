@@ -12,8 +12,8 @@ import re, sys, statistics
 from pathlib import Path
 
 LINE = re.compile(r'\[PERF\] ([\d.]+) fps \| tex ([\d.]+)s \((\d+)%.*?\| vtx ([\d.]+)s \((\d+)%.*?\| render_frame ([\d.]+)s \((\d+)%\) \[gpuwait ([\d.]+)s (\d+)%\] \| prepass ([\d.]+)s \((\d+)%\).*?pso ([\d.]+)s (\d+)% (\d+) calls (\d+) MISS.*?\| guest ([\d.]+)s \((\d+)%\)')
-FIELDS = [('guest (game logic, CPU)', 17), ('render_frame (our renderer)', 7), ('  of which gpuwait', 9),
-          ('prepass (textures/pipelines)', 11), ('  of which pso (pipelines)', 13), ('texture uploads', 3), ('vertex work', 5)]
+FIELDS = [('guest (game logic, CPU)', 16), ('render_frame (our renderer)', 6), ('  of which gpuwait', 8),
+          ('prepass (textures/pipelines)', 10), ('  of which pso (pipelines)', 12), ('texture uploads', 2), ('vertex work', 4)]
 
 def main():
     files = [Path(a) for a in sys.argv[1:]] or [Path('run-log.txt'), Path('build-release/bin/run-log.txt')]
@@ -36,6 +36,6 @@ def main():
     print(f'\nPipeline cache misses: {int(miss)} in total' + ('  <- compiles during play (more shaders to capture)' if miss else ''))
     print('\nSlowest windows (fps, guest%, render%, prepass%):')
     for r in sorted(rows)[:5]:
-        print(f'  {r[0]:5.1f} fps   guest {r[17]:.0f}%   render {r[7]:.0f}%   prepass {r[11]:.0f}%   pso misses {int(r[14])}')
+        print(f'  {r[0]:5.1f} fps   guest {r[16]:.0f}%   render {r[6]:.0f}%   prepass {r[10]:.0f}%   pso misses {int(r[14])}')
 
 main()
