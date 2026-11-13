@@ -180,3 +180,6 @@ appearance_cache/
 # Local preserved research and source-cleanup verification.
 /archives/
 /source-verification/
+
+# PT-BR review: contains the original English game text; local only, never committed or packaged.
+/projects/code_veronica/localization/revisao-ptbr.md

@@ -90,11 +90,12 @@ def main():
         sources['requisitos/vc_redist.x64.exe']=redist
     if args.localization_dir and args.localization_dir.is_dir():
         for p in sorted(args.localization_dir.rglob('*')):
-            if p.is_file():sources['assets/'+p.relative_to(args.localization_dir).as_posix()]=p
+            # revisao-ptbr.md has the original English game text; correcoes-ptbr.tsv is a tool input.
+            if p.is_file() and p.name not in ('revisao-ptbr.md','correcoes-ptbr.tsv'):sources['assets/'+p.relative_to(args.localization_dir).as_posix()]=p
     seed=root/'shader-seed'
     if seed.is_dir():
         for p in sorted(seed.rglob('*')):
-            if p.is_file():sources['assets/shader-seed/'+p.relative_to(seed).as_posix()]=p
+            if p.is_file() and p.suffix=='.list':sources['assets/shader-seed/'+p.relative_to(seed).as_posix()]=p
     for n in sources:
         with sources[n].open('rb') as f:manifest['files'][n]=hashlib.file_digest(f,'sha256').hexdigest()
     try:
