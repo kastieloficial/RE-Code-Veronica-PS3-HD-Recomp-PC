@@ -13,6 +13,8 @@ rem Se o jogo travar (imagem parada ou tela preta longa), o proprio jogo grava
 rem o motivo em hang-log.txt e esta janela avisa.
 set "CV_STATS=1"
 set "CV_HANG_LOG=1"
+rem Estado da camera/jogador em smooth-log.txt (diagnostico do cronometro no 60 FPS).
+set "CV_SMOOTH_LOG=1"
 set "base="
 set "EXE=%~dp0build-release\bin\CodeVeronicaPort.exe"
 if not exist "%EXE%" (
