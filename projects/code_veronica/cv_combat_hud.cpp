@@ -346,9 +346,16 @@ std::wstring countdown_text(uint32_t frames){
 void countdown_quads(uint32_t width,uint32_t height,std::vector<rsx_ui_quad>& out){
  static std::vector<rsx_ui_quad> glyphs;static std::wstring drawn;static uint32_t drawn_h=0;
  const uint32_t system=vm_read32(CV_SCENE_SYSTEM);
- if(!system||!vm_read32(system+0x1B170)||!cv_native_scene_replacing())return;
- const uint32_t left=vm_read32(system+0x1B174);if(left>99u*3600u)return;
- const std::wstring text=countdown_text(left);
+ if(!system||!cv_native_scene_replacing())return;
+ // Self-destruct countdown, or the Battle Game clock: system+0x9C is 3 in the
+ // Battle Game (0 in the story) and its time is the play-time counter
+ // system+0x8B0, rising at 60 a second (checked against the game's own readout).
+ uint32_t shown=0;
+ if(vm_read32(system+0x1B170))shown=vm_read32(system+0x1B174);
+ else if(vm_read32(system+0x9C)==3)shown=vm_read32(system+0x8B0);
+ else return;
+ if(shown>99u*3600u)return;
+ const std::wstring text=countdown_text(shown);
  // Place and size as the game does at 1280x720: top centre, about 5% of the height.
  const float digit=std::max(12.f,height*0.052f);
  if(text!=drawn||drawn_h!=height){

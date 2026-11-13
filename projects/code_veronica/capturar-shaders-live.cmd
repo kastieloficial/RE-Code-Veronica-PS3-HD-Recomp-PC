@@ -17,8 +17,6 @@ rem Estado da camera/jogador em smooth-log.txt (diagnostico do cronometro no 60 
 set "CV_SMOOTH_LOG=1"
 rem Medidor de desempenho: onde vai o tempo de cada quadro (run-log.txt, resumo com analisar-desempenho.cmd).
 set "PERF=1"
-rem Procura onde o jogo guarda o tempo que sobe no Battle Game (timer-probe.txt).
-set "CV_TIMER_PROBE=1"
 set "base="
 set "EXE=%~dp0build-release\bin\CodeVeronicaPort.exe"
 if not exist "%EXE%" (
