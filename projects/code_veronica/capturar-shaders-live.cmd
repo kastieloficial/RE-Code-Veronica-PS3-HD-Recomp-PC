@@ -9,7 +9,10 @@ rem     shader-seed\pipelines-seed.list e abre a pasta com o arquivo marcado.
 rem Quem grava os shaders e o proprio jogo (shader_cache\...\pipelines.list,
 rem salvo a cada segundo). Se este atalho for fechado ou falhar, nada se
 rem perde: rode-o de novo (ou juntar-shaders-capturados.cmd) para juntar.
+rem Se o jogo travar (imagem parada ou tela preta longa), o proprio jogo grava
+rem o motivo em hang-log.txt e esta janela avisa.
 set "CV_STATS=1"
+set "CV_HANG_LOG=1"
 set "EXE=%~dp0build-release\bin\CodeVeronicaPort.exe"
 if not exist "%EXE%" (
  echo ERRO: nao achei %EXE%
@@ -22,7 +25,12 @@ echo  Abrindo o launcher...
 rem Espera o launcher aparecer (ate 2 minutos), sem prazo fixo curto.
 set /a tent=0
 :aparece
-call :rodando
+call :travou
+set "hsz=0"
+if exist "%~dp0hang-log.txt" for %%F in ("%~dp0hang-log.txt") do set "hsz=%%~zF"
+exit /b 0
+
+:rodando
 if "!vivo!"=="1" goto :jogando
 set /a tent+=1
 if !tent! geq 60 (
@@ -42,6 +50,8 @@ echo  Cada shader novo aparece abaixo assim que o jogo o grava.
 echo.
 call :contar
 set /a base=!conta!, antes=!conta!
+call :travou
+set "hang0=!hsz!"
 set /a seg=0
 :espera
 rem Duas checagens seguidas: o launcher reabre sozinho depois do jogo, e
@@ -60,6 +70,15 @@ if !conta! gtr !antes! (
  set /a novos=conta-antes, sessao=conta-base
  echo  [!time:~0,8!] +!novos! shader^(s^) novo^(s^) capturado^(s^)  -  total nesta captura: !sessao!
  set /a antes=conta
+)
+call :travou
+if not "!hsz!"=="!hang0!" (
+ echo.
+ echo  [!time:~0,8!] *** O JOGO PARECE TRAVADO. Motivo gravado em:
+ echo      %~dp0hang-log.txt
+ echo      Mande esse arquivo. Pode fechar o jogo; os shaders ja estao salvos.
+ echo.
+ set "hang0=!hsz!"
 )
 set /a resto=seg %% 60
 if !resto!==0 (set /a min=seg/60 & echo  ... jogando ha !min! min, aguardando o jogo e o launcher fecharem)

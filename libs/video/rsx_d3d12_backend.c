@@ -5156,6 +5156,7 @@ static void fp_job_free(FpJob* j)
 
 static volatile LONG s_fp_async_skips = 0, s_fp_async_built = 0;
 static volatile LONG s_fp_build_us = 0;  /* worker build time, for PERF */
+volatile LONG g_rsx_watch_frames = 0, g_rsx_watch_draws = 0;   /* read by the port's hang watchdog */
 static LONG s_stats_skips = 0;      /* same draws, for the CV_STATS line */
 static LONG s_fp_drawn_skips = 0;   /* draws really left out (render thread), for PERF */
 static volatile LONG s_fp_inflight = 0;
@@ -12703,6 +12704,7 @@ skip_dump_consider: ;
         static ULONGLONG s_tt0 = 0;
         static u64 s_tframes = 0;
         s_tframes++;
+        g_rsx_watch_frames++; g_rsx_watch_draws = (LONG)s_dbg_last_draws;   /* cv_hang_watch.cpp */
         ULONGLONG tnow = GetTickCount64();
         if (s_tt0 == 0) s_tt0 = tnow;
         if (tnow - s_tt0 >= 1000 && s_d3d.hwnd) {
