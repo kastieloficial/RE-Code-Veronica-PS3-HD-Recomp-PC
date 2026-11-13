@@ -1,9 +1,12 @@
 """Count captured pipelines that the shipped list does not have yet.
 
-  python contar_shaders.py SEED CACHE_DIR
+  python contar_shaders.py SEED CACHE_DIR [CACHE_DIR ...]
 
 Prints one number: distinct fragment pipelines in CACHE_DIR/*/pipelines.list
-(the game's own recordings) whose identity is not in SEED. Used by
+(the game's own recordings) whose identity is not in SEED. The project's own
+shader_cache (beside shader-seed/) is always scanned too: the launcher starts
+the game with projects/code_veronica as its working folder, so that is where
+a game opened through the launcher records. Used by
 capturar-shaders-live.cmd to show new shaders as they are captured. Reads
 only intact records, so a list being written at the same moment is fine.
 """
@@ -30,10 +33,15 @@ def fp_ids(path: Path):
     return ids
 
 def main():
-    seed = fp_ids(Path(sys.argv[1]))
-    found = set()
-    for p in Path(sys.argv[2]).glob('*/pipelines.list'):
-        found |= fp_ids(p)
+    seed_path = Path(sys.argv[1])
+    seed = fp_ids(seed_path)
+    dirs = [Path(a) for a in sys.argv[2:]] + [seed_path.resolve().parent.parent / 'shader_cache']
+    found, seen = set(), set()
+    for d in dirs:
+        for p in d.glob('*/pipelines.list'):
+            r = p.resolve()
+            if r not in seen:
+                seen.add(r); found |= fp_ids(p)
     print(len(found - seed))
 
 if __name__ == '__main__':

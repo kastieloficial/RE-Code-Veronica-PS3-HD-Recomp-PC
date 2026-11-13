@@ -1,11 +1,14 @@
 @echo off
 setlocal enabledelayedexpansion
 cd /d "%~dp0"
-rem Junta todas as listas capturadas (build-release\bin\shader_cache\*\pipelines.list
+rem Junta todas as listas capturadas (shader_cache\*\pipelines.list desta pasta, build-release\bin\shader_cache\*\pipelines.list
 rem e as de qualquer pasta passada como argumento) com a lista embarcada atual
 rem em shader-seed\pipelines-seed.list. Guarda a anterior como .bak.
 set "SEED=shader-seed\pipelines-seed.list"
 set "LISTS=%SEED%"
+rem The launcher runs the game from this folder, so its recordings land in
+rem shader_cache\ here; a game started straight from bin\ records there.
+for /d %%D in ("shader_cache\*") do if exist "%%D\pipelines.list" set "LISTS=!LISTS! "%%D\pipelines.list""
 for /d %%D in ("build-release\bin\shader_cache\*") do if exist "%%D\pipelines.list" set "LISTS=!LISTS! "%%D\pipelines.list""
 for %%A in (%*) do (
  if exist "%%~A\pipelines.list" set "LISTS=!LISTS! "%%~A\pipelines.list""
