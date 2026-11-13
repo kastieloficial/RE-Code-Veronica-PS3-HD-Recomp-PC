@@ -289,6 +289,7 @@ struct Settings {
     bool battle_unlocked=false;
     bool film_filter=true;
     bool dynamic_shadows=true;
+    bool no_letterbox=false;   /* CV_NO_LETTERBOX: no black bars in the 3D cutscenes */
     bool combat_hud=false;
     bool manual_reload=false;cv_quick::Config quick;
     int reload_key='R',reload_button=1;
@@ -621,6 +622,7 @@ Settings load_settings()
     s.trophy_notifications=_wtoi(ini_get(L"trofeus",L"notificacoes",L"1").c_str())!=0;
     s.dynamic_shadows=_wtoi(ini_get(L"tela",L"sombras_dinamicas",L"1").c_str())!=0;
     s.film_filter=_wtoi(ini_get(L"tela",L"filtro_filme",L"1").c_str())!=0;
+    s.no_letterbox=_wtoi(ini_get(L"tela",L"sem_faixas_cutscene",L"0").c_str())!=0;
     s.battle_unlocked=_wtoi(ini_get(L"extras",L"battle_game",L"0").c_str())!=0;
     s.focus_pause=_wtoi(ini_get(L"jogo",L"pausar_sem_foco",L"1").c_str())!=0;
     s.check_updates=_wtoi(ini_get(L"launcher",L"procurar_atualizacoes",L"1").c_str())!=0;
@@ -719,6 +721,7 @@ void save_settings(const Settings& s)
     ini_set(L"extras",L"battle_game",s.battle_unlocked?L"1":L"0");
     ini_set(L"tela",L"filtro_filme",s.film_filter?L"1":L"0");
     ini_set(L"tela",L"sombras_dinamicas",s.dynamic_shadows?L"1":L"0");
+    ini_set(L"tela",L"sem_faixas_cutscene",s.no_letterbox?L"1":L"0");
     ini_set(L"trofeus",L"posicao",std::to_wstring(s.trophy_corner));
     ini_set(L"trofeus",L"registrar",s.trophies?L"1":L"0");
     ini_set(L"trofeus",L"notificacoes",s.trophy_notifications?L"1":L"0");
@@ -938,7 +941,7 @@ UI g;
 /* ids */
 enum {
     ID_NAV = 100,               /* + page */
-    ID_DD_MODE = 200, ID_DD_RES = 201, ID_DD_AA = 202, ID_DD_LANG = 203, ID_DD_FPS = 204, ID_DD_SHARP = 206, ID_DD_POSE_DEVICE = 207, ID_GRAPHICS_FRAME_GEN = 208, ID_GRAPHICS_VSYNC = 209, ID_GRAPHICS_FILM = 210, ID_DD_GAME_TEXT = 211, ID_GRAPHICS_SHADOWS=212, ID_DD_COMBAT_HUD=213, ID_DD_MANUAL_RELOAD=214, ID_DD_ORIGINAL_LANGUAGE=215, ID_GRAPHICS_SMOOTH=216, ID_GRAPHICS_DOF=217, ID_DD_ITEM = 300,  /* + item index */
+    ID_DD_MODE = 200, ID_DD_RES = 201, ID_DD_AA = 202, ID_DD_LANG = 203, ID_DD_FPS = 204, ID_DD_SHARP = 206, ID_DD_POSE_DEVICE = 207, ID_GRAPHICS_FRAME_GEN = 208, ID_GRAPHICS_VSYNC = 209, ID_GRAPHICS_FILM = 210, ID_DD_GAME_TEXT = 211, ID_GRAPHICS_SHADOWS=212, ID_DD_COMBAT_HUD=213, ID_DD_MANUAL_RELOAD=214, ID_DD_ORIGINAL_LANGUAGE=215, ID_GRAPHICS_SMOOTH=216, ID_GRAPHICS_DOF=217, ID_GRAPHICS_LETTERBOX=218, ID_DD_ITEM = 300,  /* + item index */
     ID_DD_UP = 390, ID_DD_DOWN = 391,
     ID_PLAY = 400, ID_RESUME, ID_QUIT,
     ID_GAME_BROWSE = 500, ID_GAME_OPEN, ID_RAP_BROWSE, ID_RAP_OPEN, ID_SAVE_BROWSE, ID_SAVE_OPEN, ID_SAVE_DEFAULT,
@@ -1721,6 +1724,8 @@ void draw_inicio(Graphics& gr,const Font& head,const Font& body,const Font&,cons
  toggle(0,3,cv_enhanced_text::get(g_lang,cv_enhanced_text::DynamicShadows),g.s.dynamic_shadows,ID_GRAPHICS_SHADOWS);
  setting(1,0,T(S_AA),aa_name(g.s.aa),ID_DD_AA);setting(1,1,T(S_SHARPNESS),sharp_name(g.s.sharpness/10),ID_DD_SHARP);
  toggle(1,2,enhancement_text(g_lang,E_DOF,false),!g.s.enhancements[E_DOF],ID_GRAPHICS_DOF,!g.running);
+ { static const wchar_t* const bars[LANG_COUNT]={L"Remover faixas pretas das cutscenes",L"Remove cutscene black bars",L"Quitar franjas negras de las escenas",L"ムービーの黒帯を消す",L"Retirer les bandes noires des cinématiques",L"Schwarze Balken in Zwischensequenzen entfernen",L"Rimuovi le bande nere dei filmati",L"Usuń czarne pasy w przerywnikach",L"Ara sahnelerdeki siyah bantları kaldır",L"إزالة الأشرطة السوداء من المشاهد",L"移除过场动画黑边",L"컷신 검은 띠 제거",L"Убрать чёрные полосы в роликах"};
+   toggle(1,3,bars[g_lang>=0&&g_lang<LANG_COUNT?g_lang:1],g.s.no_letterbox,ID_GRAPHICS_LETTERBOX,!g.running); }
  setting(2,0,T(S_FRAME_LIMIT),fps_name(g.s.fps),g.running||opt30_comparison()?-1:ID_DD_FPS,!g.running&&!opt30_comparison());
  if((g.s.fps==1||pose_device_override()>=0)&&!opt30_comparison())toggle(2,1,std::wstring(T(S_FRAME_GEN))+L" (FSR 3.1)",frame_generation_allowed()&&g.s.frame_generation,ID_GRAPHICS_FRAME_GEN,!g.running&&frame_generation_allowed());
  /* VSync switches live, except in a session running frame generation (its swapchain paces itself). */
@@ -3473,6 +3478,7 @@ void click(int id)
     }
     else if(id==ID_GRAPHICS_FILM){g.s.film_filter=!g.s.film_filter;changed();}
     else if(id==ID_GRAPHICS_SHADOWS){g.s.dynamic_shadows=!g.s.dynamic_shadows;changed();}
+    else if(id==ID_GRAPHICS_LETTERBOX){g.s.no_letterbox=!g.s.no_letterbox;changed();}
     else if(id==ID_GRAPHICS_DOF&&!g.running){g.s.enhancements[E_DOF]=!g.s.enhancements[E_DOF];changed();}
     else if(id==ID_GRAPHICS_FRAME_GEN&&!g.running&&frame_generation_allowed()){g.s.frame_generation=!g.s.frame_generation;if(g.s.frame_generation)g.s.vsync=0;changed();}
     else if(id==ID_GRAPHICS_VSYNC&&!(g.running&&g.s.frame_generation&&frame_generation_allowed())){g.s.vsync=!g.s.vsync;if(g.s.vsync&&!g.running)g.s.frame_generation=0;changed();}
@@ -4161,6 +4167,7 @@ void start_game()
      * game stays as it was at 30 FPS. */
     for(int i=0;i<E_COUNT;i++)set_env(enhancement_env[i],(i==E_SMOOTH?smooth:i==E_INPUT?s.fps==1:s.enhancements[i])?"1":"0");
     set_env("CV_INVENTORY_UI_SMOOTH",smooth?"1":"0");
+    set_env("CV_NO_LETTERBOX",s.no_letterbox?"1":"0");
     set_env("CV_DEPTH_OF_FIELD",s.enhancements[E_DOF]?"0":"1");
     if(smooth){set_env("CV_POSE_REPLAY","0");set_env("CV_FIFO_NOTIFY","1");set_env("GCM_PARK_GRACE_MS","5000");set_env("SPU_TASK_POOL","1");}
     const int system_language=cv_original_language::system_language(s.original_language,CV_TITLE_ID,s.game_text_ptbr);

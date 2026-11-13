@@ -1022,6 +1022,7 @@ static void ui_batch_draw(u32 fi)
 const rsx_ui_quad* (*g_rsx_srt_hook)(uint32_t,uint32_t,uint32_t*);
 /* The images that go with the quads g_rsx_srt_hook just returned. */
 const rsx_ui_sprite* (*g_rsx_srt_sprites_hook)(uint32_t*,const uint32_t**,uint32_t*,uint32_t*,uint64_t*);
+static int cv_no_letterbox(void) { static int on=-1; if(on<0){const char* e=getenv("CV_NO_LETTERBOX");on=e&&e[0]=='1';} return on; }
 static void perf_overlay_draw(u32 fi)
 {
     u32 w=rs_dim(s_d3d.width,s_rs),h=rs_dim(s_d3d.height,s_rs),count=0;
@@ -11760,6 +11761,24 @@ static void render_frame_impl(void)
                     static int reported=0;
                     if(!reported){reported=1;fprintf(stderr,"[DOF] depth-of-field composite disabled; sharp scene preserved\n");}
                     continue;
+                }
+                /* CV_NO_LETTERBOX=1: the 3D cutscenes' black bars. The game draws
+                 * them as two solid quads (12 vertices) with a one-instruction
+                 * colour program right before the subtitle text, only while a
+                 * line is shown. Leaving that draw out keeps the picture whole. */
+                if(dr->is_vp&&!dr->is_clear&&!dr->is_copy&&dr->vertex_count==12&&dr->fp_bytes>=16&&cv_no_letterbox()) {
+                    static const u8 bars[16]={0x9E,0x81,0x01,0x40,0xC8,0x01,0x1C,0x9D,0xC8,0x00,0x00,0x01,0xC8,0x00,0x3F,0xE1};
+                    const u8* code=fp_snap_ptr(dr);
+                    if(code&&!memcmp(code,bars,16)) {
+                        static int reported=0;
+                        if(!reported){reported=1;fprintf(stderr,"[LETTERBOX] cutscene bars removed%c",10);}
+                        continue;
+                    }
+                    if(code&&dr->fp_bytes==16) {   /* for checking: other 12-vertex one-line programs */
+                        static int shown=0;
+                        if(shown<4){shown++;fprintf(stderr,"[LETTERBOX] not bars: %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%c",
+                            code[0],code[1],code[2],code[3],code[4],code[5],code[6],code[7],code[8],code[9],code[10],code[11],code[12],code[13],code[14],code[15],10);}
+                    }
                 }
                 /* Per-draw pipeline: prefer the guest's own compiled FP; fall
                  * back to the hardcoded atlas/colour PS pair. */
