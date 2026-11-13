@@ -7,3 +7,5 @@ The `.cvp` files contain bounded COPY/literal differences, not complete room arc
 Build the distribution, then run `tools/empacotar_release.py --distribution --version v1.1.7`. The localization directory is included automatically. Keep the root entry point beside `bin/` and `assets/`.
 
 Offline regression: `code_veronica_translation_patch_tests <original-title-folders> <localization-directory> <reference-translated-archives>` verifies all 410 patches, corruption rejection and cache reconstruction. The reference files are test fixtures generated locally from the user's game, not distributed.
+
+Review and corrections: `tools/traducao_ptbr.py extrair --jogo <dev_hdd0/game>` writes `revisao-ptbr.md` (every translated text beside the English original). `tools/traducao_ptbr.py aplicar --jogo <dev_hdd0/game>` applies `correcoes-ptbr.tsv` to EU and US and regenerates the `.cvp` patches and `sysmes.msb` (it can run again safely). `tools/traducao_ptbr.py referencias` writes the test fixtures to a temporary folder.

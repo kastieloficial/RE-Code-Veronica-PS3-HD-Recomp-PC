@@ -1,0 +1,26 @@
+# PT-BR corrections, applied to EU and US by: python tools/traducao_ptbr.py aplicar --jogo <dev_hdd0/game>
+# file#resource<TAB>message<TAB>current text (exact notation)<TAB>new text. See tools/traducao_ptbr.py.
+rdx_lnk/rm_0000.arc#11	25	Vamo lá,	Vamos lá,
+rdx_lnk/rm_0000.arc#11	26	Eu não sei, talvez pode ter sido	Não sei, talvez tenha sido
+rdx_lnk/rm_0000.arc#11	29	sair desse|	sair deste|
+rdx_lnk/rm_1020.arc#12	49	o vírus T{ff02:004b}	o T-Virus{ff02:004b}
+rdx_lnk/rm_3120.arc#12	11	ALBINOIDE	ALBINOID
+rdx_lnk/rm_3120.arc#12	12	do vírus T nos	do T-Virus nos
+rdx_lnk/rm_3120.arc#12	14	do Albinoide se	do Albinoid se
+rdx_lnk/rm_4040.arc#11	11	fita de tinta.{ffff}	fita de tinta.{ffff}Initiating finalcountdown.29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0. 
+rdx_lnk/rm_6090.arc#11	21	Há um {ff03:27}.	Há {ff03:27} aqui.
+rdx_lnk/rm_7220.arc#11	13	Ajudei ela a fugir.	Eu a ajudei a fugir.
+rdx_lnk/rm_7221.arc#11	13	Ajudei ela a fugir.	Eu a ajudei a fugir.
+rdx_lnk/rm_8040.arc#10	11	fita de tinta.{ffff}	fita de tinta.{ffff}Initiating finalcountdown.29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0. 
+rdx_lnk/rm_9190.arc#10	22	parece ter|morrido.	parece ter|perecido.
+rdx_lnk/rm_9350.arc#9	11	o vírus T-Alexia|	o vírus T-Veronica|
+sysmes.msb#0	37	Granadas B.O.W.	Granadas anti-B.O.W.
+sysmes.msb#1	120	Parecem ser parte|	Devem fazer parte|
+sysmes.msb#1	426	Alexia realizou o experimento|em um corpo humano que|	Alexia realizou em um corpo|humano o experimento que|
+rdx_lnk/rm_0000.arc#11	49	Nós a capturamos invadindo nosso|laboratório em Paris.{ff02:005f}{fe08}Há dez dias. Ela buscava o irmão|desaparecido, Chris Redfield,{ff02:0096}	Nós a pegamos invadindo nosso|laboratório em Paris há dez dias.{ff02:005f}{fe08}Ela buscava o irmão desaparecido,|Chris Redfield,{ff02:0096}
+rdx_lnk/rm_2030.arc#12	10	Então, querido irmão! É só uma{ff02:0046}{fe08}garotinha. Por que está	O que houve, querido irmão?{ff02:0046}{fe08}É só uma garotinha. Por que está
+rdx_lnk/rm_2030.arc#12	17	Nada, achei... Devo estar{ff02:0069}{fe08}{ff02:000f}{fe08}imaginando coisas. Vamos, irmão.	Nada... Devo estar imaginando|coisas.{ff02:0069}{fe08}{ff02:000f}{fe08}Vamos, irmão.
+rdx_lnk/rm_3100.arc#12	12	Hã? Mas estão{ff02:005a}{fe08}vazias! Que golpe!	Hã? Mas estão vazias!{ff02:005a}{fe08}Que golpe!
+rdx_lnk/rm_3150.arc#11	2	Tente me divertir. Não me|decepcione{ff02:0064}{fe08}morrendo tão depressa.	Tente me divertir.{ff02:0064}{fe08}Não me decepcione morrendo|tão depressa.
+rdx_lnk/rm_7220.arc#11	6	ninguém|vivo{ff02:0064}{fe08}nesta ilha. Quem é você?	ninguém|vivo nesta ilha.{ff02:0064}{fe08}Quem é você?
+rdx_lnk/rm_7221.arc#11	6	ninguém|vivo{ff02:0064}{fe08}nesta ilha. Quem é você?	ninguém|vivo nesta ilha.{ff02:0064}{fe08}Quem é você?
