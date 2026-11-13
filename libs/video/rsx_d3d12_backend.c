@@ -1023,29 +1023,36 @@ const rsx_ui_quad* (*g_rsx_srt_hook)(uint32_t,uint32_t,uint32_t*);
 /* The images that go with the quads g_rsx_srt_hook just returned. */
 const rsx_ui_sprite* (*g_rsx_srt_sprites_hook)(uint32_t*,const uint32_t**,uint32_t*,uint32_t*,uint64_t*);
 /* The 3D cutscenes' black bars (CV_NO_LETTERBOX): the game's solid colour
- * program (one instruction, output = interpolated colour), blended, on a
- * full-size target, drawn either as one 12-vertex draw (both bars) or as two
- * 6-vertex draws back to back (top, then bottom; the first and last frames
- * of a line and the start of a scene). A lone 6-vertex quad with the same
- * program -- a full-screen fade -- is left alone. */
-static int letterbox_program(const D3D12DrawRecord* d)
+ * program (one instruction, output = interpolated colour), blended, drawn as
+ * one 12-vertex draw (both bars) or two 6-vertex draws (top, then bottom).
+ * The same program also fills the dark panels of the status/menu screens and
+ * can fill a fade, so the draw counts as a bar only by its shape: every quad
+ * (6 vertices, in screen pixels in attribute 0) spans the full width, touches
+ * the top or the bottom edge and is at most a quarter of the height high
+ * (F12 captures: bars -80..1360 x 0..72; a status panel 250..778 x 198..474). */
+static int letterbox_bar(const D3D12DrawRecord* d,u32 parity)
 {
     static const u8 bars[16]={0x9E,0x81,0x01,0x40,0xC8,0x01,0x1C,0x9D,0xC8,0x00,0x00,0x01,0xC8,0x00,0x3F,0xE1};
-    if(!d->is_vp||d->is_clear||d->is_copy||d->fp_bytes!=16||!d->blend_key||d->rt_w<640)return 0;
+    if(!d->is_vp||d->is_clear||d->is_copy||d->fp_bytes!=16||!d->blend_key)return 0;
+    if(d->vertex_count!=6&&d->vertex_count!=12)return 0;
+    if(d->vb_byte_offset%256||!s_d3d.vp_vb_mapped)return 0;
     const u8* code=fp_snap_ptr(d);
-    return code&&!memcmp(code,bars,16);
-}
-static int letterbox_bar(const D3D12DrawRecord* d,const D3D12DrawRecord* base,u32 count)
-{
-    if(d->vertex_count!=12&&d->vertex_count!=6)return 0;
-    if(!letterbox_program(d))return 0;
-    if(d->vertex_count==12)return 1;
-    const ptrdiff_t i=d-base;
-    if(i<0||(u32)i>=count)return 0;
-    const D3D12DrawRecord* n=(u32)i+1<count?d+1:NULL;
-    const D3D12DrawRecord* p=i>0?d-1:NULL;
-    return (n&&n->vertex_count==6&&n->rt_off==d->rt_off&&letterbox_program(n))||
-           (p&&p->vertex_count==6&&p->rt_off==d->rt_off&&letterbox_program(p));
+    if(!code||memcmp(code,bars,16))return 0;
+    const float W=(float)(d->rt_w?d->rt_w:1280),H=(float)(d->rt_h?d->rt_h:720);
+    for(u32 q=0;q<d->vertex_count;q+=6) {
+        float x0=1e9f,x1=-1e9f,y0=1e9f,y1=-1e9f;
+        for(u32 v=q;v<q+6;v++) {
+            float at[16][4];const float* a;
+            if(s_vf_mapped){vf_capture_vertex(parity,d->vb_byte_offset/256+v,at);a=at[0];}
+            else a=(const float*)((const u8*)s_d3d.vp_vb_mapped+((u64)parity*MAX_VERTICES*256u)+d->vb_byte_offset+(u64)v*256u);
+            if(!(a[0]==a[0])||!(a[1]==a[1]))return 0;
+            if(a[0]<x0)x0=a[0];if(a[0]>x1)x1=a[0];if(a[1]<y0)y0=a[1];if(a[1]>y1)y1=a[1];
+        }
+        if(x0>1.f||x1<W-1.f)return 0;                 /* not across the whole width */
+        if(y1-y0>H*0.25f)return 0;                    /* too tall: a panel or a fade */
+        if(y0>1.f&&y1<H-1.f)return 0;                 /* touches neither edge */
+    }
+    return 1;
 }
 static int cv_no_letterbox(void) { static int on=-1; if(on<0){const char* e=getenv("CV_NO_LETTERBOX");on=e&&e[0]=='1';} return on; }
 static void perf_overlay_draw(u32 fi)
@@ -11791,7 +11798,7 @@ static void render_frame_impl(void)
                  * them with a one-instruction colour program right before the
                  * subtitle text, only while a line is shown (letterbox_bar).
                  * Leaving those draws out keeps the picture whole. */
-                if(cv_no_letterbox()&&letterbox_bar(dr,s_rb.draws,s_rb.count)) {
+                if(cv_no_letterbox()&&letterbox_bar(dr,(u32)s_rb.parity)) {
                     static int reported=0;
                     if(!reported){reported=1;fprintf(stderr,"[LETTERBOX] cutscene bars removed%c",10);}
                     continue;
