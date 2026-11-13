@@ -15,6 +15,7 @@
  * CV_HANG_LOG=0 disables it. The file is written in the working folder
  * (projects/code_veronica when started by the launcher), appended to. */
 #ifdef _WIN32
+#define NOMINMAX
 #include <windows.h>
 #include <tlhelp32.h>
 #include <io.h>
@@ -26,6 +27,7 @@
 #include <ctime>
 #include "ppu_recomp.h"
 #include "cv_version.h"
+#include "cv_scene_region.h"
 #include <vector>
 #include <algorithm>
 #include <map>
@@ -237,10 +239,56 @@ DWORD WINAPI watch(LPVOID) {
 }
 }
 
+
+/* CV_TIMER_PROBE=1: find where the game keeps a rising timer (Battle Game).
+ * Once a second it reads two windows of guest memory (the system object and
+ * the data block around the play time) and logs the words that rose steadily
+ * at a timer-like rate over the last 4 seconds, to timer-probe.txt. Diagnosis
+ * only; off unless asked. */
+namespace {
+bool safe_read(uint32_t a, uint32_t* out) {
+    __try { *out = vm_read32(a); return true; } __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+}
+struct Win { uint32_t base, words; std::vector<uint32_t> h[4]; };
+DWORD WINAPI probe(LPVOID) {
+    FILE* f = fopen("timer-probe.txt", "w"); if (!f) return 0;
+    std::vector<Win> w(2);
+    int tick = 0;
+    for (;;) {
+        Sleep(1000);
+        const uint32_t system = vm_read32(CV_SCENE_SYSTEM);
+        w[0].base = system ? (system + 0x1A000) & ~3u : 0; w[0].words = system ? 0x2000 / 4 : 0;
+        w[1].base = (CV_SRT_TIME - 0x80000) & ~3u; w[1].words = 0xC0000 / 4;
+        for (auto& win : w) {
+            std::vector<uint32_t> cur(win.words);
+            for (uint32_t i = 0; i < win.words; i++) { uint32_t v = 0; if (!safe_read(win.base + 4 * i, &v)) v = 0; cur[i] = v; }
+            for (int k = 0; k < 3; k++) win.h[k] = std::move(win.h[k + 1]);
+            win.h[3] = std::move(cur);
+        }
+        if (++tick < 5) continue;
+        fprintf(f, "t=%d room=%02X%02X%02X status=%02X game_time=%u\n", tick, vm_read8(CV_SRT_ROOM), vm_read8(CV_SRT_ROOM + 1), vm_read8(CV_SRT_ROOM + 2), vm_read8(CV_SRT_STATUS), vm_read32(CV_SRT_TIME));
+        int shown = 0;
+        for (auto& win : w) {
+            if (win.h[0].size() != win.words) continue;
+            for (uint32_t i = 0; i < win.words && shown < 40; i++) {
+                const uint32_t a = win.h[0][i], b = win.h[1][i], c = win.h[2][i], d = win.h[3][i];
+                if (!(a < b && b < c && c < d)) continue;
+                const uint32_t d1 = b - a, d2 = c - b, d3 = d - c;
+                const uint32_t lo = std::min(d1, std::min(d2, d3)), hi = std::max(d1, std::max(d2, d3));
+                if (lo < 20 || hi > 140 || hi * 10 > lo * 14) continue;
+                fprintf(f, "  %08X = %u (+%u/s)\n", win.base + 4 * i, d, d3); shown++;
+            }
+        }
+        fflush(f);
+    }
+}
+}
 extern "C" void cv_hang_watch_init(void) {
     const char* e = getenv("CV_HANG_LOG");
     if (e && *e == '0') return;
     HANDLE h = CreateThread(nullptr, 0, watch, nullptr, 0, nullptr);
     if (h) CloseHandle(h);
+    const char* tp = getenv("CV_TIMER_PROBE");
+    if (tp && *tp == '1') { HANDLE ph = CreateThread(nullptr, 0, probe, nullptr, 0, nullptr); if (ph) CloseHandle(ph); }
 }
 #endif
