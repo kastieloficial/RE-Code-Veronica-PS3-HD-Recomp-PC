@@ -10,6 +10,7 @@
 #include "cv_inventory_ui_interpolation.h"
 #include "cv_fps_input.h"
 #include "cv_options.h"
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <cstdio>
@@ -144,6 +145,22 @@ void bio_update_30hz(ppu_context* ctx) {
         render_scene_between_ticks(ctx,count,clock.phase());
         if(smooth)cv_item_interpolation::render(clock.phase());
         cv_inventory_ui::render(clock.phase());
+    }
+    // Self-destruct countdown (system+0x1B170 on, +0x1B174 frames left at 60
+    // a second): the game takes 2 off once per DRAWN frame, outside the 30 Hz
+    // logic, so at 60 FPS it ran twice as fast. Allow only 2 per logic update
+    // and give back the rest.
+    {
+        static uint32_t last=0;static unsigned budget=0;
+        const uint32_t system=vm_read32(CV_SCENE_SYSTEM);
+        const uint32_t on=system?vm_read32(system+0x1B170):0,left=system?vm_read32(system+0x1B174):0;
+        if(!on||!left||!last||left>last){last=on?left:0;budget=0;}
+        else {
+            budget=std::min(budget+2*count,8u);
+            const uint32_t taken=last-left;
+            if(taken>budget){vm_write32(system+0x1B174,left+(taken-budget));last=left+(taken-budget);budget=0;}
+            else {budget-=taken;last=left;}
+        }
     }
     static const bool interpolate=[] {const char* e=std::getenv("CV_RENDER_INTERPOLATION");return e&&std::strcmp(e,"1")==0;}();
     if(interpolate) {
