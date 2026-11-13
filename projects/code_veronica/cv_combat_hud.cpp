@@ -327,3 +327,56 @@ extern "C" const rsx_ui_quad* cv_combat_hud_quads(uint32_t width,uint32_t height
  for(auto q:cached){q.x=x+q.x*factor;q.y=y+q.y*factor;q.w*=factor;q.h*=factor;q.argb=(q.argb&0xffffff)|(uint32_t(std::lround((q.argb>>24)*alpha))<<24);if(combined.size()<131072)combined.push_back(q);}
  *count=uint32_t(combined.size());return combined.data();
 }
+
+/* Self-destruct countdown under native 60 FPS.
+ * The game keeps the countdown in system+0x1B170 (non-zero while running,
+ * set by 001B1674 in US) and system+0x1B174 (frames left at 60 per second:
+ * 0x4650 = 5 minutes). Its own digits are queued during the logic tick and
+ * the extra scene pass of native 60 FPS rebuilds the draw list without them,
+ * so while that pass is active the port draws the same m'ss"cc readout here.
+ * With the original frames (30 FPS, scope view, messages) the game draws its
+ * own and this adds nothing. */
+#include "cv_scene_region.h"
+extern "C" int cv_native_scene_replacing(void);
+namespace {
+std::wstring countdown_text(uint32_t frames){
+ const unsigned minutes=frames/3600,seconds=frames/60%60,hundredths=frames%60*100/60;
+ wchar_t text[32];swprintf(text,32,L"%u’%02u”%02u",minutes,seconds,hundredths);return text;
+}
+void countdown_quads(uint32_t width,uint32_t height,std::vector<rsx_ui_quad>& out){
+ static std::vector<rsx_ui_quad> glyphs;static std::wstring drawn;static uint32_t drawn_h=0;
+ const uint32_t system=vm_read32(CV_SCENE_SYSTEM);
+ if(!system||!vm_read32(system+0x1B170)||!cv_native_scene_replacing())return;
+ const uint32_t left=vm_read32(system+0x1B174);if(left>99u*3600u)return;
+ const std::wstring text=countdown_text(left);
+ // Place and size as the game does at 1280x720: top centre, about 5% of the height.
+ const float digit=std::max(12.f,height*0.052f);
+ if(text!=drawn||drawn_h!=height){
+  using namespace cv_combat_hud;init();
+  const int bw=int(digit*8),bh=int(digit*1.6f);
+  Bitmap image(bw,bh,PixelFormat32bppARGB);
+  {Graphics g(&image);g.Clear(Color(0,0,0,0));g.SetSmoothingMode(SmoothingModeAntiAlias);g.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
+   FontFamily family(L"Times New Roman");const auto* face=family.GetLastStatus()==Ok?&family:FontFamily::GenericSerif();
+   Font font(face,digit*1.25f,FontStyleRegular,UnitPixel);SolidBrush shadow(Color(170,0,0,0)),ink(Color(255,64,214,64));
+   StringFormat format(StringFormat::GenericTypographic());format.SetAlignment(StringAlignmentCenter);
+   // Fixed advance per character, like the game's spaced readout.
+   const float advance=digit*0.82f;float x=0;
+   for(wchar_t c:text){const wchar_t one[2]={c,0};const float cx=x+advance*.5f;
+    g.DrawString(one,1,&font,RectF(cx-advance+2,2,advance*2,float(bh)),&format,&shadow);
+    g.DrawString(one,1,&font,RectF(cx-advance,0,advance*2,float(bh)),&format,&ink);x+=advance;}
+  }
+  raster(image,glyphs,20000);drawn=text;drawn_h=height;
+ }
+ const float advance=digit*0.82f,total=advance*float(text.size());
+ const float x0=width*0.477f-total*.5f,y0=height*0.165f;
+ for(auto q:glyphs){q.x+=x0;q.y+=y0;out.push_back(q);}
+}
+}
+extern "C" const rsx_ui_quad* cv_hud_overlay_quads(uint32_t width,uint32_t height,uint32_t* count){
+ const rsx_ui_quad* base=cv_combat_hud_quads(width,height,count);
+ static std::vector<rsx_ui_quad> timer,combined;timer.clear();
+ countdown_quads(width,height,timer);
+ if(timer.empty())return base;
+ combined.assign(base,base+(base?*count:0));combined.insert(combined.end(),timer.begin(),timer.end());
+ *count=uint32_t(combined.size());return combined.data();
+}

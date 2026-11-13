@@ -164,6 +164,12 @@ void bio_update_30hz(ppu_context* ctx) {
     }
 }
 }
+// True while native 60 FPS rebuilds the frame: the extra scene pass then
+// drops the game's own 2D layer (the self-destruct countdown), so the port
+// draws that countdown itself (cv_combat_hud.cpp). Read from the render thread.
+extern "C" int cv_native_scene_replacing(void) {
+    return enabled()&&cv_options::enabled("CV_SMOOTH_ANIMATION")&&native_scene_ready()?1:0;
+}
 extern "C" void cv_fps_register_game_update() {
     const char* raw=std::getenv("CV_FPS_BENCHMARK_RAW");
     if(!enabled())return;

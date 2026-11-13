@@ -549,7 +549,7 @@ int main(int argc, char** argv)
     /* Xbox button icons: the game's own Xbox 360 art, swapped in per archive. */
     cv_button_icons_init();
     cellpad_gameplay_filters_set(cv_gameplay_filter_key,cv_gameplay_filter_buttons,cv_gameplay_filter_stick);
-    g_rsx_srt_hook = cv_combat_hud_quads;
+    g_rsx_srt_hook = cv_hud_overlay_quads;   /* combat HUD + countdown under native 60 FPS */
     g_rsx_srt_sprites_hook = cv_srt_sprites;
     /* The switchable sites lifted into this build (projects/code_veronica/
      * patches.json, this version's sites): a patch file with the same write
