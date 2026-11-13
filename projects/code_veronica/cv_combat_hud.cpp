@@ -352,7 +352,9 @@ void countdown_quads(uint32_t width,uint32_t height,std::vector<rsx_ui_quad>& ou
  // system+0x8B0, rising at 60 a second (checked against the game's own readout).
  uint32_t shown=0;
  if(vm_read32(system+0x1B170))shown=vm_read32(system+0x1B174);
- else if(vm_read32(system+0x9C)==3)shown=vm_read32(system+0x8B0);
+ // Only in play: the selection screens before a stage keep the clock at 0
+ // and no room loaded.
+ else if(vm_read32(system+0x9C)==3&&vm_read32(CV_SRT_ROOM)!=0&&vm_read32(system+0x8B0)!=0)shown=vm_read32(system+0x8B0);
  else return;
  if(shown>99u*3600u)return;
  const std::wstring text=countdown_text(shown);
