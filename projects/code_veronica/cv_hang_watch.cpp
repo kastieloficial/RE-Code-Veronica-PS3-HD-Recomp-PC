@@ -25,6 +25,12 @@
 #include <cstdint>
 #include <ctime>
 #include "ppu_recomp.h"
+#include "cv_version.h"
+#include <vector>
+#include <algorithm>
+#include <map>
+extern "C" uint8_t vm_read8(uint64_t);
+extern "C" uint32_t vm_read32(uint64_t);
 
 extern "C" volatile LONG g_rsx_watch_frames;   /* rsx_d3d12_backend.c */
 extern "C" volatile LONG g_rsx_watch_draws;
@@ -62,6 +68,71 @@ uint32_t guest_func(uintptr_t v, uintptr_t* off) {
 }
 
 typedef HRESULT (WINAPI* GetDescFn)(HANDLE, PWSTR*);
+/* Which guest functions the main thread keeps running while stuck: sample it
+ * for 2 s. A wait leaves RIP in ntdll, so then the innermost guest function on
+ * its stack is credited instead. */
+struct HostFn { uintptr_t host; uint32_t guest; };
+std::vector<HostFn> s_fns;
+uint32_t guest_at(uintptr_t v) {
+    if (s_fns.empty()) {
+        for (uint64_t q = 0; q < function_table_count; q++) s_fns.push_back({(uintptr_t)function_table[q].func, (uint32_t)function_table[q].addr});
+        std::sort(s_fns.begin(), s_fns.end(), [](const HostFn& a, const HostFn& b) { return a.host < b.host; });
+    }
+    auto it = std::upper_bound(s_fns.begin(), s_fns.end(), v, [](uintptr_t x, const HostFn& f) { return x < f.host; });
+    if (it == s_fns.begin() || it == s_fns.end()) return 0;
+    --it; if (v - it->host > 0x4000u) return 0;
+    return it->guest;
+}
+void sample_main(HMODULE self) {
+    static GetDescFn get_desc = (GetDescFn)GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "GetThreadDescription");
+    HANDLE main_thread = nullptr; DWORD pid = GetCurrentProcessId();
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0); THREADENTRY32 te; te.dwSize = sizeof te;
+    if (snap != INVALID_HANDLE_VALUE && Thread32First(snap, &te)) do {
+        if (te.th32OwnerProcessID != pid || !get_desc) continue;
+        HANDLE th = OpenThread(THREAD_GET_CONTEXT | THREAD_SUSPEND_RESUME | THREAD_QUERY_LIMITED_INFORMATION, FALSE, te.th32ThreadID);
+        if (!th) continue;
+        PWSTR w = nullptr; bool hit = false;
+        if (SUCCEEDED(get_desc(th, &w)) && w) { hit = wcscmp(w, L"ppu:main") == 0; LocalFree(w); }
+        if (hit) { main_thread = th; break; }
+        CloseHandle(th);
+    } while (Thread32Next(snap, &te));
+    if (snap != INVALID_HANDLE_VALUE) CloseHandle(snap);
+    if (!main_thread) { fprintf(s_out, "main thread sample: ppu:main not found\n"); return; }
+    guest_at(0);
+    std::map<uint32_t, unsigned> inner, caller; unsigned total = 0, waiting = 0;
+    for (int i = 0; i < 2000; i++) {
+        if (SuspendThread(main_thread) == (DWORD)-1) break;
+        CONTEXT c; c.ContextFlags = CONTEXT_CONTROL; uint32_t g0 = 0, g1 = 0; bool in_exe = false;
+        if (GetThreadContext(main_thread, &c)) {
+            HMODULE m = nullptr;
+            GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)c.Rip, &m);
+            in_exe = m == self; if (in_exe) g0 = guest_at((uintptr_t)c.Rip);
+            MEMORY_BASIC_INFORMATION mbi; uint64_t* sp = (uint64_t*)c.Rsp; uint64_t end = (uint64_t)sp;
+            if (VirtualQuery(sp, &mbi, sizeof mbi) && mbi.State == MEM_COMMIT && !(mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)))
+                end = (uint64_t)mbi.BaseAddress + mbi.RegionSize;
+            long maxk = (long)((end - (uint64_t)sp) / 8); if (maxk > 0x40000 / 8) maxk = 0x40000 / 8;
+            for (long k = 0; k < maxk && !(g0 && g1); k++) {
+                uint32_t g = guest_at((uintptr_t)sp[k]); if (!g) continue;
+                if (!g0) g0 = g; else if (g != g0) g1 = g;
+            }
+        }
+        ResumeThread(main_thread);
+        total++; if (!in_exe) waiting++;
+        if (g0) inner[g0]++;
+        if (g1) caller[g1]++;
+        Sleep(1);
+    }
+    CloseHandle(main_thread);
+    auto top = [&](std::map<uint32_t, unsigned>& h, const char* title) {
+        std::vector<std::pair<unsigned, uint32_t>> v; for (auto& e : h) v.push_back({e.second, e.first});
+        std::sort(v.rbegin(), v.rend());
+        fprintf(s_out, "%s\n", title);
+        for (size_t i = 0; i < v.size() && i < 20; i++) fprintf(s_out, "  %5.1f%%  func_%08X\n", 100.0 * v[i].first / (total ? total : 1), v[i].second);
+    };
+    fprintf(s_out, "main thread sampled %u times over ~2 s; %u%% outside game code (waiting/sleeping)\n", total, total ? waiting * 100 / total : 0);
+    top(inner, "innermost game function:");
+    top(caller, "its caller:");
+}
 
 void dump(const char* why, HMODULE self) {
     time_t t = time(nullptr); char ts[32]; strftime(ts, sizeof ts, "%Y-%m-%d %H:%M:%S", localtime(&t));
@@ -159,6 +230,9 @@ DWORD WINAPI watch(LPVOID) {
         dump(why, self);
         Sleep(3000);
         dump("same, 3 s later (what did not move is what is stuck)", self);
+        fprintf(s_out, "room=%02X%02X%02X status=%02X game_time=%u\n", vm_read8(CV_SRT_ROOM), vm_read8(CV_SRT_ROOM + 1), vm_read8(CV_SRT_ROOM + 2), vm_read8(CV_SRT_STATUS), vm_read32(CV_SRT_TIME));
+        sample_main(self);
+        fflush(s_out);
     }
 }
 }
