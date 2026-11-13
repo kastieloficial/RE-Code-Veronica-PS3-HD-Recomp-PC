@@ -13,6 +13,7 @@ rem Se o jogo travar (imagem parada ou tela preta longa), o proprio jogo grava
 rem o motivo em hang-log.txt e esta janela avisa.
 set "CV_STATS=1"
 set "CV_HANG_LOG=1"
+set "base="
 set "EXE=%~dp0build-release\bin\CodeVeronicaPort.exe"
 if not exist "%EXE%" (
  echo ERRO: nao achei %EXE%
@@ -83,6 +84,8 @@ set /a resto=seg %% 60
 if !resto!==0 (set /a min=seg/60 & echo  ... jogando ha !min! min, aguardando o jogo e o launcher fecharem)
 goto :espera
 :fim
+echo.
+echo  Nesta sessao voce capturou !sessao! shader^(s^) novo^(s^). TOTAL: !total!
 echo  Jogo e launcher fechados. Juntando os shaders capturados...
 set "CV_MERGE_NOPAUSE=1"
 call "%~dp0juntar-shaders-capturados.cmd"
@@ -99,7 +102,9 @@ if not defined conta set "conta=0"
 for /f "tokens=1,2" %%C in ('python "%~dp0tools\contar_shaders.py" --total "%~dp0shader-seed\pipelines-seed.list" "%~dp0build-release\bin\shader_cache" 2^>nul') do (set "conta=%%C" & set "lista=%%D")
 if not defined lista set "lista=0"
 set /a total=lista+conta
-title Shaders: !total! no total  ^|  +!conta! novos ainda nao juntados  -  captura de shaders
+set "sessao=0"
+if defined base set /a sessao=conta-base
+title Shaders: TOTAL !total!  ^|  nesta sessao: +!sessao!  ^|  ainda nao juntados: !conta!
 exit /b 0
 
 :travou
