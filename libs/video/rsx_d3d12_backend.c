@@ -1022,6 +1022,31 @@ static void ui_batch_draw(u32 fi)
 const rsx_ui_quad* (*g_rsx_srt_hook)(uint32_t,uint32_t,uint32_t*);
 /* The images that go with the quads g_rsx_srt_hook just returned. */
 const rsx_ui_sprite* (*g_rsx_srt_sprites_hook)(uint32_t*,const uint32_t**,uint32_t*,uint32_t*,uint64_t*);
+/* The 3D cutscenes' black bars (CV_NO_LETTERBOX): the game's solid colour
+ * program (one instruction, output = interpolated colour), blended, on a
+ * full-size target, drawn either as one 12-vertex draw (both bars) or as two
+ * 6-vertex draws back to back (top, then bottom; the first and last frames
+ * of a line and the start of a scene). A lone 6-vertex quad with the same
+ * program -- a full-screen fade -- is left alone. */
+static int letterbox_program(const D3D12DrawRecord* d)
+{
+    static const u8 bars[16]={0x9E,0x81,0x01,0x40,0xC8,0x01,0x1C,0x9D,0xC8,0x00,0x00,0x01,0xC8,0x00,0x3F,0xE1};
+    if(!d->is_vp||d->is_clear||d->is_copy||d->fp_bytes!=16||!d->blend_key||d->rt_w<640)return 0;
+    const u8* code=fp_snap_ptr(d);
+    return code&&!memcmp(code,bars,16);
+}
+static int letterbox_bar(const D3D12DrawRecord* d,const D3D12DrawRecord* base,u32 count)
+{
+    if(d->vertex_count!=12&&d->vertex_count!=6)return 0;
+    if(!letterbox_program(d))return 0;
+    if(d->vertex_count==12)return 1;
+    const ptrdiff_t i=d-base;
+    if(i<0||(u32)i>=count)return 0;
+    const D3D12DrawRecord* n=(u32)i+1<count?d+1:NULL;
+    const D3D12DrawRecord* p=i>0?d-1:NULL;
+    return (n&&n->vertex_count==6&&n->rt_off==d->rt_off&&letterbox_program(n))||
+           (p&&p->vertex_count==6&&p->rt_off==d->rt_off&&letterbox_program(p));
+}
 static int cv_no_letterbox(void) { static int on=-1; if(on<0){const char* e=getenv("CV_NO_LETTERBOX");on=e&&e[0]=='1';} return on; }
 static void perf_overlay_draw(u32 fi)
 {
@@ -11763,22 +11788,13 @@ static void render_frame_impl(void)
                     continue;
                 }
                 /* CV_NO_LETTERBOX=1: the 3D cutscenes' black bars. The game draws
-                 * them as two solid quads (12 vertices) with a one-instruction
-                 * colour program right before the subtitle text, only while a
-                 * line is shown. Leaving that draw out keeps the picture whole. */
-                if(dr->is_vp&&!dr->is_clear&&!dr->is_copy&&dr->vertex_count==12&&dr->fp_bytes>=16&&cv_no_letterbox()) {
-                    static const u8 bars[16]={0x9E,0x81,0x01,0x40,0xC8,0x01,0x1C,0x9D,0xC8,0x00,0x00,0x01,0xC8,0x00,0x3F,0xE1};
-                    const u8* code=fp_snap_ptr(dr);
-                    if(code&&!memcmp(code,bars,16)) {
-                        static int reported=0;
-                        if(!reported){reported=1;fprintf(stderr,"[LETTERBOX] cutscene bars removed%c",10);}
-                        continue;
-                    }
-                    if(code&&dr->fp_bytes==16) {   /* for checking: other 12-vertex one-line programs */
-                        static int shown=0;
-                        if(shown<4){shown++;fprintf(stderr,"[LETTERBOX] not bars: %02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%c",
-                            code[0],code[1],code[2],code[3],code[4],code[5],code[6],code[7],code[8],code[9],code[10],code[11],code[12],code[13],code[14],code[15],10);}
-                    }
+                 * them with a one-instruction colour program right before the
+                 * subtitle text, only while a line is shown (letterbox_bar).
+                 * Leaving those draws out keeps the picture whole. */
+                if(cv_no_letterbox()&&letterbox_bar(dr,s_rb.draws,s_rb.count)) {
+                    static int reported=0;
+                    if(!reported){reported=1;fprintf(stderr,"[LETTERBOX] cutscene bars removed%c",10);}
+                    continue;
                 }
                 /* Per-draw pipeline: prefer the guest's own compiled FP; fall
                  * back to the hardcoded atlas/colour PS pair. */
