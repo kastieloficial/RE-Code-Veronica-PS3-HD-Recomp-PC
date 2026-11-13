@@ -265,7 +265,8 @@ DWORD WINAPI probe(LPVOID) {
             for (int k = 0; k < 3; k++) win.h[k] = std::move(win.h[k + 1]);
             win.h[3] = std::move(cur);
         }
-        if (tick == 11 || tick == 23) {   // mode dump: compare Battle Game against story runs
+        uint32_t room_now = 0; safe_read(CV_SRT_ROOM & ~3u, &room_now);
+        if (tick % 10 == 9 && room_now) {   // mode dump every 10 s in play: compare Battle Game against story runs
             static FILE* md = fopen("timer-mode-dump.txt", "a");
             if (md) {
                 fprintf(md, "RUN pid=%lu tick=%d room=%02X%02X%02X char=%u time=%u\n", GetCurrentProcessId(), tick + 1,
