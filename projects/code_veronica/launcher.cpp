@@ -1259,7 +1259,7 @@ void section(Graphics& gr, const std::wstring& t, float x, float y, float w, con
 
 
 /* Release shown under the sidebar, beside the credit. Bump it per release. */
-const wchar_t* const k_launcher_version = L"v1.5.4";
+const wchar_t* const k_launcher_version = L"v1.5.5";
 extern "C" const wchar_t* cv_launcher_version(void) { return k_launcher_version; }   /* cv_discord.cpp */
 
 /* ---------------------------------------------------------------- updates
