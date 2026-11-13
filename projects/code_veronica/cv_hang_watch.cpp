@@ -2,7 +2,8 @@
  *
  * Two triggers, checked once a second by a sleeping thread:
  *   frozen  - no frame presented for 8 s;
- *   black   - frames keep coming but each draws at most 20 things for 20 s
+ *   black   - frames keep coming but each draws at most 12 things for 90 s (menus draw few things too,
+ *             so this needs a long, very empty stretch)
  *             (the "door never finishes loading" case: a black window at a
  *             steady frame rate).
  * On a trigger it records, twice 3 s apart so a parked thread can be told
@@ -144,12 +145,12 @@ DWORD WINAPI watch(LPVOID) {
     for (;;) {
         Sleep(1000);
         LONG f = g_rsx_watch_frames, d = g_rsx_watch_draws;
-        if (f != last_frames) { ever = 1; still = 0; if (d <= 20) black++; else { black = 0; reported = 0; } }
+        if (f != last_frames) { ever = 1; still = 0; if (d <= 12) black++; else { black = 0; reported = 0; } }
         else if (ever) still++;
         last_frames = f;
         const char* why = nullptr;
         if (still >= 8) why = "FROZEN: no frame for 8 s";
-        else if (black >= 20) why = "BLACK: 20 s with at most 20 draws per frame";
+        else if (black >= 90) why = "BLACK: 90 s with at most 12 draws per frame";
         if (!why || reported) continue;
         reported = 1;
         if (!s_out) s_out = fopen("hang-log.txt", "a");
