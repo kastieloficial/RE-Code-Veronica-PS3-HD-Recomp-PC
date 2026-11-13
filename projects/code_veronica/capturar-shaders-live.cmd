@@ -25,12 +25,7 @@ echo  Abrindo o launcher...
 rem Espera o launcher aparecer (ate 2 minutos), sem prazo fixo curto.
 set /a tent=0
 :aparece
-call :travou
-set "hsz=0"
-if exist "%~dp0hang-log.txt" for %%F in ("%~dp0hang-log.txt") do set "hsz=%%~zF"
-exit /b 0
-
-:rodando
+call :rodando
 if "!vivo!"=="1" goto :jogando
 set /a tent+=1
 if !tent! geq 60 (
@@ -50,6 +45,10 @@ echo  Cada shader novo aparece abaixo assim que o jogo o grava.
 echo.
 call :contar
 set /a base=!conta!, antes=!conta!
+echo  Shaders na lista embarcada: !lista!
+echo  Capturados e ainda nao juntados: !conta!
+echo  TOTAL: !total!   ^(o total tambem aparece no topo desta janela^)
+echo.
 call :travou
 set "hang0=!hsz!"
 set /a seg=0
@@ -68,7 +67,7 @@ set /a seg+=5
 call :contar
 if !conta! gtr !antes! (
  set /a novos=conta-antes, sessao=conta-base
- echo  [!time:~0,8!] +!novos! shader^(s^) novo^(s^) capturado^(s^)  -  total nesta captura: !sessao!
+ echo  [!time:~0,8!] +!novos! shader^(s^) novo^(s^) capturado^(s^)  -  nesta captura: !sessao!  -  TOTAL: !total!
  set /a antes=conta
 )
 call :travou
@@ -97,7 +96,15 @@ exit /b 0
 :contar
 set "conta=!antes!"
 if not defined conta set "conta=0"
-for /f %%C in ('python "%~dp0tools\contar_shaders.py" "%~dp0shader-seed\pipelines-seed.list" "%~dp0build-release\bin\shader_cache" 2^>nul') do set "conta=%%C"
+for /f "tokens=1,2" %%C in ('python "%~dp0tools\contar_shaders.py" --total "%~dp0shader-seed\pipelines-seed.list" "%~dp0build-release\bin\shader_cache" 2^>nul') do (set "conta=%%C" & set "lista=%%D")
+if not defined lista set "lista=0"
+set /a total=lista+conta
+title Shaders: !total! no total  ^|  +!conta! novos ainda nao juntados  -  captura de shaders
+exit /b 0
+
+:travou
+set "hsz=0"
+if exist "%~dp0hang-log.txt" for %%F in ("%~dp0hang-log.txt") do set "hsz=%%~zF"
 exit /b 0
 
 :rodando

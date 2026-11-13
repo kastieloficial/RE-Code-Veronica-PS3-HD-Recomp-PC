@@ -2,7 +2,7 @@
 
   python contar_shaders.py SEED CACHE_DIR [CACHE_DIR ...]
 
-Prints one number: distinct fragment pipelines in CACHE_DIR/*/pipelines.list
+Prints one number (with --total first: that number, then the list's own count): distinct fragment pipelines in CACHE_DIR/*/pipelines.list
 (the game's own recordings) whose identity is not in SEED. The project's own
 shader_cache (beside shader-seed/) is always scanned too: the launcher starts
 the game with projects/code_veronica as its working folder, so that is where
@@ -33,16 +33,19 @@ def fp_ids(path: Path):
     return ids
 
 def main():
-    seed_path = Path(sys.argv[1])
+    args = sys.argv[1:]
+    total = args[:1] == ['--total']
+    if total: args = args[1:]
+    seed_path = Path(args[0])
     seed = fp_ids(seed_path)
-    dirs = [Path(a) for a in sys.argv[2:]] + [seed_path.resolve().parent.parent / 'shader_cache']
+    dirs = [Path(a) for a in args[1:]] + [seed_path.resolve().parent.parent / 'shader_cache']
     found, seen = set(), set()
     for d in dirs:
         for p in d.glob('*/pipelines.list'):
             r = p.resolve()
             if r not in seen:
                 seen.add(r); found |= fp_ids(p)
-    print(len(found - seed))
+    print(len(found - seed), len(seed)) if total else print(len(found - seed))
 
 if __name__ == '__main__':
     main()
