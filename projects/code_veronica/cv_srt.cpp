@@ -1070,7 +1070,8 @@ extern "C" const rsx_ui_quad* cv_srt_quads(uint32_t width,uint32_t height,uint32
     if(!ready) {cv_srt_configure_env();return cv_srt_quads(width,height,count);}
     AcquireSRWLockShared(&config_lock);const bool own_window=config.window,split=config.free&&config.separate&&config.inventory,free=config.free;ReleaseSRWLockShared(&config_lock);
     if(!enabled||!own_window)srt_window::hide();
-    if(!enabled){if(mouse_drag.panel>=0)cv_srt_pointer(0,0,0,0);return nullptr;}
+    // Hidden: drop the images too (boss bar art), or the last ones stay drawn.
+    if(!enabled){if(mouse_drag.panel>=0)cv_srt_pointer(0,0,0,0);sprites.clear();return nullptr;}
     static cv_srt_state state{};static ULONGLONG last=0;
     const ULONGLONG now=GetTickCount64();if(!last||now-last>=33) {cv_srt_sample(&state);last=now;}
     if(own_window) {
