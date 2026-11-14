@@ -1133,8 +1133,12 @@ static int precomputed_tex_edges_on(void) {return opt30_mode()!=0;}
 static u64 s_prepass_repeat_reused;
 static int prepass_repeat_on(void);
 static int prep_reuse_on(void) {
-    static int disabled=-1;if(disabled<0)disabled=getenv("CV_PREP_NOREUSE")?1:0;
-    return rsx_opt30_prep(opt30_mode(),s_pose_on,disabled);
+    static int disabled=-1,force=-1;if(disabled<0)disabled=getenv("CV_PREP_NOREUSE")?1:0;
+    /* CV_PREP_REUSE=1: reuse the prepass pipeline lookup in the record loop (one lookup a draw, not two)
+     * outside the 30 FPS comparison package. Each reuse is re-checked against the live entry; on any
+     * difference the original lookup runs. */
+    if(force<0){const char* e=getenv("CV_PREP_REUSE");force=e&&e[0]=='1';}
+    return !disabled&&(force||rsx_opt30_prep(opt30_mode(),s_pose_on,0));
 }
 static u64 s_prep_pipelines,s_prep_vtex_reused,s_prep_vtex_written;
 static u64 s_shadow_batch_groups,s_shadow_batch_saved;
