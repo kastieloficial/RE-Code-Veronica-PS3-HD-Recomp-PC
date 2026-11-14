@@ -300,11 +300,68 @@ DWORD WINAPI probe(LPVOID) {
     }
 }
 }
+
+/* CV_PROFILE_RENDER=1: sample the "rsx_render" thread about 1000 times a second
+ * and count where it is (module + offset), writing render-profile.txt every
+ * 10 s. Symbolise with: llvm-symbolizer --obj=CodeVeronicaPort.exe <offset>.
+ * Diagnosis only (it costs a few percent while on). */
+namespace {
+DWORD WINAPI render_profile(LPVOID) {
+    typedef HRESULT (WINAPI* GetDescFn2)(HANDLE, PWSTR*);
+    GetDescFn2 get_desc = (GetDescFn2)GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "GetThreadDescription");
+    HMODULE self = GetModuleHandleW(nullptr);
+    HANDLE th = nullptr;
+    std::map<uint64_t, unsigned> hist; unsigned total = 0, outside = 0;
+    ULONGLONG last_dump = GetTickCount64();
+    for (;;) {
+        if (!th) {
+            Sleep(500);
+            DWORD pid = GetCurrentProcessId();
+            HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0); THREADENTRY32 te; te.dwSize = sizeof te;
+            if (snap != INVALID_HANDLE_VALUE && Thread32First(snap, &te)) do {
+                if (te.th32OwnerProcessID != pid || !get_desc) continue;
+                HANDLE h = OpenThread(THREAD_GET_CONTEXT | THREAD_SUSPEND_RESUME | THREAD_QUERY_LIMITED_INFORMATION, FALSE, te.th32ThreadID);
+                if (!h) continue;
+                PWSTR w = nullptr; bool hit = false;
+                if (SUCCEEDED(get_desc(h, &w)) && w) { hit = wcscmp(w, L"rsx_render") == 0; LocalFree(w); }
+                if (hit) { th = h; break; }
+                CloseHandle(h);
+            } while (Thread32Next(snap, &te));
+            if (snap != INVALID_HANDLE_VALUE) CloseHandle(snap);
+            continue;
+        }
+        Sleep(1);
+        if (SuspendThread(th) == (DWORD)-1) { CloseHandle(th); th = nullptr; continue; }
+        CONTEXT c; c.ContextFlags = CONTEXT_CONTROL;
+        if (GetThreadContext(th, &c)) {
+            HMODULE m = nullptr;
+            GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)c.Rip, &m);
+            total++;
+            if (m == self) hist[c.Rip - (DWORD64)self]++; else outside++;
+        }
+        ResumeThread(th);
+        const ULONGLONG now = GetTickCount64();
+        if (now - last_dump >= 10000 && total) {
+            last_dump = now;
+            FILE* f = fopen("render-profile.txt", "w");
+            if (f) {
+                fprintf(f, "samples=%u outside_game_code=%u (waiting in Windows/driver)%s", total, outside, "\n");
+                std::vector<std::pair<unsigned, uint64_t>> v; for (auto& e : hist) v.push_back({e.second, e.first});
+                std::sort(v.rbegin(), v.rend());
+                for (size_t i = 0; i < v.size() && i < 4000; i++) fprintf(f, "%u 0x%llX%s", v[i].first, (unsigned long long)v[i].second, "\n");
+                fclose(f);
+            }
+        }
+    }
+}
+}
 extern "C" void cv_hang_watch_init(void) {
     const char* e = getenv("CV_HANG_LOG");
     if (e && *e == '0') return;
     HANDLE h = CreateThread(nullptr, 0, watch, nullptr, 0, nullptr);
     if (h) CloseHandle(h);
+    const char* rp = getenv("CV_PROFILE_RENDER");
+    if (rp && *rp == '1') { HANDLE rh = CreateThread(nullptr, 0, render_profile, nullptr, 0, nullptr); if (rh) CloseHandle(rh); }
     const char* tp = getenv("CV_TIMER_PROBE");
     if (tp && *tp == '1') { HANDLE ph = CreateThread(nullptr, 0, probe, nullptr, 0, nullptr); if (ph) CloseHandle(ph); }
 }

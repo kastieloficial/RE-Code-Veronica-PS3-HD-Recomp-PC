@@ -17,6 +17,8 @@ rem Estado da camera/jogador em smooth-log.txt (diagnostico do cronometro no 60 
 set "CV_SMOOTH_LOG=1"
 rem Medidor de desempenho: onde vai o tempo de cada quadro (run-log.txt, resumo com analisar-desempenho.cmd).
 set "PERF=1"
+rem Perfil da thread de renderizacao (render-profile.txt; use tools\perfil_renderizacao.py).
+set "CV_PROFILE_RENDER=1"
 set "base="
 set "EXE=%~dp0build-release\bin\CodeVeronicaPort.exe"
 if not exist "%EXE%" (
