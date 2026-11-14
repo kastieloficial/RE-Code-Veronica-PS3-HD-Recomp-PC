@@ -25,7 +25,8 @@ static void clear_developer_environment() {
         L"CV30_OPTIMIZATIONS",L"RSX_CAP",L"RSX_CAP_DIR",L"D3D12_DBG",L"D3D12_GBV",
         L"PS3_SAMPLE",L"PS3_SAMPLE_SPU",L"PS3_SAMPLE_MAIN",L"PS3_SAMPLE_THREAD",L"PS3_TIMELINE",
         L"PS3_POLLTOP",L"PS3_SPU_STAT",L"PS3_FLIPTRACE",L"PS3_SHOT_BURST",L"SPU_FAULT_DIR",
-        L"SPU_MFC_STAGE_FAST",L"PERF",L"PERF_THREADS",L"HITCHDBG",L"FRAME_BUDGET",L"SRT_LOG"};
+        L"SPU_MFC_STAGE_FAST",L"PERF",L"PERF_THREADS",L"HITCHDBG",L"FRAME_BUDGET",L"SRT_LOG",
+        L"CV_PROFILE_RENDER",L"CV_TIMER_PROBE",L"CV_SMOOTH_LOG",L"CV_STATS"};
     for(auto name:names)_wputenv_s(name,L"");
     // Remove developer probes without iterating a mutating CRT environment.
     wchar_t* block=GetEnvironmentStringsW();std::vector<std::wstring> probes;
