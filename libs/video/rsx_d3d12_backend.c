@@ -16,6 +16,7 @@
 
 #ifdef _WIN32
 
+#include <intrin.h>
 #include <time.h>
 #include "rsx_d3d12_backend.h"
 #include "rsx_primitives.h"
@@ -1597,6 +1598,9 @@ static u32 s_duck_off = 0;   /* as RESOLVED (what the uploader sees)   */
 static double s_perf_tex = 0.0, s_perf_frame = 0.0, s_perf_vtx = 0.0, s_perf_rf = 0.0;
 static double s_perf_gpu = 0.0, s_perf_pre = 0.0, s_perf_srv = 0.0, s_perf_pso = 0.0;
 static double s_perf_wait = 0.0, s_perf_rec = 0.0;   /* s_perf_gpu split: waiting for the GPU / recording the draws */
+static unsigned long long s_pt[8];   /* PERF: time inside the record loop by step (TSC ticks) */
+#define PT_MARK(i) do{ if(_pt_on){ unsigned long long _n=__rdtsc(); s_pt[i]+=_n-_pt_last; _pt_last=_n; } }while(0)
+#define PT_PCT(i) (100.0 * s_perf_rec / fr * (double)s_pt[i] / (double)(s_pt[0]+s_pt[1]+s_pt[2]+s_pt[3]+s_pt[4]+s_pt[5]+s_pt[6]+s_pt[7]+1ull))
 /* vp_record_cb: vertex-constant banks written vs reused, and the recording
  * batch they belong to (bumped when render_frame hands a batch over). */
 static unsigned s_vcb_copied = 0, s_vcb_reused = 0, s_vcb_batch = 0;
@@ -11480,8 +11484,10 @@ static void render_frame_impl(void)
                 cv_depth_of_field_enabled=!(value&&strcmp(value,"0")==0);
             }
             unsigned char cv_shadow_neutralized[MAX_OFF_RTS]={0};
+            const int _pt_on = perf_on(); unsigned long long _pt_last = 0;
             for (u32 d = 0; d < s_rb.count && d < MAX_DRAWS; d++) {
                 const D3D12DrawRecord* dr = &s_rb.draws[d];
+                if (_pt_on) _pt_last = __rdtsc();
                 if (split_n && d - split_last >= (u32)split_n && submit_split(fi)) {
                     /* A reopened list has no state: what this pass set once
                      * above, again; the rest is rebound per draw. */
@@ -11505,6 +11511,7 @@ static void render_frame_impl(void)
                     bound_srv = 0; bound_cb0 = bound_cb2 = 0;
                 }
                 if (s_cap_steps_on) { bound_srv = 0; bound_cb0 = bound_cb2 = 0; }   /* captures draw between */
+                PT_MARK(0);
                 if (d >= pp_done) {   /* this part's prepass, and its queued pipelines */
                     prepass_range(pp_done, pp_done + pp_part);
                     pp_done += pp_part;
@@ -11516,6 +11523,7 @@ static void render_frame_impl(void)
                         fp_async_drain();
                     }
                 }
+                PT_MARK(1);
                 if(s_fsr_ready&&d==s_fsr_depth_at){
                     rsx_fsr31_depth(s_d3d.cmd_list,s_d3d.depth_buffer,s_fsr_depth_w,s_fsr_depth_h);
                     ID3D12DescriptorHeap* fg_heaps[]={s_d3d.srv_heap};
@@ -11805,6 +11813,7 @@ static void render_frame_impl(void)
                     if(!reported){reported=1;fprintf(stderr,"[LETTERBOX] cutscene bars removed%c",10);}
                     continue;
                 }
+                PT_MARK(0);
                 /* Per-draw pipeline: prefer the guest's own compiled FP; fall
                  * back to the hardcoded atlas/colour PS pair. */
                 ID3D12PipelineState* dpso =fp_prepared_ready(d,dr);
@@ -11836,11 +11845,13 @@ static void render_frame_impl(void)
                                          dr_cube_mask(dr), fp_snap_ptr(dr), dr_fp_urgent(dr));
                 }
                 if (!dpso && dr->fp_addr && s_fp_skip_draw) { s_fp_drawn_skips++; s_stats_skips++; continue; }
+                PT_MARK(2);
                 { ID3D12PipelineState* use = dpso ? dpso : vpso;
                   if (use != last_pso) {
                       s_d3d.cmd_list->lpVtbl->SetPipelineState(s_d3d.cmd_list, use);
                       last_pso = use;
                   } }
+                PT_MARK(3);
                 /* Per-draw viewport: the guest rect when sane, else the
                  * full target. Scissor tracks the same rect. */
                 {
@@ -11865,6 +11876,7 @@ static void render_frame_impl(void)
                         last_vp = dvp; have_vp = 1;
                     }
                 }
+                PT_MARK(4);
                 /* Per-draw textures: bind this draw's t0-t3 SRV window.
                  * Any sampled offscreen RT transitions to PSR first (never
                  * one of the currently-bound colour targets). */
@@ -11900,6 +11912,7 @@ static void render_frame_impl(void)
                     vh.ptr += (u64)(VTEX_SRV_BASE + s_vtex_win[d] * 4) * s_d3d.srv_inc;
                     s_d3d.cmd_list->lpVtbl->SetGraphicsRootDescriptorTable(s_d3d.cmd_list, 3, vh);
                 }
+                PT_MARK(5);
                 /* Per-draw constants: this draw's vp_cb + FP texscale slots. */
                 { const D3D12_GPU_VIRTUAL_ADDRESS a0 = cb_va + ((u64)s_rb.parity * MAX_DRAWS + dr->vcb_slot) * VP_CB_STRIDE;
                   if (a0 != bound_cb0) {
@@ -11913,6 +11926,7 @@ static void render_frame_impl(void)
                         bound_cb2 = a2;
                     }
                 }
+                PT_MARK(6);
                 /* DRAWARGS=<N>: the arguments actually handed to the GPU, plus
                  * the target they are aimed at. A zero vertex count, or a start
                  * vertex past the buffer, rasterises nothing while every other
@@ -11988,6 +12002,7 @@ static void render_frame_impl(void)
                   s_d3d.cmd_list->lpVtbl->DrawInstanced(s_d3d.cmd_list,
                       dr->vertex_count, 1, dr->vb_byte_offset / 256, 0);
                   if (ln) s_d3d.cmd_list->lpVtbl->IASetPrimitiveTopology(s_d3d.cmd_list, D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST); }
+                PT_MARK(7);
                 if (s_cv_query_active) {
                     s_d3d.cmd_list->lpVtbl->EndQuery(s_d3d.cmd_list,s_cv_query_heap,
                         D3D12_QUERY_TYPE_PIPELINE_STATISTICS,d);
@@ -12119,7 +12134,7 @@ static void render_frame_impl(void)
             { char perf_line[768]; snprintf(perf_line, sizeof perf_line, "[PERF] %.2f fps | tex %.2fs (%.0f%%, %d calls) | vtx %.2fs"
                             " (%.0f%%, %.0fk verts) | render_frame %.2fs (%.0f%%)"
                             " [gpuwait %.2fs %.0f%%]"
-                            " | prepass %.2fs (%.0f%%) [srv %.2fs %.0f%% | pso %.2fs %.0f%% %d calls %d MISS %dKB hashed] | guest %.2fs (%.0f%%) | wait %.0f%% record %.0f%% | t=%.0f draws=%u res=%ux%u%c",
+                            " | prepass %.2fs (%.0f%%) [srv %.2fs %.0f%% | pso %.2fs %.0f%% %d calls %d MISS %dKB hashed] | guest %.2fs (%.0f%%) | wait %.0f%% record %.0f%% | steps(%% of frame) pre %.1f prepass %.1f pso %.1f setpso %.1f vp %.1f tex %.1f const %.1f draw %.1f | t=%.0f draws=%u res=%ux%u%c",
                     nfr / fr,
                     s_perf_tex, 100.0 * s_perf_tex / fr, s_perf_ntex,
                     s_perf_vtx, 100.0 * s_perf_vtx / fr,
@@ -12131,7 +12146,8 @@ static void render_frame_impl(void)
                     s_perf_pso, 100.0 * s_perf_pso / fr,
                     s_perf_pso_calls, s_perf_pso_miss, s_perf_pso_hashbytes / 1024,
                     fr - s_perf_rf, 100.0 * (fr - s_perf_rf) / fr,
-                    100.0 * s_perf_wait / fr, 100.0 * s_perf_rec / fr, perf_now(), (unsigned)s_dbg_last_draws,
+                    100.0 * s_perf_wait / fr, 100.0 * s_perf_rec / fr,
+                    PT_PCT(0), PT_PCT(1), PT_PCT(2), PT_PCT(3), PT_PCT(4), PT_PCT(5), PT_PCT(6), PT_PCT(7), perf_now(), (unsigned)s_dbg_last_draws,
                     (unsigned)rs_dim(s_d3d.width, s_rs), (unsigned)rs_dim(s_d3d.height, s_rs), 10);
               fputs(perf_line, stderr);
               /* Also kept in perf-log.txt (appended): run-log.txt is rewritten when the
@@ -12172,7 +12188,7 @@ static void render_frame_impl(void)
               if (pt) perf_thread_report(fr); }
             { extern void spu_coh_stats_report(void*); spu_coh_stats_report(stderr); }
             s_perf_frame = 0.0; s_perf_tex = 0.0; s_perf_vtx = 0.0; s_perf_rf = 0.0;
-            s_perf_gpu = 0.0; s_perf_pre = 0.0; s_perf_srv = 0.0; s_perf_pso = 0.0; s_perf_wait = 0.0; s_perf_rec = 0.0;
+            s_perf_gpu = 0.0; s_perf_pre = 0.0; s_perf_srv = 0.0; s_perf_pso = 0.0; s_perf_wait = 0.0; s_perf_rec = 0.0; memset(s_pt, 0, sizeof s_pt);
             s_perf_pso_calls = 0; s_perf_pso_miss = 0; s_perf_pso_hashbytes = 0;
             s_perf_ntex = 0; s_perf_nverts = 0;
         }

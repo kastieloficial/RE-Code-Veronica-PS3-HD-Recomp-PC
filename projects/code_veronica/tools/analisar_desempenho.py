@@ -11,7 +11,8 @@ clear what to optimise first. Never needs the game files.
 import re, sys, statistics
 from pathlib import Path
 
-EXTRA = re.compile(r'wait (\d+)% record (\d+)% \| t=(\d+) draws=(\d+) res=(\d+)x(\d+)')
+STEPS = re.compile(r'steps\(% of frame\) pre ([\d.]+) prepass ([\d.]+) pso ([\d.]+) setpso ([\d.]+) vp ([\d.]+) tex ([\d.]+) const ([\d.]+) draw ([\d.]+)')
+EXTRA = re.compile(r'wait (\d+)% record (\d+)% \| (?:steps.*?\| )?t=(\d+) draws=(\d+) res=(\d+)x(\d+)')
 LINE = re.compile(r'\[PERF\] ([\d.]+) fps \| tex ([\d.]+)s \((\d+)%.*?\| vtx ([\d.]+)s \((\d+)%.*?\| render_frame ([\d.]+)s \((\d+)%\) \[gpuwait ([\d.]+)s (\d+)%\] \| prepass ([\d.]+)s \((\d+)%\).*?pso ([\d.]+)s (\d+)% (\d+) calls (\d+) MISS.*?\| guest ([\d.]+)s \((\d+)%\)')
 FIELDS = [('guest (game logic, CPU)', 16), ('render_frame (our renderer)', 6), ('  of which gpuwait', 8),
           ('prepass (textures/pipelines)', 10), ('  of which pso (pipelines)', 12), ('texture uploads', 2), ('vertex work', 4)]
@@ -38,6 +39,19 @@ def main():
     miss = sum(r[14] for r in rows)
     print(f'\nPipeline cache misses: {int(miss)} in total' + ('  <- compiles during play (more shaders to capture)' if miss else ''))
     ext = [r for r in rows if len(r) >= 23]
+    steps = []
+    for f in files:
+        if f.is_file():
+            for line in f.read_text(errors='replace').splitlines():
+                if LINE.search(line):
+                    st = STEPS.search(line)
+                    if st: steps.append([float(x) for x in st.groups()])
+    if steps:
+        names = ['checks + render-target switches', 'texture/pipeline prepass', 'pipeline lookup', 'SetPipelineState',
+                 'viewport', 'texture bindings', 'constant bindings', 'draw call (incl. batching)']
+        print('\nInside the draw loop, share of the whole frame time (what to optimise first):')
+        for i in sorted(range(8), key=lambda k: -statistics.mean(r[k] for r in steps)):
+            print(f'  {statistics.mean(r[i] for r in steps):5.1f}%  {names[i]}')
     if ext:
         print("\nThe renderer's own time, split (only in newer logs):")
         print(f'  {statistics.mean(r[17] for r in ext):5.1f}%  waiting for the GPU to finish the previous frame')
