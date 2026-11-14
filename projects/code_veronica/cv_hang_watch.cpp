@@ -346,11 +346,17 @@ DWORD WINAPI render_profile(LPVOID) {
                 const char* base = strrchr(path, 0x5C); base = base ? base + 1 : path;
                 uint64_t caller = 0;
                 const IMAGE_NT_HEADERS* nt = (const IMAGE_NT_HEADERS*)((const char*)self + ((const IMAGE_DOS_HEADER*)self)->e_lfanew);
-                const uint64_t lo = (uint64_t)self, hi = lo + nt->OptionalHeader.SizeOfImage;
+                const uint64_t lo = (uint64_t)self;
+                uint64_t tlo = 0, thi = 0;   // the executable sections only: the stack also holds pointers to game data
+                { const IMAGE_SECTION_HEADER* sec = IMAGE_FIRST_SECTION(nt);
+                  for (unsigned i = 0; i < nt->FileHeader.NumberOfSections; i++)
+                      if (sec[i].Characteristics & IMAGE_SCN_MEM_EXECUTE) {
+                          const uint64_t b0 = lo + sec[i].VirtualAddress, b1 = b0 + sec[i].Misc.VirtualSize;
+                          if (!tlo || b0 < tlo) tlo = b0; if (b1 > thi) thi = b1; } }
                 MEMORY_BASIC_INFORMATION mbi; uint64_t* sp = (uint64_t*)c.Rsp;
                 if (VirtualQuery(sp, &mbi, sizeof mbi) && mbi.State == MEM_COMMIT && !(mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD))) {
                     long maxk = (long)(((uint64_t)mbi.BaseAddress + mbi.RegionSize - (uint64_t)sp) / 8); if (maxk > 512) maxk = 512;
-                    for (long k = 0; k < maxk; k++) if (sp[k] >= lo && sp[k] < hi) { caller = sp[k] - lo; break; }
+                    for (long k = 0; k < maxk; k++) if (sp[k] >= tlo && sp[k] < thi) { caller = sp[k] - lo; break; }
                 }
                 char b[160]; snprintf(b, sizeof b, "%s 0x%llX", base, (unsigned long long)caller); key = b;
                 outside++;

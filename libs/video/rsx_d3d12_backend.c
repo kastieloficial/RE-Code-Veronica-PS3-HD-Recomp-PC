@@ -763,17 +763,24 @@ static u32 quad_vb_fill(u32 fi, const rsx_ui_quad* quads, u32 count, QuadVb* vbs
      * best, so interpolated corner alphas follow an edge instead of crossing
      * it. */
     static const unsigned split_bl_tr[6]={0,1,2,2,1,3}, split_tl_br[6]={0,1,3,0,3,2};
+    /* i/255.f for every byte, once: the same values the per-vertex divisions gave. */
+    static float to_f[256]; static int to_f_ready;
+    if(!to_f_ready){for(int i=0;i<256;i++)to_f[i]=i/255.f;to_f_ready=1;}
     for(u32 q=0;q<count;q++) {
         const rsx_ui_quad* r=&quads[q];
         const u32 ca=r->corner_a?r->corner_a:0xFFFFFFFFu;
         const int a0=(int)(ca&255),a1=(int)((ca>>8)&255),a2=(int)((ca>>16)&255),a3=(int)(ca>>24);
         const unsigned* corners=abs(a0-a3)<abs(a1-a2)?split_tl_br:split_bl_tr;
+        /* Colour and the four corner alphas once a quad, not once a vertex. */
+        const float cr=to_f[(r->argb>>16)&255],cg=to_f[(r->argb>>8)&255],cb=to_f[r->argb&255];
+        const float base_a=to_f[r->argb>>24];
+        const float alpha[4]={base_a*(float)(ca&255)/255.f,base_a*(float)((ca>>8)&255)/255.f,
+                              base_a*(float)((ca>>16)&255)/255.f,base_a*(float)(ca>>24)/255.f};
+        UiVertex* out=dst+(size_t)q*6;
         for(unsigned k=0;k<6;k++) {
-            unsigned c=corners[k];
-            UiVertex v={r->x+((c&2)?r->w:0),r->y+((c&1)?r->h:0),0,
-                ((r->argb>>16)&255)/255.f,((r->argb>>8)&255)/255.f,
-                (r->argb&255)/255.f,(r->argb>>24)/255.f*(float)((ca>>(8*c))&255)/255.f,0,0};
-            dst[q*6+k]=v;
+            const unsigned c=corners[k];
+            UiVertex v={r->x+((c&2)?r->w:0),r->y+((c&1)?r->h:0),0,cr,cg,cb,alpha[c],0,0};
+            out[k]=v;
         }
     }
     return count;
