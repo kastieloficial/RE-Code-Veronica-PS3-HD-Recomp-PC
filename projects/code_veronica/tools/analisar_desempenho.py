@@ -1,6 +1,6 @@
-"""Summarise the [PERF] lines the game writes to run-log.txt (PERF=1).
+"""Summarise the [PERF] lines the game appends to perf-log.txt (PERF=1).
 
-  python analisar_desempenho.py [run-log.txt ...]
+  python analisar_desempenho.py [perf-log.txt ...]
 
 Each [PERF] line covers 20 frames: where the frame time went (guest = the
 game's own logic on the CPU, render_frame = our renderer, gpuwait = waiting for
@@ -16,7 +16,7 @@ FIELDS = [('guest (game logic, CPU)', 16), ('render_frame (our renderer)', 6), (
           ('prepass (textures/pipelines)', 10), ('  of which pso (pipelines)', 12), ('texture uploads', 2), ('vertex work', 4)]
 
 def main():
-    files = [Path(a) for a in sys.argv[1:]] or [Path('run-log.txt'), Path('build-release/bin/run-log.txt')]
+    files = [Path(a) for a in sys.argv[1:]] or [Path('perf-log.txt')]
     rows = []
     for f in files:
         if f.is_file():

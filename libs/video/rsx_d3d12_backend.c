@@ -12115,7 +12115,7 @@ static void render_frame_impl(void)
         if (++s_n >= 20 || s_perf_frame >= 5.0) {
             double fr = s_perf_frame > 0 ? s_perf_frame : 1;
             double nfr = (double)s_n; s_n = 0;
-            fprintf(stderr, "[PERF] %.2f fps | tex %.2fs (%.0f%%, %d calls) | vtx %.2fs"
+            { char perf_line[768]; snprintf(perf_line, sizeof perf_line, "[PERF] %.2f fps | tex %.2fs (%.0f%%, %d calls) | vtx %.2fs"
                             " (%.0f%%, %.0fk verts) | render_frame %.2fs (%.0f%%)"
                             " [gpuwait %.2fs %.0f%%]"
                             " | prepass %.2fs (%.0f%%) [srv %.2fs %.0f%% | pso %.2fs %.0f%% %d calls %d MISS %dKB hashed] | guest %.2fs (%.0f%%)%c",
@@ -12130,6 +12130,10 @@ static void render_frame_impl(void)
                     s_perf_pso, 100.0 * s_perf_pso / fr,
                     s_perf_pso_calls, s_perf_pso_miss, s_perf_pso_hashbytes / 1024,
                     fr - s_perf_rf, 100.0 * (fr - s_perf_rf) / fr, 10);
+              fputs(perf_line, stderr);
+              /* Also kept in perf-log.txt (appended): run-log.txt is rewritten when the
+               * launcher comes back, which lost the lines (tools/analisar_desempenho.py). */
+              { static FILE* pl = NULL; if (!pl) pl = fopen("perf-log.txt", "a"); if (pl) { fputs(perf_line, pl); fflush(pl); } } }
             { extern double g_gcm_fifo_secs;
               fprintf(stderr, "[PERF-FIFO] drain %.2fs (%.0f%% of wall, includes catch-up presents)%c",
                       g_gcm_fifo_secs, 100.0 * g_gcm_fifo_secs / fr, 10);
