@@ -11,6 +11,7 @@ clear what to optimise first. Never needs the game files.
 import re, sys, statistics
 from pathlib import Path
 
+EXTRA = re.compile(r'wait (\d+)% record (\d+)% \| t=(\d+) draws=(\d+) res=(\d+)x(\d+)')
 LINE = re.compile(r'\[PERF\] ([\d.]+) fps \| tex ([\d.]+)s \((\d+)%.*?\| vtx ([\d.]+)s \((\d+)%.*?\| render_frame ([\d.]+)s \((\d+)%\) \[gpuwait ([\d.]+)s (\d+)%\] \| prepass ([\d.]+)s \((\d+)%\).*?pso ([\d.]+)s (\d+)% (\d+) calls (\d+) MISS.*?\| guest ([\d.]+)s \((\d+)%\)')
 FIELDS = [('guest (game logic, CPU)', 16), ('render_frame (our renderer)', 6), ('  of which gpuwait', 8),
           ('prepass (textures/pipelines)', 10), ('  of which pso (pipelines)', 12), ('texture uploads', 2), ('vertex work', 4)]
@@ -22,7 +23,9 @@ def main():
         if f.is_file():
             for line in f.read_text(errors='replace').splitlines():
                 m = LINE.search(line)
-                if m: rows.append([float(x) for x in m.groups()])
+                if m:
+                    e = EXTRA.search(line)
+                    rows.append([float(x) for x in m.groups()] + ([float(x) for x in e.groups()] if e else []))
     if not rows:
         print('No [PERF] lines found. Play with capturar-shaders-live.cmd (it sets PERF=1), then run this again.')
         return
@@ -34,6 +37,18 @@ def main():
         print(f'  {statistics.mean(r[i] for r in rows):5.1f}%  {name}')
     miss = sum(r[14] for r in rows)
     print(f'\nPipeline cache misses: {int(miss)} in total' + ('  <- compiles during play (more shaders to capture)' if miss else ''))
+    ext = [r for r in rows if len(r) >= 23]
+    if ext:
+        print("\nThe renderer's own time, split (only in newer logs):")
+        print(f'  {statistics.mean(r[17] for r in ext):5.1f}%  waiting for the GPU to finish the previous frame')
+        print(f'  {statistics.mean(r[18] for r in ext):5.1f}%  recording the draw commands (CPU work per draw)')
+        by = {}
+        for r in ext: by.setdefault((int(r[21]), int(r[22])), []).append(r)
+        if len(by) > 1:
+            print("\nBy render resolution (does the picture size matter?):")
+            for res, g in sorted(by.items()):
+                print(f'  {res[0]}x{res[1]}: {len(g)} windows, {statistics.mean(r[0] for r in g):.1f} fps, '
+                      f'{statistics.mean(r[20] for r in g):.0f} draws/frame')
     print('\nSlowest windows (fps, guest%, render%, prepass%):')
     for r in sorted(rows)[:5]:
         print(f'  {r[0]:5.1f} fps   guest {r[16]:.0f}%   render {r[6]:.0f}%   prepass {r[10]:.0f}%   pso misses {int(r[14])}')

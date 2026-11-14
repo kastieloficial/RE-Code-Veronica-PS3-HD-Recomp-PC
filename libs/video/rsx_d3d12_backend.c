@@ -1596,6 +1596,7 @@ static u32 s_duck_off = 0;   /* as RESOLVED (what the uploader sees)   */
  * spend an afternoon optimising the wrong loop. */
 static double s_perf_tex = 0.0, s_perf_frame = 0.0, s_perf_vtx = 0.0, s_perf_rf = 0.0;
 static double s_perf_gpu = 0.0, s_perf_pre = 0.0, s_perf_srv = 0.0, s_perf_pso = 0.0;
+static double s_perf_wait = 0.0, s_perf_rec = 0.0;   /* s_perf_gpu split: waiting for the GPU / recording the draws */
 /* vp_record_cb: vertex-constant banks written vs reused, and the recording
  * batch they belong to (bumped when render_frame hands a batch over). */
 static unsigned s_vcb_copied = 0, s_vcb_reused = 0, s_vcb_batch = 0;
@@ -10891,7 +10892,7 @@ static void render_frame_impl(void)
       const double cv_gpu_start = cv_diag ? perf_now() : 0.0;
       wait_for_gpu();
       if (cv_diag) cv_wait = (perf_now() - cv_gpu_start) * 1000.0;
-      if (perf_on()) s_perf_gpu += perf_now() - _tw; }
+      if (perf_on()) { const double _d = perf_now() - _tw; s_perf_gpu += _d; s_perf_wait += _d; } }
     frame_profile_mark(FP_ENTRY);
     if (s_replay_pass) pose_restore_batch();   /* the GPU finished the interpolated draw */
     else if (!pose_early && !s_rb.pose_done) pose_interpolate_batch();
@@ -12010,7 +12011,7 @@ static void render_frame_impl(void)
                             dr->cull, dr->blend, 10); } }
                 d+=batch_count-1;
             }
-            if (perf_on()) s_perf_gpu += perf_now() - _rec0;   /* reuse: record time */
+            if (perf_on()) { const double _d = perf_now() - _rec0; s_perf_gpu += _d; s_perf_rec += _d; }   /* record time */
             /* Leave the backbuffer bound for the dump/present epilogue. */
             if (cur_rt >= 0) {
                 s_d3d.cmd_list->lpVtbl->OMSetRenderTargets(s_d3d.cmd_list, 1, &rtv_handle, FALSE, &dsv_handle);
@@ -12118,7 +12119,7 @@ static void render_frame_impl(void)
             { char perf_line[768]; snprintf(perf_line, sizeof perf_line, "[PERF] %.2f fps | tex %.2fs (%.0f%%, %d calls) | vtx %.2fs"
                             " (%.0f%%, %.0fk verts) | render_frame %.2fs (%.0f%%)"
                             " [gpuwait %.2fs %.0f%%]"
-                            " | prepass %.2fs (%.0f%%) [srv %.2fs %.0f%% | pso %.2fs %.0f%% %d calls %d MISS %dKB hashed] | guest %.2fs (%.0f%%)%c",
+                            " | prepass %.2fs (%.0f%%) [srv %.2fs %.0f%% | pso %.2fs %.0f%% %d calls %d MISS %dKB hashed] | guest %.2fs (%.0f%%) | wait %.0f%% record %.0f%% | t=%.0f draws=%u res=%ux%u%c",
                     nfr / fr,
                     s_perf_tex, 100.0 * s_perf_tex / fr, s_perf_ntex,
                     s_perf_vtx, 100.0 * s_perf_vtx / fr,
@@ -12129,7 +12130,9 @@ static void render_frame_impl(void)
                     s_perf_srv, 100.0 * s_perf_srv / fr,
                     s_perf_pso, 100.0 * s_perf_pso / fr,
                     s_perf_pso_calls, s_perf_pso_miss, s_perf_pso_hashbytes / 1024,
-                    fr - s_perf_rf, 100.0 * (fr - s_perf_rf) / fr, 10);
+                    fr - s_perf_rf, 100.0 * (fr - s_perf_rf) / fr,
+                    100.0 * s_perf_wait / fr, 100.0 * s_perf_rec / fr, perf_now(), (unsigned)s_dbg_last_draws,
+                    (unsigned)rs_dim(s_d3d.width, s_rs), (unsigned)rs_dim(s_d3d.height, s_rs), 10);
               fputs(perf_line, stderr);
               /* Also kept in perf-log.txt (appended): run-log.txt is rewritten when the
                * launcher comes back, which lost the lines (tools/analisar_desempenho.py). */
@@ -12169,7 +12172,7 @@ static void render_frame_impl(void)
               if (pt) perf_thread_report(fr); }
             { extern void spu_coh_stats_report(void*); spu_coh_stats_report(stderr); }
             s_perf_frame = 0.0; s_perf_tex = 0.0; s_perf_vtx = 0.0; s_perf_rf = 0.0;
-            s_perf_gpu = 0.0; s_perf_pre = 0.0; s_perf_srv = 0.0; s_perf_pso = 0.0;
+            s_perf_gpu = 0.0; s_perf_pre = 0.0; s_perf_srv = 0.0; s_perf_pso = 0.0; s_perf_wait = 0.0; s_perf_rec = 0.0;
             s_perf_pso_calls = 0; s_perf_pso_miss = 0; s_perf_pso_hashbytes = 0;
             s_perf_ntex = 0; s_perf_nverts = 0;
         }
