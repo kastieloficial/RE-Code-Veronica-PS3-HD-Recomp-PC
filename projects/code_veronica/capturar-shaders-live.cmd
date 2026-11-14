@@ -19,8 +19,6 @@ rem Medidor de desempenho: onde vai o tempo de cada quadro (run-log.txt, resumo 
 set "PERF=1"
 rem Perfil da thread de renderizacao (render-profile.txt; use tools\perfil_renderizacao.py).
 set "CV_PROFILE_RENDER=1"
-rem Teste de desempenho: reaproveita a busca de pipeline (1 por desenho, nao 2). Apague esta linha pra comparar.
-set "CV_PREP_REUSE=1"
 set "base="
 set "EXE=%~dp0build-release\bin\CodeVeronicaPort.exe"
 if not exist "%EXE%" (

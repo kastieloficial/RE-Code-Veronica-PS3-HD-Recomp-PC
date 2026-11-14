@@ -29,6 +29,7 @@
 #include "cv_version.h"
 #include "cv_scene_region.h"
 #include <vector>
+#include <string>
 #include <algorithm>
 #include <map>
 extern "C" uint8_t vm_read8(uint64_t);
@@ -311,7 +312,7 @@ DWORD WINAPI render_profile(LPVOID) {
     GetDescFn2 get_desc = (GetDescFn2)GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "GetThreadDescription");
     HMODULE self = GetModuleHandleW(nullptr);
     HANDLE th = nullptr;
-    std::map<uint64_t, unsigned> hist; unsigned total = 0, outside = 0;
+    std::map<std::string, unsigned> hist; unsigned total = 0, outside = 0;
     ULONGLONG last_dump = GetTickCount64();
     for (;;) {
         if (!th) {
@@ -337,7 +338,24 @@ DWORD WINAPI render_profile(LPVOID) {
             HMODULE m = nullptr;
             GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, (LPCSTR)c.Rip, &m);
             total++;
-            if (m == self) hist[c.Rip - (DWORD64)self]++; else outside++;
+            std::string key;
+            if (m == self) { char b[48]; snprintf(b, sizeof b, "- 0x%llX", (unsigned long long)(c.Rip - (DWORD64)self)); key = b; }
+            else {
+                // Inside Windows, the driver or the C runtime: name the module and the game code that called it.
+                char path[MAX_PATH] = "?"; if (m) GetModuleFileNameA(m, path, sizeof path);
+                const char* base = strrchr(path, 0x5C); base = base ? base + 1 : path;
+                uint64_t caller = 0;
+                const IMAGE_NT_HEADERS* nt = (const IMAGE_NT_HEADERS*)((const char*)self + ((const IMAGE_DOS_HEADER*)self)->e_lfanew);
+                const uint64_t lo = (uint64_t)self, hi = lo + nt->OptionalHeader.SizeOfImage;
+                MEMORY_BASIC_INFORMATION mbi; uint64_t* sp = (uint64_t*)c.Rsp;
+                if (VirtualQuery(sp, &mbi, sizeof mbi) && mbi.State == MEM_COMMIT && !(mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD))) {
+                    long maxk = (long)(((uint64_t)mbi.BaseAddress + mbi.RegionSize - (uint64_t)sp) / 8); if (maxk > 512) maxk = 512;
+                    for (long k = 0; k < maxk; k++) if (sp[k] >= lo && sp[k] < hi) { caller = sp[k] - lo; break; }
+                }
+                char b[160]; snprintf(b, sizeof b, "%s 0x%llX", base, (unsigned long long)caller); key = b;
+                outside++;
+            }
+            hist[key]++;
         }
         ResumeThread(th);
         const ULONGLONG now = GetTickCount64();
@@ -346,9 +364,9 @@ DWORD WINAPI render_profile(LPVOID) {
             FILE* f = fopen("render-profile.txt", "w");
             if (f) {
                 fprintf(f, "samples=%u outside_game_code=%u (waiting in Windows/driver)%s", total, outside, "\n");
-                std::vector<std::pair<unsigned, uint64_t>> v; for (auto& e : hist) v.push_back({e.second, e.first});
+                std::vector<std::pair<unsigned, std::string>> v; for (auto& e : hist) v.push_back({e.second, e.first});
                 std::sort(v.rbegin(), v.rend());
-                for (size_t i = 0; i < v.size() && i < 4000; i++) fprintf(f, "%u 0x%llX%s", v[i].first, (unsigned long long)v[i].second, "\n");
+                for (size_t i = 0; i < v.size() && i < 4000; i++) fprintf(f, "%u %s%s", v[i].first, v[i].second.c_str(), "\n");
                 fclose(f);
             }
         }
