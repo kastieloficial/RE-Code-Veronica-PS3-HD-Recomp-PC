@@ -1,0 +1,6 @@
+CV_FONT_CINZEL_600 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/assets/fonts/Cinzel-SemiBold.ttf"
+CV_FONT_CINZEL_700 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/assets/fonts/Cinzel-Bold.ttf"
+CV_FONT_BARLOW_400 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/assets/fonts/BarlowSemiCondensed-Regular.ttf"
+CV_FONT_BARLOW_500 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/assets/fonts/BarlowSemiCondensed-Medium.ttf"
+CV_FONT_BARLOW_600 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/assets/fonts/BarlowSemiCondensed-SemiBold.ttf"
+CV_FONT_BARLOW_700 RCDATA "@CMAKE_CURRENT_SOURCE_DIR@/assets/fonts/BarlowSemiCondensed-Bold.ttf"

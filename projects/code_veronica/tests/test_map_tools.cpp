@@ -19,6 +19,16 @@ uint64_t vm_read64(uint64_t a){return uint64_t(vm_read32(a))<<32|vm_read32(a+4);
 void* rsx_d3d12_window(){return nullptr;}
 int pad_phys_poll(int,PadPhys*){return 0;}
 }
+// The host windows and per-frame helpers cv_test_tools.cpp calls are not part of this test (it never linked without them).
+bool cv_save_library_message(MSG*){return false;}
+bool cv_archives_visible(){return false;}
+void cv_save_library_close(){}
+void cv_save_library_show(bool,int){}
+void cv_archives_maps(const std::vector<cv_test::Room>&,unsigned,bool (*)(unsigned,unsigned)){}
+void cv_archives_show(int,int,int){}
+void cv_save_library_frame(ppu_context*,bool){}
+namespace cv_quick {void frame(ppu_context*){}bool consumes_stick(){return false;}}
+void cv_manual_reload_frame(ppu_context*){}
 void ORIGINAL_FRAME(ppu_context*){++frames;}
 void ORIGINAL_SERIALIZE(ppu_context*){++serializations;}
 static int save_screens=0,load_screens=0,finishes=0;

@@ -1,6 +1,7 @@
 // Optional host-side test window. Guest calls are consumed only by the game dispatcher.
 #include "cv_test_tools.h"
 #include "cv_save_library.h"
+#include "cv_port_modal.h"
 #include "cv_version.h"
 #include "ppu_recomp.h"
 #include <atomic>
@@ -30,7 +31,6 @@
 extern "C" uint8_t* vm_base;
 extern "C" PPU_THREAD_LOCAL ppu_context* g_active_ctx;
 extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
-extern "C" int g_pad_block;
 extern "C" void* rsx_d3d12_window(void);
 // JP/US: the same functions as EU, matched by their normalized lifted bodies;
 // they differ only in global addresses, with the same state and save-object
@@ -294,7 +294,7 @@ void send_selected() {
     const auto& room=rooms[visible_rooms[size_t(i)]];
     uint32_t packed=0x80000000u|(room.stage<<24)|(room.number<<16)|(room.variant<<8)|unsigned(spawn);
     uint32_t empty=0;result=1;if(!request.compare_exchange_strong(empty,packed)){result=3;return;}
-    ShowWindow(window,SW_HIDE);g_pad_block=0;auto game=static_cast<HWND>(rsx_d3d12_window());if(game)SetForegroundWindow(game);
+    ShowWindow(window,SW_HIDE);cv_port_modal::close(cv_port_modal::TEST_TOOLS);   // legacy window: its own modal bit
 }
 void send_save() {
     if(!enabled||!ready||request.load()||save_request.load()||load_request.load())return;
@@ -445,9 +445,8 @@ LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM wp,LPARAM lp) {
             int delta=(p.buttons&(1u<<PB_DOWN))?1:(p.buttons&(1u<<PB_UP))?-1:0;
             if(delta&&((edge&((1u<<PB_DOWN)|(1u<<PB_UP)))||GetTickCount64()>=repeat_at[i])) {int n=int(SendMessageW(list,LB_GETCOUNT,0,0)),sel=int(SendMessageW(list,LB_GETCURSEL,0,0));if(n)SendMessageW(list,LB_SETCURSEL,std::clamp(sel+delta,0,n-1),0);repeat_at[i]=GetTickCount64()+160;}}
         return 0;}
-    case WM_ACTIVATE:g_pad_block=LOWORD(wp)!=WA_INACTIVE;return 0;   // the game ignores the pad only while this window has the focus, as under the launcher
     case WM_KEYDOWN:if(wp==VK_F7||wp==VK_ESCAPE)SendMessageW(h,WM_CLOSE,0,0);else if(wp==VK_RETURN)confirm_action();return 0;
-    case WM_CLOSE:ShowWindow(h,SW_HIDE);g_pad_block=0;{auto game=static_cast<HWND>(rsx_d3d12_window());if(game)SetForegroundWindow(game);}return 0;
+    case WM_CLOSE:ShowWindow(h,SW_HIDE);cv_port_modal::close(cv_port_modal::TEST_TOOLS);return 0;
     case WM_CTLCOLOREDIT:case WM_CTLCOLORLISTBOX:
         SetTextColor(reinterpret_cast<HDC>(wp),C_TEXT);SetBkColor(reinterpret_cast<HDC>(wp),C_FIELD);return reinterpret_cast<LRESULT>(field_brush);
     case WM_DESTROY:window=nullptr;KillTimer(h,1);return 0;

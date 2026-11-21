@@ -29,7 +29,9 @@ void* rsx_d3d12_window(void) {return nullptr;}
 int pad_phys_poll(int,PadPhys*) {return 0;}
 void cv_focus_pause_hold(int) {}
 void perf_overlay_toast(const wchar_t*,int) {}
+int pad_phys_360_layout(int) {return 0;}   // cv_port_ui::menu_pad
 }
+std::wstring cv_key_cap_label(int) {return L"";}   // button_icons.cpp: the keycaps the footer draws
 using namespace cv_items;
 static const uint32_t state=CV_SRT_CHARACTER-0x94;
 static uint32_t entry_address(int character,int entry) {return CV_SRT_INVENTORY+character*0x40+4+entry*4;}

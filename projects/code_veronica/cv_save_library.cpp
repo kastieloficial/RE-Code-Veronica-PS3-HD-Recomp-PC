@@ -9,6 +9,8 @@
 #include "cv_test_tools_i18n.h"
 #include "cv_archives_i18n.h"
 #include "cv_srt_i18n.h"
+#include "cv_port_modal.h"
+#include "cv_port_ui.h"
 #include <cwctype>
 #include <algorithm>
 #include <array>
@@ -31,9 +33,7 @@
 extern "C" uint8_t* vm_base;
 extern "C" PPU_THREAD_LOCAL ppu_context* g_active_ctx;
 extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
-extern "C" int g_pad_block;
 extern "C" void* rsx_d3d12_window(void);
-extern "C" void cv_focus_pause_hold(int);
 extern "C" void perf_overlay_toast(const wchar_t*,int);
 extern "C" int rsx_d3d12_request_thumbnail(void (*)(void*,const uint32_t*,unsigned,unsigned),void*);
 
@@ -199,7 +199,7 @@ uint32_t held_direction[PAD_PHYS_MAX]={};
 const RECT primary{836,643,1164,693},secondary{836,604,1164,637};
 const RECT cancel_box{342,410,584,456},yes_box{614,410,856,456};
 void repaint(){if(window)InvalidateRect(window,nullptr,FALSE);}
-void close_window(){if(busy)return;confirming=false;if(window)ShowWindow(window,SW_HIDE);g_pad_block=0;cv_focus_pause_hold(0);if(auto game=(HWND)rsx_d3d12_window())SetForegroundWindow(game);}
+void close_window(){if(busy)return;confirming=false;cv_port_modal::close(cv_port_modal::ARCHIVES);}   // hides, the game runs again and gets the focus
 int count(){return tab==0?int(filtered_maps.size()):int(entries.size())+(saving?1:0);}
 void move(int delta){if(busy||confirming||!count())return;selected=std::clamp(selected+delta,0,count()-1);if(selected<scroll)scroll=selected;if(selected>=scroll+rows_visible)scroll=selected-rows_visible+1;repaint();}
 void filter_maps(){wchar_t value[128]={};if(search)GetWindowTextW(search,value,128);std::wstring query=value;for(auto& c:query)c=wchar_t(towlower(c));filtered_maps.clear();for(size_t i=0;i<maps.size();i++)if(query.empty()||maps[i].code().find(query)!=std::wstring::npos)filtered_maps.push_back(i);selected=scroll=0;repaint();}
@@ -220,7 +220,8 @@ void activate(bool overwrite=false){
   if(index>=0){if(index>=int(entries.size())||entries[index].legacy>=0)return;p.replace=entries[index].path;}}
  else if(index<0||index>=int(entries.size())||!read(entries[index],p.data)){status=tr(ui::CORRUPT);repaint();return;}
  {std::lock_guard<std::mutex> lock(queue_lock);if(have_request)return;queued=std::move(p);have_request=true;busy=true;}
- status=tr(ui::WORKING);cv_focus_pause_hold(0);if(!saving){ShowWindow(window,SW_HIDE);g_pad_block=0;if(auto game=(HWND)rsx_d3d12_window())SetForegroundWindow(game);}repaint();
+ status=tr(ui::WORKING);if(!saving)cv_port_modal::close(cv_port_modal::ARCHIVES);else cv_port_modal::set_working(cv_port_modal::ARCHIVES,true);   // a save is written with the game running, the window still shown
+ repaint();
 }
 void request_overwrite(){const auto* e=selection();if(busy||!available||!saving||!e||e->legacy>=0)return;confirming=true;confirm_yes=false;repaint();}
 void accept(){if(confirming){bool yes=confirm_yes;confirming=false;if(yes)activate(true);repaint();}else{if(saving)selected=scroll=0;activate();}}
@@ -248,32 +249,10 @@ void picture(HDC dc,const Record* e,RECT box){fill(dc,box,RGB(13,14,15));bool sh
  if(e&&e->legacy<0){auto key=e->path.wstring();if(!thumbnails.count(key)){if(thumbnails.size()>=12)thumbnails.clear();Data d;std::vector<uint32_t> px;if(read(*e,d,&px))thumbnails.emplace(key,std::move(px));}auto at=thumbnails.find(key);if(at!=thumbnails.end()){BITMAPINFO bi{};bi.bmiHeader={sizeof(BITMAPINFOHEADER),tw,-int(th),1,32,BI_RGB};SetStretchBltMode(dc,HALFTONE);StretchDIBits(dc,box.left,box.top,box.right-box.left,box.bottom-box.top,0,0,tw,th,at->second.data(),&bi,DIB_RGB_COLORS,SRCCOPY);shown=true;}}
  if(!shown){RECT r=box;r.top+=(r.bottom-r.top)/2-12;label(dc,e&&e->legacy>=0?tr(ui::ORIGINAL):tr(ui::NO_PREVIEW),r,small_font,dim,DT_CENTER|DT_SINGLELINE|DT_END_ELLIPSIS);}border(dc,box,RGB(61,54,46));
 }
-// Match the launcher's explicit icon preference; Auto follows local menu input.
-int hint_kind(){
- const char* mode=std::getenv("CV_BUTTON_ICONS");
- if(mode&&std::strcmp(mode,"keyboard")==0)return PAD_INPUT_KEYBOARD;
- if(mode&&std::strcmp(mode,"xbox")==0)return PAD_KIND_XINPUT;
- if(mode&&std::strcmp(mode,"ps")==0)return PAD_KIND_DS4;
- if(mode&&std::strcmp(mode,"switch")==0)return PAD_KIND_SWITCH;
- return input_kind==PAD_KIND_XINPUT||input_kind==PAD_KIND_SWITCH?input_kind:(input_kind==PAD_KIND_DS4||input_kind==PAD_KIND_DUALSENSE)?PAD_KIND_DS4:PAD_INPUT_KEYBOARD;
-}
-void note_input(int kind){
- if(kind!=PAD_KIND_XINPUT&&kind!=PAD_KIND_DS4&&kind!=PAD_KIND_DUALSENSE&&kind!=PAD_KIND_SWITCH)kind=PAD_INPUT_KEYBOARD;
- if(input_kind!=kind){input_kind=kind;repaint();}
-}
-void menu_pad(PadPhys& p){
- // Undo gameplay's Xbox 360 shoulder remapping only for this host menu.
- if(pad_phys_360_layout(p.kind)){const auto bits=p.buttons;auto swap=[&](int a,int b){p.buttons=(p.buttons&~((1u<<a)|(1u<<b)))|((bits&(1u<<a))?(1u<<b):0)|((bits&(1u<<b))?(1u<<a):0);};swap(PB_L1,PB_L2);swap(PB_R1,PB_R2);}
- if(p.ly<64)p.buttons|=1u<<PB_UP;else if(p.ly>192)p.buttons|=1u<<PB_DOWN;
- if(p.lx<64)p.buttons|=1u<<PB_LEFT;else if(p.lx>192)p.buttons|=1u<<PB_RIGHT;
-}
-// Switch names by position, from the PlayStation ones: B bottom, A right, Y left, X top; ZL/ZR are L2/R2.
-std::wstring switch_hint(std::wstring t){
- const wchar_t* from[]={L"L2",L"R2",L"L1",L"R1",L"✕",L"○",L"□",L"△"};
- const wchar_t* to[]={L"ZL",L"ZR",L"L",L"R",L"B",L"A",L"Y",L"X"};
- for(int i=0;i<8;i++)for(size_t at=0;(at=t.find(from[i],at))!=std::wstring::npos;at+=wcslen(to[i]))t.replace(at,wcslen(from[i]),to[i]);
- return t;
-}
+// The input helpers live in cv_port_ui (shared with the other port windows).
+int hint_kind(){return cv_port_ui::hint_kind(input_kind);}
+void note_input(int kind){kind=cv_port_ui::normalize_kind(kind);if(input_kind!=kind){input_kind=kind;repaint();}}
+using cv_port_ui::menu_pad;using cv_port_ui::switch_hint;
 std::wstring button_hint(const wchar_t* key,const wchar_t* ps,const wchar_t* xbox){const int kind=hint_kind();return kind==PAD_INPUT_KEYBOARD?key:kind==PAD_KIND_XINPUT?xbox:kind==PAD_KIND_SWITCH?switch_hint(ps):ps;}
 std::wstring action_name(){if(tab==0)return mt(cv_test_i18n::LOAD);return saving?tr(ui::NEW_SAVE):mt(cv_test_i18n::LOAD_SAVE);}
 void paint(HWND h){painted_hint_kind=hint_kind();PAINTSTRUCT ps;HDC dc0=BeginPaint(h,&ps),dc=CreateCompatibleDC(dc0);HBITMAP bmp=CreateCompatibleBitmap(dc0,W,H);auto old=SelectObject(dc,bmp);
@@ -320,9 +299,8 @@ void keyboard(WPARAM key){note_input(PAD_INPUT_KEYBOARD);if(busy)return;
 LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM wp,LPARAM lp){switch(msg){
  case WM_PAINT:paint(h);return 0;case WM_ERASEBKGND:return 1;
  case WM_CLOSE:back();return 0;
- case WM_ACTIVATE:g_pad_block=LOWORD(wp)!=WA_INACTIVE;return 0;
  case WM_SIZE:search_layout();return 0;
- case WM_KEYDOWN:keyboard(wp);return 0;
+ case WM_KEYDOWN:if(wp==VK_F7&&cv_port_modal::key_repeat(lp))return 0;keyboard(wp);return 0;
  case WM_COMMAND:if(HIWORD(wp)==EN_CHANGE&&reinterpret_cast<HWND>(lp)==search)filter_maps();return 0;
  case WM_CTLCOLOREDIT:SetDCBrushColor(reinterpret_cast<HDC>(wp),RGB(30,28,30));SetTextColor(reinterpret_cast<HDC>(wp),ivory);SetBkColor(reinterpret_cast<HDC>(wp),RGB(30,28,30));return reinterpret_cast<LRESULT>(GetStockObject(DC_BRUSH));
  case WM_MOUSEWHEEL:note_input(PAD_INPUT_KEYBOARD);move(GET_WHEEL_DELTA_WPARAM(wp)>0?-3:3);return 0;
@@ -331,8 +309,8 @@ LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM wp,LPARAM lp){switch(msg){
   SetFocus(h);if(y>=108&&y<147){if(x<170)switch_tab(tab-1);else if(x>=1028)switch_tab(tab+1);else switch_tab((x-170)/286);return 0;}
   if(x>=28&&x<644&&y>=top&&y<top+rows_visible*row_h){int n=scroll+(y-top)/row_h;if(n<count()){selected=n;repaint();if(msg==WM_LBUTTONDBLCLK){if(saving&&selection())request_overwrite();else accept();}}return 0;}
   if(hit(primary,x,y)){if(saving)selected=scroll=0;activate();}else if(saving&&hit(secondary,x,y))request_overwrite();else if(tab==0&&y>=600&&y<635&&((x>=840&&x<884)||(x>=1020&&x<1064))){spawn=std::clamp(spawn+(x<900?-1:1),0,255);repaint();}else if(y>713&&x>950)back();return 0;}
- case WM_DONE:busy=false;if(IsWindowVisible(h)){cv_focus_pause_hold(1);refresh();status=wp?tr(ui::SAVED):tr(ui::FAILED);repaint();}return 0;
- case WM_TIMER:if(painted_hint_kind!=hint_kind())repaint();if(IsWindowVisible(h)&&(GetForegroundWindow()==h||IsChild(h,GetForegroundWindow())))for(int i=0;i<PAD_PHYS_MAX;i++){
+ case WM_DONE:busy=false;if(IsWindowVisible(h)){cv_port_modal::set_working(cv_port_modal::ARCHIVES,false);refresh();status=wp?tr(ui::SAVED):tr(ui::FAILED);repaint();}return 0;
+ case WM_TIMER:cv_port_modal::tick(cv_port_modal::ARCHIVES,h);if(painted_hint_kind!=hint_kind())repaint();if(IsWindowVisible(h)&&(GetForegroundWindow()==h||IsChild(h,GetForegroundWindow())))for(int i=0;i<PAD_PHYS_MAX;i++){
   PadPhys p{};if(!pad_phys_poll(i,&p)){previous_pad[i]=held_direction[i]=0;stick_active[i]=false;continue;}
   menu_pad(p);
   const bool motion=p.rx<64||p.rx>192||p.ry<64||p.ry>192;
@@ -372,7 +350,7 @@ void cv_save_library_frame(ppu_context* ctx,bool valid){available=valid;
 void cv_save_library_show(bool mode,int lang){cv_archives_show(mode?1:2,lang);}
 void cv_archives_show(int page,int lang,int opening_input){if(busy)return;language=std::clamp(lang,0,12);tab=std::clamp(page,0,2);saving=tab==1;selected=scroll=0;confirming=false;status.clear();refresh();
  if(!window){WNDCLASSW wc{};wc.style=CS_DBLCLKS;wc.lpfnWndProc=proc;wc.hInstance=GetModuleHandleW(nullptr);wc.hCursor=LoadCursorW(nullptr,MAKEINTRESOURCEW(32512));wc.lpszClassName=L"CVSaveLibrary";wc.hIcon=LoadIconW(wc.hInstance,MAKEINTRESOURCEW(1));RegisterClassW(&wc);
- window=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_TOPMOST,wc.lpszClassName,L"Code: Veronica",WS_POPUP,0,0,W,H,nullptr,nullptr,wc.hInstance,nullptr);if(!window)return;
+ window=CreateWindowExW(WS_EX_TOOLWINDOW,wc.lpszClassName,L"Code: Veronica",WS_POPUP,0,0,W,H,(HWND)rsx_d3d12_window(),nullptr,wc.hInstance,nullptr);   // owned by the game, no TOPMOSTif(!window)return;
  search=CreateWindowExW(0,L"EDIT",L"",WS_CHILD|WS_BORDER|ES_AUTOHSCROLL,0,0,100,25,window,reinterpret_cast<HMENU>(INT_PTR(400)),wc.hInstance,nullptr);
  }
  for(HFONT* f:{&title_font,&body_font,&small_font,&code_font})if(*f){DeleteObject(*f);*f=nullptr;}
@@ -389,7 +367,9 @@ void cv_archives_show(int page,int lang,int opening_input){if(busy)return;langua
  MONITORINFO mi{sizeof(mi)};GetMonitorInfoW(MonitorFromRect(&r,MONITOR_DEFAULTTONEAREST),&mi);
  double scale=std::min({1.0,double(mi.rcWork.right-mi.rcWork.left-24)/W,double(mi.rcWork.bottom-mi.rcWork.top-24)/H});
  int width=int(W*scale),height=int(H*scale);int x=std::clamp(int((r.left+r.right-width)/2),int(mi.rcWork.left),int(mi.rcWork.right)-width),y=std::clamp(int((r.top+r.bottom-height)/2),int(mi.rcWork.top),int(mi.rcWork.bottom)-height);
- search_layout();SetWindowPos(window,HWND_TOPMOST,x,y,width,height,SWP_NOACTIVATE);notification=window;cv_focus_pause_hold(1);g_pad_block=1;ShowWindow(window,SW_SHOW);SetForegroundWindow(window);SetFocus(window);SetTimer(window,1,16,nullptr);note_input(opening_input==PAD_KIND_NONE?pad_last_input():opening_input);GetCursorPos(&last_mouse);
+ search_layout();SetWindowPos(window,nullptr,x,y,width,height,SWP_NOACTIVATE|SWP_NOZORDER);notification=window;cv_port_modal::register_close(cv_port_modal::ARCHIVES,cv_save_library_close);
+ if(!cv_port_modal::open(cv_port_modal::ARCHIVES,window))return;   // owner = the game, game paused and pad blocked; refused when the game is not in front
+ SetFocus(window);SetTimer(window,1,16,nullptr);note_input(opening_input==PAD_KIND_NONE?pad_last_input():opening_input);GetCursorPos(&last_mouse);
  for(int i=0;i<PAD_PHYS_MAX;i++){PadPhys p{};pad_phys_poll(i,&p);menu_pad(p);previous_pad[i]=p.buttons;held_direction[i]=0;stick_active[i]=p.rx<64||p.rx>192||p.ry<64||p.ry>192;}InvalidateRect(window,nullptr,FALSE);
 }
 void cv_save_library_close(){if(!busy)close_window();}
@@ -399,6 +379,7 @@ bool cv_save_library_message(MSG* msg){if(!window||!IsWindowVisible(window)||(ms
  if(msg->message==WM_KEYDOWN||msg->message==WM_SYSKEYDOWN||msg->message==WM_CHAR||msg->message==WM_LBUTTONDOWN||msg->message==WM_RBUTTONDOWN||msg->message==WM_MOUSEWHEEL)note_input(PAD_INPUT_KEYBOARD);
  if(msg->message==WM_MOUSEMOVE){POINT point{};GetCursorPos(&point);if(point.x!=last_mouse.x||point.y!=last_mouse.y){last_mouse=point;note_input(PAD_INPUT_KEYBOARD);}}
  if(msg->hwnd==search&&msg->message==WM_KEYDOWN){
+  if(msg->wParam==VK_F7&&cv_port_modal::key_repeat(msg->lParam))return true;
   if(msg->wParam==VK_TAB||msg->wParam==VK_UP||msg->wParam==VK_DOWN||msg->wParam==VK_RETURN||msg->wParam==VK_ESCAPE||msg->wParam==VK_F7||msg->wParam==VK_PRIOR||msg->wParam==VK_NEXT){SetFocus(window);keyboard(msg->wParam);return true;}
  }
  TranslateMessage(msg);DispatchMessageW(msg);return true;}

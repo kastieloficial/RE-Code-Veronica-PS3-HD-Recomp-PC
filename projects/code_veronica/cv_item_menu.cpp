@@ -16,12 +16,12 @@
 #include "cv_srt_i18n.h"
 #include "cv_srt_icons.h"
 #include "cv_launcher_controls.h"
+#include "cv_port_modal.h"
+#include "cv_port_ui.h"
 #pragma comment(lib,"gdiplus.lib")
 #pragma comment(lib,"dwmapi.lib")
 using namespace Gdiplus;
-extern "C" int g_pad_block;
 extern "C" void* rsx_d3d12_window(void);
-extern "C" void cv_focus_pause_hold(int on);                       // cv_focus_pause.cpp
 extern "C" void perf_overlay_toast(const wchar_t* text,int on);    // the notice in the game's corner
 
 namespace cv_item_menu {
@@ -30,6 +30,7 @@ namespace tx=cv_items_i18n;
 const Color C_BG(255,21,17,17),C_PANEL(255,30,24,24),C_FIELD(255,26,22,22),C_CELL(255,36,29,28),C_BORDER(255,70,60,58),
     C_LINE(255,70,28,28),C_TEXT(255,225,218,210),C_DIM(255,150,140,132),C_RED(255,196,28,34),C_RED_HI(255,230,50,50),
     C_OK(255,120,190,110),C_AMBER(255,226,172,82),C_SELECT(255,62,24,26);
+cv_port_ui::MouseTrack close_track;   // the close button: id 1
 const wchar_t* t(const View& v,tx::Id id) {return tx::k_text[std::clamp(v.language,0,12)][id];}
 cv_srt_i18n::Language lang(const View& v) {return cv_srt_i18n::Language(std::clamp(v.language,0,12));}
 std::wstring name(const View& v,int id) {return cv_srt_i18n::item(id,lang(v));}
@@ -311,8 +312,7 @@ void draw(Graphics& g,View& v,const std::wstring& game) {
     } else p.text(t(v,tx::WAITING),RectF(W-32-400,30,400,24),15,C_DIM,false,StringAlignmentFar);
     {
         const RectF r(W-32-24,31,24,24);
-        p.panel(r,C_SELECT,C_RED_HI,12,1.5f);
-        p.text(L"×",r,19,C_TEXT,true,StringAlignmentCenter,StringAlignmentCenter);
+        cv_port_ui::close_button(g,r,close_track.state(1));   // gold ring; hover / pressed feedback
         p.hit(r,HIT_CLOSE,0);
     }
     p.box(RectF(LX,80,W-2*LX,1),C_LINE);
@@ -445,6 +445,10 @@ void paint(HWND h) {
 }
 void redraw() {if(window)InvalidateRect(window,nullptr,FALSE);}
 void act(Action a) {if(apply(view,a))cv_item_menu_close();else redraw();}
+bool over_close(int x,int y) {
+    for(const auto& hit:view.hits)if(hit.kind==HIT_CLOSE&&hit.rect.Contains(x/scale,y/scale))return true;
+    return false;
+}
 void click(int x,int y) {
     const float px=x/scale,py=y/scale;
     for(const auto& hit:view.hits) {
@@ -473,7 +477,7 @@ void place_window() {
     const float aw=float(area.right-area.left),ah=float(area.bottom-area.top);
     scale=std::clamp(std::min(aw*0.94f/W,ah*0.94f/H),0.55f,2.5f);
     const int w=int(std::lround(W*scale)),h=int(std::lround(H*scale));
-    SetWindowPos(window,HWND_TOPMOST,area.left+int(aw-w)/2,area.top+int(ah-h)/2,w,h,SWP_NOACTIVATE);
+    SetWindowPos(window,nullptr,area.left+int(aw-w)/2,area.top+int(ah-h)/2,w,h,SWP_NOACTIVATE|SWP_NOZORDER);   // owned by the game, never TOPMOST
 }
 LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM wp,LPARAM lp) {
     switch(msg) {
@@ -485,12 +489,25 @@ LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM wp,LPARAM lp) {
         case 'Q':case VK_PRIOR:act(PREV);break;case 'E':case VK_NEXT:case VK_TAB:act(NEXT);break;
         case VK_RETURN:case VK_SPACE:act(CONFIRM);break;case VK_ESCAPE:case VK_BACK:act(BACK);break;
         case 'R':case VK_DELETE:act(REMOVE);break;
-        case VK_F6:cv_item_menu_close();break;
+        case VK_F6:if(!cv_port_modal::key_repeat(lp))cv_item_menu_close();break;
         }
         return 0;
-    case WM_LBUTTONDOWN:click(short(LOWORD(lp)),short(HIWORD(lp)));return 0;
+    case WM_MOUSEMOVE:close_track.arm(h);if(close_track.move(over_close(short(LOWORD(lp)),short(HIWORD(lp)))?1:-1))redraw();return 0;
+    case WM_MOUSELEAVE:if(close_track.leave())redraw();return 0;
+    case WM_LBUTTONDOWN:
+        if(over_close(short(LOWORD(lp)),short(HIWORD(lp)))){SetCapture(h);if(close_track.down(1))redraw();return 0;}
+        click(short(LOWORD(lp)),short(HIWORD(lp)));return 0;
+    case WM_LBUTTONUP:
+        if(close_track.pressed>=0) {
+            ReleaseCapture();int fired=-1;
+            const bool changed=close_track.up(over_close(short(LOWORD(lp)),short(HIWORD(lp)))?1:-1,fired);
+            if(fired==1){cv_item_menu_close();return 0;}   // the action fires on release over the same button
+            if(changed)redraw();
+        }
+        return 0;
     case WM_MOUSEWHEEL:act(GET_WHEEL_DELTA_WPARAM(wp)>0?UP:DOWN);return 0;
     case WM_TIMER: {
+        cv_port_modal::tick(cv_port_modal::ITEMS,h);   // the game window took the focus: win it back
         if(!IsWindowVisible(h)) {
             // Closed with items queued: the game, running again, puts them in
             // on its next frame; say so in its corner, then stop looking.
@@ -504,6 +521,7 @@ LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM wp,LPARAM lp) {
         bool dirty=serial!=view.serial||std::memcmp(&before,&view.inventory,sizeof before)!=0;
         if(GetForegroundWindow()==h) for(int i=0;i<PAD_PHYS_MAX;i++) {
             PadPhys pad{};if(!pad_phys_poll(i,&pad)){previous_pad[i]=0;continue;}
+            cv_port_ui::menu_pad(pad);   // Xbox 360 layout: LB/RB back to L1/R1 (the game's remap is not for this menu)
             const uint32_t edge=pad.buttons&~previous_pad[i];previous_pad[i]=pad.buttons;
             const auto pressed=[&](int b){return (edge>>b)&1u;};
             // The shortcut chords (R1+R2+L1+L2 + a button) belong to the
@@ -521,7 +539,6 @@ LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM wp,LPARAM lp) {
         }
         if(dirty)redraw();
         return 0;}
-    case WM_ACTIVATE:g_pad_block=LOWORD(wp)!=WA_INACTIVE;return 0;   // the game ignores the pad under the menu
     case WM_CLOSE:cv_item_menu_close();return 0;
     case WM_DESTROY:window=nullptr;return 0;
     }
@@ -536,10 +553,9 @@ void cv_item_menu_enable(bool on) {
 bool cv_item_menu_visible() {return window&&IsWindowVisible(window);}
 void cv_item_menu_close() {
     if(!cv_item_menu_visible())return;
-    ShowWindow(window,SW_HIDE);g_pad_block=0;closed_at=GetTickCount64();
+    closed_at=GetTickCount64();
     if(!cv_items::pending())KillTimer(window,1);   // else it stays to report them
-    cv_focus_pause_hold(0);   // the game runs again; its next frame takes the queue
-    if(auto game=static_cast<HWND>(rsx_d3d12_window()))SetForegroundWindow(game);
+    cv_port_modal::close(cv_port_modal::ITEMS);   // hides, the game runs again (its next frame takes the queue) and gets the focus back
 }
 void cv_item_menu_toggle(const std::wstring& game,int language) {
     if(!allowed)return;
@@ -547,19 +563,21 @@ void cv_item_menu_toggle(const std::wstring& game,int language) {
     if(!window) {
         WNDCLASSW wc{};wc.lpfnWndProc=proc;wc.hInstance=GetModuleHandleW(nullptr);wc.hCursor=LoadCursorW(nullptr,MAKEINTRESOURCEW(32512));
         wc.lpszClassName=L"CVItemMenu";wc.hIcon=LoadIconW(wc.hInstance,MAKEINTRESOURCEW(1));RegisterClassW(&wc);
-        // No owner: an owned window would bring back the minimized launcher.
-        window=CreateWindowExW(WS_EX_TOOLWINDOW|WS_EX_TOPMOST,L"CVItemMenu",L"Code: Veronica",WS_POPUP,
-                               0,0,W,H,nullptr,nullptr,wc.hInstance,nullptr);
+        // Owned by the game window (not the launcher), no TOPMOST: above the game, below other programs.
+        window=CreateWindowExW(WS_EX_TOOLWINDOW,L"CVItemMenu",L"Code: Veronica",WS_POPUP,
+                               0,0,W,H,static_cast<HWND>(rsx_d3d12_window()),nullptr,wc.hInstance,nullptr);
         if(!window)return;
     }
     game_root=game;
     view.language=std::clamp(language,0,12);view.focus=0;view.status.clear();view.tone=NEUTRAL;
-    view.serial=cv_items::outcome_serial();
-    cv_focus_pause_hold(1);   // the game stands still while choosing
-    refresh(view,cv_items::read());
+    view.serial=cv_items::outcome_serial();close_track.leave();
+    cv_port_modal::register_close(cv_port_modal::ITEMS,cv_item_menu_close);
     place_window();
-    ShowWindow(window,SW_SHOW);SetForegroundWindow(window);SetFocus(window);g_pad_block=1;
-    for(int i=0;i<PAD_PHYS_MAX;i++){PadPhys pad{};pad_phys_poll(i,&pad);previous_pad[i]=pad.buttons;}
+    // Owner = the game, shown and focused, the game stands still and ignores the pad; refused when the game is not in front.
+    if(!cv_port_modal::open(cv_port_modal::ITEMS,window))return;
+    refresh(view,cv_items::read());
+    SetFocus(window);
+    for(int i=0;i<PAD_PHYS_MAX;i++){PadPhys pad{};pad_phys_poll(i,&pad);cv_port_ui::menu_pad(pad);previous_pad[i]=pad.buttons;}
     SetTimer(window,1,50,nullptr);redraw();
 }
 #endif

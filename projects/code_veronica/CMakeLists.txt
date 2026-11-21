@@ -709,11 +709,27 @@ if(WIN32)
     target_link_libraries(code_veronica_shadow_filter_tests PRIVATE d3d11 d3dcompiler)
 endif()
 
+# Shared menu look (embedded Cinzel / Barlow Semi Condensed fonts, style primitives, footer, input helpers)
+# and the single owner of the modal state (F5/F6/F7/title box). Their pure decision logic has its own test.
+if(WIN32)
+    configure_file(cv_port_ui.rc.in "${CMAKE_CURRENT_BINARY_DIR}/cv_port_ui.rc" @ONLY)
+    set(CV_PORT_UI_FONTS
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/Cinzel-SemiBold.ttf" "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/Cinzel-Bold.ttf"
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/BarlowSemiCondensed-Regular.ttf" "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/BarlowSemiCondensed-Medium.ttf"
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/BarlowSemiCondensed-SemiBold.ttf" "${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/BarlowSemiCondensed-Bold.ttf")
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/cv_port_ui.rc" PROPERTIES OBJECT_DEPENDS "${CV_PORT_UI_FONTS}")
+    target_sources(MyGameRecomp PRIVATE cv_port_ui.cpp cv_port_modal.cpp "${CMAKE_CURRENT_BINARY_DIR}/cv_port_ui.rc")
+    add_executable(code_veronica_port_modal_tests EXCLUDE_FROM_ALL tests/test_port_modal.cpp)
+    target_include_directories(code_veronica_port_modal_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_options(code_veronica_port_modal_tests PRIVATE /UNDEBUG)
+endif()
+
 # The F6 item menu: catalog, placement, the guest write and the drawing,
 # against synthetic memory with this build's region addresses.
 if(WIN32)
     add_executable(code_veronica_items_tests EXCLUDE_FROM_ALL
         tests/test_items.cpp cv_items.cpp cv_item_menu.cpp cv_srt_icons.cpp cv_srt_i18n.cpp
+        cv_port_ui.cpp cv_port_modal.cpp "${CMAKE_CURRENT_BINARY_DIR}/cv_port_ui.rc"
         "${CMAKE_CURRENT_BINARY_DIR}/launcher_art.rc"
         "${PS3RECOMP_DIR}/libs/filesystem/edat.c")
     target_compile_options(code_veronica_items_tests PRIVATE /UNDEBUG)

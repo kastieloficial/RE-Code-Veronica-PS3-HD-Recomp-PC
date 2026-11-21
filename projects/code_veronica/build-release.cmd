@@ -281,6 +281,12 @@ if "%CV_FOCUS_PAUSE_TESTS%"=="1" (
  build-release\bin\code_veronica_focus_pause_tests.exe || exit /b 1
 )
 
+rem Port menu foundation: the modal owner's decision logic (exclusion, debounce, pause rule), no window needed.
+if "%CV_PORT_UI_TESTS%"=="1" (
+ cmake --build build-release --target code_veronica_port_modal_tests -j 6 || exit /b 1
+ build-release\bin\code_veronica_port_modal_tests.exe || exit /b 1
+)
+
 rem Optional visual preview of the shared keyboard icon artwork.
 if "%CV_KEYCAP_PREVIEW%"=="1" (
  cmake --build build-release --target code_veronica_keycap_preview -j 6 || exit /b 1
