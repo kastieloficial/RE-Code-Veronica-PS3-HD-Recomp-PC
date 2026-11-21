@@ -122,6 +122,20 @@ Acceptance: EU build; distribution build still compiles (balanced #ifndef); shor
 
 launcher.cpp:1262 k_launcher_version = L"v1.7.0"; distribution/windows_entry.cpp:74,76 stale "v1.5.1" → v1.7.0. Draft distribution/NOTAS-RELEASE-v1.7.0.md (not published), bilingual like NOTAS-RELEASE-v1.6.1.md: return to title, achievement card, F7 order + title use, inventory redesign + HD icons + 2-slot weapons, F6/F7 fixes, 5,763-pipeline seed (27f2085), EU/US/JP, fonts licence. Builds: build-release.cmd with CV_BUILD_JP=1 CV_BUILD_US=1 CV_ITEMS_TESTS=1 CV_MAP_TESTS=1 CV_FOCUS_PAUSE_TESTS=1 CV_SRT_TESTS=1 CV_MENU_TESTS=1 CV_PORT_UI_TESTS=1 + trophy popup tests + distribution build. Report exe sizes.
 
+## Mouse feedback (all phases)
+User request: clickable controls must show they were hovered/pressed, starting with the close "X". cv_port_ui (P1) provides ButtonState {NORMAL, HOVER, PRESSED, DISABLED} for close_button/plates/steppers/buttons/cards and a MouseTrack helper (WM_MOUSEMOVE/LBUTTONDOWN/LBUTTONUP/MOUSELEAVE; action on button-up inside the same rect; repaint on change). P2 (F6), P3 (F7) and P4 (title dialog) must use it for every clickable element.
+
+## P1 as built (commit 115feee) — API for P2+
+- Fonts: cv_port_ui::Role {TITLE, TITLE_SEMI, BODY400, BODY500, BODY600, BODY700}; font(lang, role, px) → unique_ptr<Gdiplus::Font> (UnitPixel); JA/AR/ZH/KO/RU fall back to cv_srt_i18n::font_face. Registered families: "Cinzel" (700), "Cinzel SemiBold" (600), "Barlow Semi Condensed" (400/700), "Barlow Semi Condensed Medium" (500), "Barlow Semi Condensed SemiBold" (600). family_name(role), fonts_available(), register_gdi_fonts() (P3 must call it before creating the search EDIT font). Fonts lack ◆ ❚ ← → ↑ ↓ □ ✕ ○ △: draw those as vectors/glyphs.
+- Primitives (design units): round_path, gold_frame (content starts 3px inside), header_band, panel_blue, cell_blue, plate, plate_label, badge_gold, stepper_arrow, primary_button_red, button_disabled, close_button, warning_box, diamond, title_gold; text(g,s,rect,font,color,hAlign,vAlign,wrap,tracking), text_width. Colours in cv_port_ui::col::* (text colour is col::TXT).
+- ButtonState {NORMAL, HOVER, PRESSED, DISABLED} last param (default NORMAL) of plate, plate_label, stepper_arrow, primary_button_red, cell_blue, close_button. MouseTrack {hover,pressed; move(id), down(id), up(id,int& fired), leave(), state(id,enabled), arm(HWND)} — mutators return true when repaint needed; applied to F6 close X already (static close_track, SetCapture).
+- Footer: Glyph{kind,value,label} kinds KEY, PAD, DPAD, ARROWS (bitmask 1 up,2 down,4 left,8 right), TEXT; FooterGroup{keyboard,pad,label}; draw_footer(g,rect,lang,kind,groups) with kind=hint_kind(last_input); footer_width, draw_glyph.
+- Input: hint_kind(int last_input), normalize_kind, glyph_layout, menu_pad, switch_hint. Placement: scale_for(game,w,h), center_on_game(game,w,h).
+- Modal: bits LAUNCHER=1, ITEMS=2, ARCHIVES=4, TEST_TOOLS=8, TITLE_RETURN=16; register_close(bit,fn), open(bit,hwnd), close(bit), tick(bit,hwnd), set_launcher(bool), set_working(bit,bool) (save in progress: pad stays blocked, pause released), mask(), key_repeat(lparam). New windows: non-TOPMOST, register_close, open before filling state, tick from timer, ignore F2/F6/F7 repeat via key_repeat(lp).
+- cv_port_ui_i18n.h: 13 languages + tr(lang,id).
+- Test targets linking cv_port_ui.cpp need stubs cv_key_cap_label(int) and pad_phys_360_layout(int) (see test_items.cpp). test_map_tools.cpp got stubs for cv_save_library_*/cv_archives_*/cv_quick/cv_manual_reload_frame.
+- Run `.\build-release.cmd` from PowerShell (cmd /c from Bash didn't resolve). Prefer Python edit scripts in the scratchpad over Bash heredocs with apostrophes.
+
 ## Cross-cutting rules
 - One phase at a time; each leaves EU (JP/US from P3 on) building and tests green.
 - Never edit src/recomp* or the hook script. Call lifted functions only on the game thread (TEST_FRAME) via the Call helper pattern.
