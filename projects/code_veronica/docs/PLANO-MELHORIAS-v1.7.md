@@ -52,6 +52,10 @@ Prévias finais em `docs/previas-v1.7/`. Os arquivos de trabalho das prévias
 - **Menus na frente de outros programas:** janela dona = janela do jogo (`rsx_d3d12_window()`), sem `WS_EX_TOPMOST`/`HWND_TOPMOST`; reafirmar o dono a cada abertura.
 - **Xbox LB/RB trocados no F6:** aplicar a troca de `menu_pad` (layout 360).
 
-## Pendente (não faz parte deste pacote ainda)
+## 6. Lista de shaders
 
-- Travadas na cena em que o Steve atira com a metralhadora: capturar com `capturar-shaders-live.cmd` e analisar `perf-log.txt`, `render-profile.txt` e os shaders novos.
+- `shader-seed/pipelines-seed.list` passou de 5.700 para **5.763** combinações, incluindo os tiros do Steve com a metralhadora (a travada vinha da compilação desses shaders no meio da cena). Uma segunda captura da mesma cena não achou mais nada novo. Vai na próxima versão.
+
+## Pendente (depois deste pacote)
+
+- Mesma cena dos tiros: os desenhos por quadro sobem de ~2–3 mil para 10–15 mil e o jogo cai para ~28 FPS por uns 3 s (preparação 25% do quadro, trocas de textura 5x). Atacar com reaproveitamento da preparação entre desenhos iguais seguidos e, se valer, juntar desenhos iguais num só envio. Medir com captura dedicada.
