@@ -970,15 +970,18 @@ static void trophy_popup_draw(u32 fi,u32 w,u32 h,const float mvp[16]) {
  if(!g_rsx_trophy_hook)return;
  const uint32_t* rgba=NULL;u32 aw=0,ah=0;u64 generation=0;
  const rsx_ui_sprite* card=g_rsx_trophy_hook(w,h,&rgba,&aw,&ah,&generation);
- if(!card||!(card->argb>>24)||!sprite_pso()||!rsx_trophy_texture_upload(&s_trophy_textures[fi],s_d3d.device,s_d3d.cmd_list,rgba,aw,ah,generation))return;
- if(!quad_vb_reserve(fi,1,&s_trophy_vbs))return;
+ if(!card||!(card[0].argb>>24)||!sprite_pso()||!rsx_trophy_texture_upload(&s_trophy_textures[fi],s_d3d.device,s_d3d.cmd_list,rgba,aw,ah,generation))return;
+ /* The hook returns 1 or 2 sprites of the one atlas (the card and its progress line); card[0].after is the count (rsx_ui_batch.h). */
+ u32 n=card[0].after;if(n<1)n=1;if(n>2)n=2;
+ if(!quad_vb_reserve(fi,n,&s_trophy_vbs))return;
  UiVertex* vertices=(UiVertex*)s_trophy_vbs.mapped[fi];static const unsigned order[6]={0,1,2,2,1,3};
- for(unsigned k=0;k<6;k++){unsigned corner=order[k];UiVertex v={card->x+((corner&2)?card->w:0),card->y+((corner&1)?card->h:0),0,1,1,1,(card->argb>>24)/255.f,(corner&2)?1.f:0.f,(corner&1)?1.f:0.f};vertices[k]=v;}
+ for(u32 i=0;i<n;i++){const rsx_ui_sprite* q=&card[i];
+  for(unsigned k=0;k<6;k++){unsigned corner=order[k];UiVertex v={q->x+((corner&2)?q->w:0),q->y+((corner&1)?q->h:0),0,1,1,1,(q->argb>>24)/255.f,(corner&2)?q->u1:q->u0,(corner&1)?q->v1:q->v0};vertices[i*6+k]=v;}}
  const u32 slot=SPRITE_SRV+1+fi;
  srv_write(slot,s_trophy_textures[fi].texture,DXGI_FORMAT_R8G8B8A8_UNORM,D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING);
  ID3D12GraphicsCommandList* cl=s_d3d.cmd_list;D3D12_GPU_DESCRIPTOR_HANDLE handle;s_d3d.srv_heap->lpVtbl->GetGPUDescriptorHandleForHeapStart(s_d3d.srv_heap,&handle);handle.ptr+=(u64)slot*s_d3d.srv_inc;
  cl->lpVtbl->SetDescriptorHeaps(cl,1,&s_d3d.srv_heap);cl->lpVtbl->SetGraphicsRootSignature(cl,s_d3d.root_signature);cl->lpVtbl->SetGraphicsRootDescriptorTable(cl,1,handle);
- quad_vb_draw(fi,&s_trophy_vbs,0,1,mvp,s_spr_pso);
+ quad_vb_draw(fi,&s_trophy_vbs,0,n,mvp,s_spr_pso);
 }
 
 /* First-start shader screen (projects/code_veronica/cv_loading_screen.cpp):

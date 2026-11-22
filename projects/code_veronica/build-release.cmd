@@ -262,6 +262,19 @@ if "%CV_ITEMS_TESTS%"=="1" (
  )
 )
 
+rem Achievement card: timing, queue, scale, progress line and the 13 languages (needs the game's trophy package under JOGO).
+rem With CV_TROPHY_POPUP_PREVIEW=<folder> it also writes the preview PNGs there (CV_TROPHY_POPUP_BG=<image> as the scene, CV_TROPHY_POPUP_ICONS=<folder of TROP000.PNG..> without the game package).
+if "%CV_TROPHY_POPUP_TESTS%"=="1" (
+ cmake --build build-release --target code_veronica_trophy_popup_tests code_veronica_trophy_popup_gpu_tests -j 6 || exit /b 1
+ if not exist build-release\trophy-popup-store mkdir build-release\trophy-popup-store
+ if defined CV_TROPHY_POPUP_PREVIEW (
+  build-release\bin\code_veronica_trophy_popup_tests.exe "%CV_ROOT%/JOGO/NPEB00553" build-release\trophy-popup-store "%CV_TROPHY_POPUP_PREVIEW%" "%CV_TROPHY_POPUP_BG%" "%CV_TROPHY_POPUP_ICONS%" || exit /b 1
+ ) else (
+  build-release\bin\code_veronica_trophy_popup_tests.exe "%CV_ROOT%/JOGO/NPEB00553" build-release\trophy-popup-store || exit /b 1
+ )
+ build-release\bin\code_veronica_trophy_popup_gpu_tests.exe || exit /b 1
+)
+
 if "%CV_CHEAT_TESTS%"=="1" (
  cmake --build build-release --target code_veronica_cheat_tests -j 6 || exit /b 1
  build-release\bin\cv_cheats_tests_eu.exe || exit /b 1

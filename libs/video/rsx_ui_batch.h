@@ -20,6 +20,8 @@ void rsx_d3d12_set_ui_retained(int active);
  * overlay's atlas (u/v normalised), tinted by argb, drawn after the overlay's
  * first `after` quads. The atlas is RGBA8, straight alpha, row-major; it is
  * uploaded again only when its generation changes. */
+/* g_rsx_trophy_hook (the achievement card) uses the same struct differently: it returns an array of 1 or 2 sprites of one atlas, drawn
+ * in order (the card, then its progress line); sprite[0].after holds the count, and each sprite honours its own u0..v1 and argb alpha. */
 typedef struct rsx_ui_sprite { float x,y,w,h,u0,v0,u1,v1; uint32_t argb; uint32_t after; } rsx_ui_sprite;
 #ifdef __cplusplus
 }

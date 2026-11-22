@@ -11,6 +11,7 @@
 #include <cwchar>
 #include <initializer_list>
 #include <map>
+#include <mutex>
 #include <tuple>
 #include <utility>
 #pragma comment(lib,"gdiplus.lib")
@@ -18,6 +19,8 @@ using namespace Gdiplus;
 
 namespace cv_port_ui {
 namespace {
+// The achievement card is drawn on its own thread while the F6/F7/F2 windows draw on the launcher's: the lazy font loading and the font cache share this lock.
+std::recursive_mutex& font_lock() {static std::recursive_mutex m;return m;}
 // ---- Embedded fonts -----------------------------------------------------------
 constexpr int ROLES=6;
 const wchar_t* const k_resource[ROLES]={L"CV_FONT_CINZEL_700",L"CV_FONT_CINZEL_600",L"CV_FONT_BARLOW_400",L"CV_FONT_BARLOW_500",L"CV_FONT_BARLOW_600",L"CV_FONT_BARLOW_700"};
@@ -126,8 +129,9 @@ RectF pressed_rect(RectF r,ButtonState st) {return st==ButtonState::PRESSED?Rect
 float keycap_width(const std::wstring& label,float size) {const float n=float(label.size());return n<=1?size:std::max(size,size*(0.5f+0.37f*n));}
 }
 
-bool fonts_available() {return load_fonts();}
+bool fonts_available() {std::lock_guard<std::recursive_mutex> l(font_lock());return load_fonts();}
 const wchar_t* family_name(Role role) {
+    std::lock_guard<std::recursive_mutex> l(font_lock());
     if(!load_fonts()||!families[role_index(role)])return nullptr;
     static WCHAR names[ROLES][LF_FACESIZE];WCHAR* out=names[role_index(role)];families[role_index(role)]->GetFamilyName(out);return out;
 }
@@ -137,6 +141,7 @@ std::map<std::wstring,std::unique_ptr<FontFamily>>& system_families() {static st
 }
 bool native_fonts(int lang) {return lang>=0&&lang<13&&lang!=3&&lang!=9&&lang!=10&&lang!=11&&lang!=12;}
 std::unique_ptr<Font> font(int lang,Role role,float px) {
+    std::lock_guard<std::recursive_mutex> l(font_lock());
     const int i=role_index(role);lang=std::clamp(lang,0,12);
     if(native_fonts(lang)&&load_fonts()) {
         // The role's own face first, then the nearest weight that exists.
@@ -158,12 +163,14 @@ namespace {
 std::map<std::tuple<int,int,int>,std::unique_ptr<Font>>& font_cache() {static std::map<std::tuple<int,int,int>,std::unique_ptr<Font>> cache;return cache;}
 }
 const Font& font_cached(int lang,Role role,float px) {
+    std::lock_guard<std::recursive_mutex> l(font_lock());
     auto& cache=font_cache();
     const auto key=std::make_tuple(std::clamp(lang,0,12),int(role),int(std::lround(px*4)));
     auto found=cache.find(key);if(found!=cache.end())return *found->second;
     return *(cache[key]=font(lang,role,float(std::get<2>(key))/4));
 }
 void release_fonts() {
+    std::lock_guard<std::recursive_mutex> l(font_lock());
     font_cache().clear();system_families().clear();   // every Font and family goes before GdiplusShutdown (at exit they would be freed after it)
     for(auto& f:families)f=nullptr;
     family_arrays.clear();collection.reset();font_bytes.clear();loaded=false;load_failed=false;

@@ -1022,10 +1022,13 @@ if(WIN32)
 endif()
 
 if(WIN32)
- add_executable(code_veronica_trophy_popup_tests EXCLUDE_FROM_ALL tests/test_trophy_popup.cpp tests/test_trophy_guest.c "${CMAKE_CURRENT_BINARY_DIR}/cv_trophy_sound.rc")
+ # The card draws with the port's embedded fonts (cv_port_ui) and the launcher's language fallbacks (cv_srt_i18n).
+ add_executable(code_veronica_trophy_popup_tests EXCLUDE_FROM_ALL tests/test_trophy_popup.cpp tests/test_trophy_guest.c
+  cv_port_ui.cpp cv_srt_i18n.cpp "${CMAKE_CURRENT_BINARY_DIR}/cv_trophy_sound.rc"
+  "${CMAKE_CURRENT_BINARY_DIR}/cv_port_ui.rc" "${CMAKE_CURRENT_BINARY_DIR}/launcher_art.rc" "${PS3RECOMP_DIR}/libs/filesystem/edat.c")
  target_include_directories(code_veronica_trophy_popup_tests PRIVATE "${PS3RECOMP_DIR}/include")
  target_compile_options(code_veronica_trophy_popup_tests PRIVATE /UNDEBUG)
- target_link_libraries(code_veronica_trophy_popup_tests PRIVATE xmllite ole32 gdiplus winmm)
+ target_link_libraries(code_veronica_trophy_popup_tests PRIVATE xmllite ole32 gdiplus winmm gdi32 user32 dwmapi)
  add_executable(code_veronica_trophy_popup_gpu_tests EXCLUDE_FROM_ALL tests/test_trophy_popup_gpu.c)
  target_compile_options(code_veronica_trophy_popup_gpu_tests PRIVATE /UNDEBUG)
  target_link_libraries(code_veronica_trophy_popup_gpu_tests PRIVATE d3d12 dxgi dxguid)
