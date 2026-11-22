@@ -1157,7 +1157,12 @@ static u64 s_shadow_batch_groups,s_shadow_batch_saved;
 static int prepass_repeat_on(void) {
     static int disabled=-1;
     if(disabled<0){const char* e=getenv("CV_PREP_REPEAT");disabled=e&&!strcmp(e,"0");}
-    return s_pose_on&&prep_reuse_on()&&!disabled;
+    /* v1.6.1 required legacy pose interpolation (CV_RENDER_INTERPOLATION=1), which smooth animation + frame generation
+     * does not use; the reuse itself only needs the frozen snapshots and the live checks, so native 60 FPS
+     * (CV_FPS_TEST_60=1, opt30 mode -1) qualifies too. An explicit CV30_OPTIMIZATIONS package stays as it was.
+     * CV_PREP_REUSE2=0 also switches the non-pose case off, for the A/B test. */
+    static int r2=-1;if(r2<0){const char*e=getenv("CV_PREP_REUSE2");r2=!(e&&e[0]=='0'&&!e[1]);}
+    return prep_reuse_on()&&!disabled&&(s_pose_on||(opt30_mode()<0&&r2));
 }
 static int shadow_batch_on(void) {
     static int on=-1;
@@ -10531,6 +10536,7 @@ void (*g_rsx_spike_context)(char* out,unsigned cap)=NULL;   /* set by main.cpp: 
 static double s_spike_prepass;                               /* prepass_range seconds this frame */
 /* Prepass reuse (CV_PREP_REUSE2) and per-step prepass time, this frame. Steps: 0 head (debug probes, bookkeeping),
  * 1 vtex window, 2 texture views, 3 srv_commit, 4 pipeline lookup; ticks are TSC, scaled to the measured prepass ms. */
+static u64 s_prx_gate[5];   /* prepass_range calls by gate state: 0 open, 1 CV_PREP_REUSE2=0, 2 debug env, 3 prep_reuse_on off, 4 explicit CV30 package */
 static u64 s_prx_t[5],s_prx_tot,s_prx_hit[2],s_prx_miss[2],s_prx_mis[2];   /* [0]=tex step, [1]=pso step */
 static int prep_verify_on(void){static int on=-1;if(on<0){const char*e=getenv("CV_PREP_VERIFY");on=e&&e[0]=='1'&&!e[1];}return on;}
 #define SPK_NK 7
@@ -10661,10 +10667,11 @@ static void spk_full(const SpkT* t)
       spk_out("prepass steps (ms, est. from TSC share of prepass=%.2f): head=%.2f vtex=%.2f tex=%.2f srv=%.2f pso=%.2f other=%.2f%c",pm,
               pm*(double)s_prx_t[0]/tk,pm*(double)s_prx_t[1]/tk,pm*(double)s_prx_t[2]/tk,pm*(double)s_prx_t[3]/tk,pm*(double)s_prx_t[4]/tk,
               pm*(double)(s_prx_tot>acc?s_prx_tot-acc:0)/tk,10);
-      spk_out("prepass reuse: hits=%llu misses=%llu mismatches=%llu (tex: hits=%llu misses=%llu mismatches=%llu | pso: hits=%llu misses=%llu mismatches=%llu) reuse2=%s verify=%s%c",
+      spk_out("prepass reuse: hits=%llu misses=%llu mismatches=%llu (tex: hits=%llu misses=%llu mismatches=%llu | pso: hits=%llu misses=%llu mismatches=%llu) reuse2=%s verify=%s gate(calls): open=%llu off[CV_PREP_REUSE2=0]=%llu off[debug env]=%llu off[prep_reuse_on false]=%llu off[CV30 package]=%llu%c",
               (unsigned long long)th,(unsigned long long)tm,(unsigned long long)tx,(unsigned long long)s_prx_hit[0],(unsigned long long)s_prx_miss[0],(unsigned long long)s_prx_mis[0],
               (unsigned long long)s_prx_hit[1],(unsigned long long)s_prx_miss[1],(unsigned long long)s_prx_mis[1],
-              getenv("CV_PREP_REUSE2")&&getenv("CV_PREP_REUSE2")[0]=='0'?"OFF":"on",prep_verify_on()?"ON":"off",10); }
+              getenv("CV_PREP_REUSE2")&&getenv("CV_PREP_REUSE2")[0]=='0'?"OFF":"on",prep_verify_on()?"ON":"off",
+              (unsigned long long)s_prx_gate[0],(unsigned long long)s_prx_gate[1],(unsigned long long)s_prx_gate[2],(unsigned long long)s_prx_gate[3],(unsigned long long)s_prx_gate[4],10); }
     spk_out("draws: n=%u clear=%u copy=%u legacy(!is_vp)=%u verts=%llu mean_verts=%.1f tex_units_bound=%u distinct(pso,tex)=%u%s%c",
             a->n,a->clr,a->cpy,a->legacy,(unsigned long long)a->verts,a->n>a->clr+a->cpy?(double)a->verts/(a->n-a->clr-a->cpy):0.0,
             a->tex_units,a->distinct,a->overflow?" (pair table overflowed)":"",10);
@@ -10742,9 +10749,11 @@ static void spk_post(const SpkT* t)
  * guest texture or a null SRV. Out: the requests, whether a unit may sample the draw's own target (_fb_risk),
  * whether a texture slot could not be had (volatile: the answer may differ next time) and the per-unit
  * texture-gamma word it wrote into this draw's b1 slot (tsgm bit u = tsgv[u]; prepass reuse replays them). */
-static void prepass_tex_units(D3D12DrawRecord* dr, SrvReq* _rq, int* pfb_risk, int* pvol, unsigned* tsgm, float* tsgv)
+static void prepass_tex_units(D3D12DrawRecord* dr, SrvReq* _rq, int* pfb_risk, int* pvol, unsigned* tsgm, float* tsgv,
+                              int* tsl, ID3D12Resource** trep, u32* top)
 {
     int _fb_risk = 0;
+    for (int _i = 0; _i < FP_TEX_UNITS; _i++) { tsl[_i] = -1; trep[_i] = NULL; top[_i] = 0; }
     *pvol = 0; *tsgm = 0; memset(tsgv, 0, sizeof(float) * FP_TEX_UNITS);
         /* Units the program never samples get no view. They still hold the
          * game's last binding -- Code Veronica's lighter shadow passes leave
@@ -10893,7 +10902,7 @@ static void prepass_tex_units(D3D12DrawRecord* dr, SrvReq* _rq, int* pfb_risk, i
                         texdump_for_slot(ts);
                         ID3D12Resource* _tr = s_d3d.vp_tex[ts].ui_res;
                         u32 _opaque=0;
-                        if (!_tr) _tr = texrep_for_slot(ts,&_opaque);
+                        if (!_tr) { _tr = texrep_for_slot(ts,&_opaque); tsl[_u] = ts; trep[_u] = _tr; top[_u] = _tr ? _opaque : 0; }
                         if (_tr) { D3D12_RESOURCE_DESC _desc; _tr->lpVtbl->GetDesc(_tr,&_desc); sf=_desc.Format; }
                         else _tr = s_d3d.vp_tex[ts].res;
                         { static int nb = 0; static const char* e = (const char*)1;   /* hoisted: this runs per bound texture */
@@ -10942,13 +10951,34 @@ static double s_pp_t; static const D3D12DrawRecord* s_pp_prev;
  * captures present, any texture debug env, a program not frozen in the snapshot arena. CV_PREP_REUSE2=0 disables;
  * CV_PREP_VERIFY=1 (dev) recomputes every hit and compares. */
 typedef struct { int valid; u32 fp_addr,fp_snap,fp_bytes,rt_off; unsigned char tex[sizeof(((D3D12DrawRecord*)0)->tex)];
-                 SrvReq rq[FP_TEX_UNITS]; int tex_rt[FP_TEX_UNITS]; int fb_risk; unsigned tsgm; float tsgv[FP_TEX_UNITS]; } PrepTexMemo;
-static int prepass_reuse2_on(void){
-    static int on=-1;
-    if(on<0){const char*e=getenv("CV_PREP_REUSE2");on=!(e&&e[0]=='0'&&!e[1]);
+                 SrvReq rq[FP_TEX_UNITS]; int tex_rt[FP_TEX_UNITS]; int fb_risk; unsigned tsgm; float tsgv[FP_TEX_UNITS];
+                 int tsl[FP_TEX_UNITS]; ID3D12Resource* trep[FP_TEX_UNITS]; u32 top[FP_TEX_UNITS]; } PrepTexMemo;
+/* 0 = open; 1 CV_PREP_REUSE2=0; 2 a texture debug env is set; 3 prep_reuse_on() is off (CV_PREP_REUSE=0 / CV_PREP_NOREUSE /
+ * neither native 60 FPS nor pose); 4 an explicit CV30_OPTIMIZATIONS package without pose (kept as it was). */
+static int prepass_gate(void){
+    static int env=-1;
+    if(env<0){env=0;const char*e=getenv("CV_PREP_REUSE2");
         static const char*const dbg[]={"TEX_BUDGET","RTT_VIEWRT","EMPTYTEX","SCREEN_AS_TEX","TEX_DUMP","TEX_BINDDBG","RT_NOGAMMA"};
-        for(unsigned i=0;i<sizeof dbg/sizeof *dbg;i++)if(getenv(dbg[i]))on=0;}
-    return on&&prep_reuse_on();
+        if(e&&e[0]=='0'&&!e[1])env=1;else for(unsigned i=0;i<sizeof dbg/sizeof *dbg;i++)if(getenv(dbg[i]))env=2;}
+    if(env)return env;
+    if(!prep_reuse_on())return 3;
+    if(!s_pose_on&&opt30_mode()>=0)return 4;
+    return 0;
+}
+/* A draw whose units would take the reduced-viewport capture path (it samples guest memory): never memoised. */
+static int prep_subvp_hit(const D3D12DrawRecord* dr){
+    if(!s_subvp_n)return 0;
+    for(int u=0;u<FP_TEX_UNITS;u++){if(!dr->tex[u].set||!dr->tex[u].off)continue;
+        for(int i=0;i<s_subvp_n;i++)if(s_subvp[i].res&&s_subvp[i].w==dr->tex[u].w&&s_subvp[i].h==dr->tex[u].h)return 1;}
+    return 0;
+}
+/* Texture replacement (the PT-BR translation pack is one) can change a slot's image between two draws when its async
+ * load finishes: ask again for every unit that consulted it and treat any difference as a miss. */
+static int prep_tex_rep_stale(const PrepTexMemo* m){
+    if(!texpack_replace_on())return 0;
+    for(int u=0;u<FP_TEX_UNITS;u++)if(m->tsl[u]>=0){u32 op=0;ID3D12Resource* r=texrep_for_slot(m->tsl[u],&op);
+        if(r!=m->trep[u]||(r&&op!=m->top[u]))return 1;}
+    return 0;
 }
 static float* prep_tsg_cells(const D3D12DrawRecord* dr){
     return s_d3d.vp_fpcb_mapped?(float*)((char*)s_d3d.vp_fpcb_mapped+((u64)s_rb.parity*MAX_DRAWS+dr->cb_slot)*VP_FPCB_STRIDE):NULL;
@@ -10980,8 +11010,12 @@ static void prepass_range(u32 from, u32 to)
 #endif
     /* Texture-view reuse: decided once per call (the pack flags and reduced-viewport captures only change between
      * calls); a call that cannot reuse takes the original path for every draw. */
-    const int tex_reuse=prepass_reuse2_on()&&!texpack_replace_on()&&!texpack_dump_on()&&!s_subvp_n;
-    const int pso_reuse2=prepass_reuse2_on();
+    const int gate=prepass_gate();
+    const int tex_reuse=gate==0;
+    const int pso_reuse2=gate==0;
+#ifndef CV_DISTRIBUTION
+    if(_prx_on)s_prx_gate[gate]++;
+#endif
     PrepTexMemo tm;tm.valid=0;
     double _pd_t = s_pp_t; const D3D12DrawRecord* _pd_prev = s_pp_prev;
     for (u32 _d = from; _d < to && _d < s_rb.count && _d < MAX_DRAWS; _d++) {
@@ -11090,7 +11124,8 @@ static void prepass_range(u32 from, u32 to)
          * texture, or a null SRV. */
         double _sv0 = perf_on() ? perf_now() : 0.0;
         SrvReq _rq[FP_TEX_UNITS]; int _fb_risk = 0; int _vol = 0; unsigned _tsgm = 0; float _tsgv[FP_TEX_UNITS];
-        if (tex_reuse && prep_tex_memo_match(&tm, dr)) {
+        int _tsl[FP_TEX_UNITS]; ID3D12Resource* _trep[FP_TEX_UNITS]; u32 _top[FP_TEX_UNITS];
+        if (tex_reuse && prep_tex_memo_match(&tm, dr) && !texpack_dump_on() && !prep_tex_rep_stale(&tm)) {
             /* Same units, program and target as the draw just prepared: its views, sampled-target indices,
              * feedback-risk flag and texture-gamma words (written to THIS draw's b1 slot) are this draw's too. */
             memcpy(_rq, tm.rq, sizeof _rq); memcpy(dr->tex_rt, tm.tex_rt, sizeof dr->tex_rt);
@@ -11108,7 +11143,8 @@ static void prepass_range(u32 from, u32 to)
                 memcpy(_rta, dr->tex_rt, sizeof _rta);
                 SrvReq _r2[FP_TEX_UNITS]; int _fb2 = 0, _vol2 = 0; unsigned _m2 = 0; float _v2[FP_TEX_UNITS];
                 memset(_r2, 0, sizeof _r2);
-                prepass_tex_units(dr, _r2, &_fb2, &_vol2, &_m2, _v2);
+                int _tl2[FP_TEX_UNITS]; ID3D12Resource* _tr2[FP_TEX_UNITS]; u32 _to2[FP_TEX_UNITS];
+                prepass_tex_units(dr, _r2, &_fb2, &_vol2, &_m2, _v2, _tl2, _tr2, _to2);
                 int _bad = memcmp(_r2, _rq, sizeof _r2) != 0 || memcmp(_rta, dr->tex_rt, sizeof _rta) != 0 || _fb2 != _fb_risk ||
                            _m2 != _tsgm || _vol2;
                 if (_tc) for (int u = 0; u < FP_TEX_UNITS; u++) if (_ta[u] != _tc[u*4+2] && !(_ta[u] != _ta[u] && _tc[u*4+2] != _tc[u*4+2])) _bad = 1;
@@ -11123,12 +11159,13 @@ static void prepass_range(u32 from, u32 to)
 #endif
         } else {
             memset(_rq, 0, sizeof _rq);
-            prepass_tex_units(dr, _rq, &_fb_risk, &_vol, &_tsgm, _tsgv);
+            prepass_tex_units(dr, _rq, &_fb_risk, &_vol, &_tsgm, _tsgv, _tsl, _trep, _top);
             if (tex_reuse) {
 #ifndef CV_DISTRIBUTION
                 if (_prx_on) s_prx_miss[0]++;
 #endif
-                if (!_vol && prep_tex_eligible(dr)) {
+                if (!_vol && prep_tex_eligible(dr) && !prep_subvp_hit(dr)) {
+                    memcpy(tm.tsl, _tsl, sizeof tm.tsl); memcpy(tm.trep, _trep, sizeof tm.trep); memcpy(tm.top, _top, sizeof tm.top);
                     tm.valid = 1; tm.fp_addr = dr->fp_addr; tm.fp_snap = dr->fp_snap; tm.fp_bytes = dr->fp_bytes; tm.rt_off = dr->rt_off;
                     memcpy(tm.tex, dr->tex, sizeof tm.tex); memcpy(tm.rq, _rq, sizeof tm.rq); memcpy(tm.tex_rt, dr->tex_rt, sizeof tm.tex_rt);
                     tm.fb_risk = _fb_risk; tm.tsgm = _tsgm; memcpy(tm.tsgv, _tsgv, sizeof tm.tsgv);
@@ -11254,7 +11291,7 @@ static void render_frame_impl(void)
     double cv_wait = 0.0, cv_present_start = 0.0, cv_present_ms = 0.0, cv_fence_start = 0.0;
 #ifndef CV_DISTRIBUTION
     const int sp_on = draw_spike_on(); double sp_t0 = 0.0, sp_wait = 0.0, sp_tb = 0.0, sp_tp0 = 0.0, sp_tp1 = 0.0;
-    if (sp_on) { sp_t0 = perf_now(); s_spike_prepass = 0.0; memset(s_prx_t,0,sizeof s_prx_t);s_prx_tot=0;memset(s_prx_hit,0,sizeof s_prx_hit);memset(s_prx_miss,0,sizeof s_prx_miss);memset(s_prx_mis,0,sizeof s_prx_mis); }
+    if (sp_on) { sp_t0 = perf_now(); s_spike_prepass = 0.0; memset(s_prx_t,0,sizeof s_prx_t);memset(s_prx_gate,0,sizeof s_prx_gate);s_prx_tot=0;memset(s_prx_hit,0,sizeof s_prx_hit);memset(s_prx_miss,0,sizeof s_prx_miss);memset(s_prx_mis,0,sizeof s_prx_mis); }
 #endif
 
     double _rf0 = perf_on() ? perf_now() : 0.0;
