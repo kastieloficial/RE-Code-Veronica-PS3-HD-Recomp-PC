@@ -10514,9 +10514,16 @@ static int submit_split(u32 fi)
  * count jump (gunfire: ~2-3k -> 10-15k) and would batching identical draws or
  * reusing prepass work help? 1 = threshold max(8000, 2.5 x median of the last
  * 240 frames); >1 = that absolute draw count. Writes draw-spike-log.txt beside
- * the exe: a full report (state keys, run lengths, top pairs, histograms,
- * times) at most once a second, a compact line per spike frame (<=30/s), one
- * summary line per second while the burst lasts and a final burst summary. */
+ * the exe (GetModuleFileNameW; the working directory only as a fallback): a
+ * full report (state keys, run lengths, top pairs, histograms, times) at most
+ * once a second, a compact line per spike frame (<=30/s), one summary line per
+ * second while the burst lasts and a final burst summary. The file is opened
+ * by the first frame (an [ARMED] line) and a [STATUS] line follows every 30 s
+ * with the largest draw count seen, the median and the threshold, so a run
+ * without spikes still says why. Automatic threshold (CV_DRAW_SPIKE=1):
+ * max(4000, 1.5 x median): v1.7.0 used max(8000, 2.5 x median), which a room
+ * whose ordinary frames already have ~6000 draws never exceeded (perf-log
+ * peaks of 15,319 stayed under 2.5 x 6000), so no spike and no file. */
 #include <stdarg.h>
 static int draw_spike_on(void){static int on=-1;if(on<0){const char*e=getenv("CV_DRAW_SPIKE");on=e&&*e&&*e!='0'?(atoi(e)>1?atoi(e):1):0;}return on;}
 void (*g_rsx_spike_context)(char* out,unsigned cap)=NULL;   /* set by main.cpp: room/state of the game */
@@ -10534,15 +10541,26 @@ static SpkA s_spk_a; static SpkPair s_spk_tab[4096];
 static struct { u32 ring[240],nring,pos,median,thr,n,present,since,bframes,bmax,sframes,smax,cl_n,nonpresent,below; int inburst,spike,full,perfon;
                 u64 frames,spikes,bsum,ssum; double t_start,last_full,bt0,sec_t,cl_t,bms,bms_max,bpre,sms,spre; } spk;
 static FILE* s_spk_f; static u64 s_spk_bytes; static int s_spk_dead;
+static char s_spk_path[1100];                                /* utf-8 path of the log, for the header and [STATUS] */
+static struct { int armed; u32 max_draws,np_max,np_count,max_since; u64 np_total; double last_status; } spk2;
 static u64 spk_h(u64 h,u32 v){return (h^(u64)v)*0x100000001b3ull;}
 static u64 spk_h64(u64 h,u64 v){return spk_h(spk_h(h,(u32)v),(u32)(v>>32));}
 static void spk_out(const char* fmt,...)
 {
     if(s_spk_dead)return;
-    if(!s_spk_f){ s_spk_f=fopen("draw-spike-log.txt","a"); if(!s_spk_f){s_spk_dead=1;return;}
+    if(!s_spk_f){
+        /* Beside the exe: the game process can run with another working directory (the launcher sets it to the port folder,
+         * run-log.txt lives with the exe, perf-log.txt with the port folder). Falls back to the working directory. */
+        wchar_t wp[1024];DWORD wn=GetModuleFileNameW(NULL,wp,1024);
+        if(wn&&wn<1024){wchar_t*sl=wcsrchr(wp,L'\\');if(!sl)sl=wcsrchr(wp,L'/');
+            if(sl&&(size_t)(sl-wp)+1+21<1024){wcscpy(sl+1,L"draw-spike-log.txt");s_spk_f=_wfopen(wp,L"a");
+                if(s_spk_f)WideCharToMultiByte(CP_UTF8,0,wp,-1,s_spk_path,(int)sizeof s_spk_path-1,NULL,NULL);}}
+        if(!s_spk_f){s_spk_f=fopen("draw-spike-log.txt","a");if(s_spk_f)snprintf(s_spk_path,sizeof s_spk_path,"draw-spike-log.txt (working directory)");}
+        if(!s_spk_f){s_spk_dead=1;fprintf(stderr,"[DRAW-SPIKE] cannot open draw-spike-log.txt (beside the exe or in the working directory)%c",10);return;}
         SYSTEMTIME st;GetLocalTime(&st);const char*e=getenv("CV_DRAW_SPIKE"),*p=getenv("PERF");
-        s_spk_bytes+=(u64)fprintf(s_spk_f,"=== draw-spike session %04d-%02d-%02d %02d:%02d:%02d | CV_DRAW_SPIKE=%s PERF=%s MAX_DRAWS=%d%c",
-            st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond,e?e:"-",p?p:"-",(int)MAX_DRAWS,10); }
+        s_spk_bytes+=(u64)fprintf(s_spk_f,"=== draw-spike session %04d-%02d-%02d %02d:%02d:%02d | CV_DRAW_SPIKE=%s PERF=%s MAX_DRAWS=%d | file=%s%c",
+            st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond,e?e:"-",p?p:"-",(int)MAX_DRAWS,s_spk_path,10);
+        fprintf(stderr,"[DRAW-SPIKE] log: %s%c",s_spk_path,10); }
     va_list ap;va_start(ap,fmt);int w=vfprintf(s_spk_f,fmt,ap);va_end(ap);
     if(w>0)s_spk_bytes+=(u64)w;
     fflush(s_spk_f);
@@ -10653,20 +10671,34 @@ static void spk_pre(void)
 {
     spk.spike=spk.full=0;spk.n=s_rb.count;spk.present=(u32)s_rb.present;spk.perfon=perf_on()!=0;
     const double now=perf_now();if(spk.t_start==0.0)spk.t_start=now;
-    if(!s_rb.present||!s_rb.count){spk.nonpresent++;return;}   /* offscreen-only batches do not count as frames */
+    if(!spk2.armed){spk2.armed=1;spk2.last_status=now;
+        const char*ae=getenv("CV_DRAW_SPIKE");const int aabs=ae?atoi(ae):0;
+        spk_out("[ARMED] threshold=%s: spikes are batches with more than %s draws; a [STATUS] line follows every 30 s%c",
+                aabs>1?"absolute":"auto",aabs>1?ae:"max(4000, 1.5 x median of the last 240 frames)",10);}
+    if(!s_rb.count)return;
     const char*e=getenv("CV_DRAW_SPIKE");const int absv=e?atoi(e):0;
-    spk.thr=absv>1?(u32)absv:(spk.median*5/2>8000u?spk.median*5/2:8000u);
+    spk.thr=absv>1?(u32)absv:(spk.median+spk.median/2>4000u?spk.median+spk.median/2:4000u);
     spk.spike=spk.n>spk.thr;
-    spk.ring[spk.pos]=spk.n;spk.pos=(spk.pos+1)%240;if(spk.nring<240)spk.nring++;spk.frames++;
-    if(++spk.since>=30){spk.since=0;u32 c[240];memcpy(c,spk.ring,sizeof c);const u32 m=spk.nring;
-        for(u32 i=1;i<m;i++){u32 x=c[i],j=i;while(j&&c[j-1]>x){c[j]=c[j-1];j--;}c[j]=x;}spk.median=c[m/2];}
+    if(spk.n>spk2.max_draws)spk2.max_draws=spk.n;if(spk.n>spk2.max_since)spk2.max_since=spk.n;
+    if(!s_rb.present){   /* offscreen-only batches: not frames for the median, but a big one is still a spike */
+        spk.nonpresent++;spk2.np_count++;spk2.np_total+=spk.n;if(spk.n>spk2.np_max)spk2.np_max=spk.n;
+    } else {
+        spk.ring[spk.pos]=spk.n;spk.pos=(spk.pos+1)%240;if(spk.nring<240)spk.nring++;spk.frames++;
+        if(++spk.since>=30){spk.since=0;u32 c[240];memcpy(c,spk.ring,sizeof c);const u32 m=spk.nring;
+            for(u32 i=1;i<m;i++){u32 x=c[i],j=i;while(j&&c[j-1]>x){c[j]=c[j-1];j--;}c[j]=x;}spk.median=c[m/2];}
+    }
     if(spk.spike&&now-spk.last_full>=1.0){spk.last_full=now;spk.full=1;spk_analyze();}
 }
 /* After present: times known; write what spk_pre decided. */
 static void spk_post(const SpkT* t)
 {
-    if(!spk.present||!spk.n)return;
+    if(!spk.n)return;
     const double now=perf_now();char cx[256];
+    if(spk2.armed&&now-spk2.last_status>=30.0){spk2.last_status=now;spk_ctx(cx);
+        spk_out("[STATUS] t=%.0fs frames=%llu batches_without_present=%u (max %u) max_draws_last_30s=%u max_draws_total=%u median=%u thr=%u spikes=%llu %s%c",
+                now-spk.t_start,(unsigned long long)spk.frames,spk2.np_count,spk2.np_max,spk2.max_since,spk2.max_draws,spk.median,spk.thr,
+                (unsigned long long)spk.spikes,cx,10);
+        spk2.max_since=0;}
     if(spk.spike){
         spk.spikes++;
         if(!spk.inburst){spk.inburst=1;spk.bframes=spk.bmax=0;spk.bsum=0;spk.bt0=spk.sec_t=now;spk.bms=spk.bms_max=spk.bpre=0.0;
@@ -10674,7 +10706,7 @@ static void spk_post(const SpkT* t)
             spk_ctx(cx);spk_out("[BURST-START] frame=%llu t=%.1fs draws=%u thr=%u %s%c",(unsigned long long)s_d3d.frame_count+1,now-spk.t_start,spk.n,spk.thr,cx,10);}
         if(now-spk.cl_t>=1.0){spk.cl_t=now;spk.cl_n=0;}
         if(spk.cl_n<30&&!spk.full){spk.cl_n++;spk_ctx(cx);
-            spk_out("[SPIKE] frame=%llu draws=%u total=%.1fms prepass=%.1fms wait=%.1fms %s%c",(unsigned long long)s_d3d.frame_count+1,spk.n,t->total,t->prepass,t->wait,cx,10);}
+            spk_out("[SPIKE] frame=%llu draws=%u present=%d total=%.1fms prepass=%.1fms wait=%.1fms %s%c",(unsigned long long)s_d3d.frame_count+1,spk.n,(int)spk.present,t->total,t->prepass,t->wait,cx,10);}
         if(spk.full)spk_full(t);
     }
     if(spk.inburst){

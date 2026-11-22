@@ -103,8 +103,10 @@ echo.
 echo Lista pronta: %~dp0shader-seed\pipelines-seed.list
 echo.
 echo Log de picos de draws: %~dp0build-release\bin\draw-spike-log.txt
-if exist "%~dp0build-release\bin\draw-spike-log.txt" echo   existe: mande este arquivo.
-if not exist "%~dp0build-release\bin\draw-spike-log.txt" echo   nao existe: nenhum pico de draws foi detectado.
+echo   ^(o jogo grava ao lado do .exe; a linha [ARMED] aparece no primeiro quadro e a cada 30 s uma linha [STATUS] com o maior numero de draws visto^)
+if exist "%~dp0build-release\bin\draw-spike-log.txt" echo   existe: mande este arquivo ^(tem os picos, ou o [STATUS] dizendo que nao houve^).
+if not exist "%~dp0build-release\bin\draw-spike-log.txt" echo   NAO existe: o diagnostico nem chegou a ligar. Use o .exe recompilado e este atalho, sem mudar o CV_DRAW_SPIKE acima.
+if exist "%~dp0draw-spike-log.txt" echo   Ha tambem um log antigo na pasta do projeto: %~dp0draw-spike-log.txt
 pause
 exit /b 0
 
