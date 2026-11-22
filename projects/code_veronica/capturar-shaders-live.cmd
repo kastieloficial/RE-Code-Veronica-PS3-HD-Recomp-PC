@@ -19,6 +19,8 @@ rem Medidor de desempenho: onde vai o tempo de cada quadro (run-log.txt, resumo 
 set "PERF=1"
 rem Perfil da thread de renderizacao (render-profile.txt; use tools\perfil_renderizacao.py).
 set "CV_PROFILE_RENDER=1"
+rem Diagnostico de picos de draws (tiros): grava build-release\bin\draw-spike-log.txt. 1 = limite automatico; um numero maior = limite fixo de draws.
+set "CV_DRAW_SPIKE=1"
 set "base="
 set "EXE=%~dp0build-release\bin\CodeVeronicaPort.exe"
 if not exist "%EXE%" (
@@ -99,6 +101,10 @@ if errorlevel 1 (pause & exit /b 1)
 explorer /select,"%~dp0shader-seed\pipelines-seed.list"
 echo.
 echo Lista pronta: %~dp0shader-seed\pipelines-seed.list
+echo.
+echo Log de picos de draws: %~dp0build-release\bin\draw-spike-log.txt
+if exist "%~dp0build-release\bin\draw-spike-log.txt" echo   existe: mande este arquivo.
+if not exist "%~dp0build-release\bin\draw-spike-log.txt" echo   nao existe: nenhum pico de draws foi detectado.
 pause
 exit /b 0
 

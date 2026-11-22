@@ -10509,6 +10509,189 @@ static int submit_split(u32 fi)
     return 1;
 }
 
+#ifndef CV_DISTRIBUTION
+/* CV_DRAW_SPIKE (dev only, absent from distribution builds): why does the draw
+ * count jump (gunfire: ~2-3k -> 10-15k) and would batching identical draws or
+ * reusing prepass work help? 1 = threshold max(8000, 2.5 x median of the last
+ * 240 frames); >1 = that absolute draw count. Writes draw-spike-log.txt beside
+ * the exe: a full report (state keys, run lengths, top pairs, histograms,
+ * times) at most once a second, a compact line per spike frame (<=30/s), one
+ * summary line per second while the burst lasts and a final burst summary. */
+#include <stdarg.h>
+static int draw_spike_on(void){static int on=-1;if(on<0){const char*e=getenv("CV_DRAW_SPIKE");on=e&&*e&&*e!='0'?(atoi(e)>1?atoi(e):1):0;}return on;}
+void (*g_rsx_spike_context)(char* out,unsigned cap)=NULL;   /* set by main.cpp: room/state of the game */
+static double s_spike_prepass;                               /* prepass_range seconds this frame */
+#define SPK_NK 7
+#define SPK_FNV0 14695981039346656037ull
+static const char* const spk_kn[SPK_NK]={"fp","pso","tex","vfmt","rt","A=pso+tex+rt+vfmt","B=A+vtx+vcb_same"};
+static const char* const spk_tn[6]={"UNSUPPORTED","POINTS","LINES","LINE_STRIP","TRIANGLES","TRIANGLE_STRIP"};
+typedef struct { u64 prev; u32 runs,len,in2,best,start,bfp,bt0off,bt0fmt,bt0w,bt0h,brt,bvc,bat; } SpkRun;
+typedef struct { u64 key,vsum; u32 count,fp,t0off,t0fmt,t0w,t0h,rt; } SpkPair;
+typedef struct { u32 n,clr,cpy,legacy,tex_units,distinct,overflow,ntop; u64 verts; u32 topo[8],vb[8];
+                 SpkRun run[SPK_NK]; SpkPair top[10]; } SpkA;
+typedef struct { double total,build,wait,prepass,record,present,fence,pre,tex,srv,pso,gpu; int ntex; } SpkT;
+static SpkA s_spk_a; static SpkPair s_spk_tab[4096];
+static struct { u32 ring[240],nring,pos,median,thr,n,present,since,bframes,bmax,sframes,smax,cl_n,nonpresent,below; int inburst,spike,full,perfon;
+                u64 frames,spikes,bsum,ssum; double t_start,last_full,bt0,sec_t,cl_t,bms,bms_max,bpre,sms,spre; } spk;
+static FILE* s_spk_f; static u64 s_spk_bytes; static int s_spk_dead;
+static u64 spk_h(u64 h,u32 v){return (h^(u64)v)*0x100000001b3ull;}
+static u64 spk_h64(u64 h,u64 v){return spk_h(spk_h(h,(u32)v),(u32)(v>>32));}
+static void spk_out(const char* fmt,...)
+{
+    if(s_spk_dead)return;
+    if(!s_spk_f){ s_spk_f=fopen("draw-spike-log.txt","a"); if(!s_spk_f){s_spk_dead=1;return;}
+        SYSTEMTIME st;GetLocalTime(&st);const char*e=getenv("CV_DRAW_SPIKE"),*p=getenv("PERF");
+        s_spk_bytes+=(u64)fprintf(s_spk_f,"=== draw-spike session %04d-%02d-%02d %02d:%02d:%02d | CV_DRAW_SPIKE=%s PERF=%s MAX_DRAWS=%d%c",
+            st.wYear,st.wMonth,st.wDay,st.wHour,st.wMinute,st.wSecond,e?e:"-",p?p:"-",(int)MAX_DRAWS,10); }
+    va_list ap;va_start(ap,fmt);int w=vfprintf(s_spk_f,fmt,ap);va_end(ap);
+    if(w>0)s_spk_bytes+=(u64)w;
+    fflush(s_spk_f);
+    if(s_spk_bytes>8u*1024u*1024u){fprintf(s_spk_f,"--- log reached 8 MB: stopping (restart the game for another capture)%c",10);fflush(s_spk_f);s_spk_dead=1;}
+}
+static void spk_ctx(char* b)
+{
+    b[0]=0;
+    if(g_rsx_spike_context)g_rsx_spike_context(b,256);
+    else snprintf(b,256,"room=? (no context hook)");
+    b[255]=0;
+}
+static void spk_run_end(SpkRun* r)
+{
+    if(!r->len)return;
+    r->runs++; if(r->len>=2)r->in2+=r->len;
+    if(r->len>r->best){
+        const D3D12DrawRecord* d=&s_rb.draws[r->start];
+        r->best=r->len;r->bat=r->start;r->bfp=fp_snap_code(d);if(!r->bfp)r->bfp=d->fp_addr;
+        r->bt0off=d->tex[0].off;r->bt0fmt=d->tex[0].fmt;r->bt0w=d->tex[0].w;r->bt0h=d->tex[0].h;r->brt=d->rt_off;r->bvc=d->vertex_count;
+    }
+    r->len=0;
+}
+static void spk_run_step(SpkRun* r,u64 key,u32 idx)
+{
+    if(r->len&&r->prev==key)r->len++;
+    else{spk_run_end(r);r->start=idx;r->len=1;}
+    r->prev=key;
+}
+/* Called with s_rb.draws[0..count) complete and not yet reset. */
+static void spk_analyze(void)
+{
+    SpkA* a=&s_spk_a;memset(a,0,sizeof *a);memset(s_spk_tab,0,sizeof s_spk_tab);
+    const u32 n=s_rb.count<MAX_DRAWS?s_rb.count:MAX_DRAWS;a->n=n;
+    u32 prev_vcb=0xFFFFFFFFu,filled=0;
+    for(u32 i=0;i<n;i++){
+        const D3D12DrawRecord* d=&s_rb.draws[i];
+        if(d->is_clear||d->is_copy){
+            if(d->is_clear)a->clr++;else a->cpy++;
+            for(int k=0;k<SPK_NK;k++)spk_run_end(&a->run[k]);   /* a clear/copy is a hard barrier */
+            prev_vcb=0xFFFFFFFFu;continue;
+        }
+        if(!d->is_vp)a->legacy++;
+        u32 fp=fp_snap_code(d);if(!fp)fp=d->fp_addr;
+        u64 pso=SPK_FNV0;
+        pso=spk_h(pso,fp);pso=spk_h(pso,(u32)d->vs_idx);pso=spk_h(pso,d->blend_key);pso=spk_h(pso,d->cmask);
+        pso=spk_h(pso,d->cull);pso=spk_h(pso,(u32)d->dtest);pso=spk_h(pso,d->dfunc);pso=spk_h(pso,d->alpha_ctl);
+        pso=spk_h(pso,d->topology);pso=spk_h(pso,d->rt_fmt);pso=spk_h(pso,(u32)d->fp_exp32);pso=spk_h(pso,(u32)dr_num_rts(d));
+        u64 tex=SPK_FNV0;
+        for(u32 u=0;u<FP_TEX_UNITS;u++)if(d->tex[u].set){
+            tex=spk_h(tex,u);tex=spk_h(tex,d->tex[u].off);tex=spk_h(tex,d->tex[u].raw);tex=spk_h(tex,d->tex[u].fmt);
+            tex=spk_h(tex,d->tex[u].w);tex=spk_h(tex,d->tex[u].h);tex=spk_h(tex,d->tex[u].ctrl1);tex=spk_h(tex,d->tex[u].addr);
+            tex=spk_h(tex,(u32)d->tex_rt[u]);a->tex_units++;
+        }
+        u64 vf=SPK_FNV0;vf=spk_h(vf,(u32)d->vs_idx);vf=spk_h(vf,(u32)d->is_vp);vf=spk_h(vf,d->topology);vf=spk_h(vf,d->vtex_mask);
+        u64 rt=SPK_FNV0;rt=spk_h(rt,d->rt_off);for(int m=0;m<3;m++)rt=spk_h(rt,d->rt_mrt[m]);
+        rt=spk_h(rt,d->zeta_off);rt=spk_h(rt,d->rt_w);rt=spk_h(rt,d->rt_h);
+        u64 vx=SPK_FNV0;vx=spk_h(vx,d->vtex_mask);for(int m=0;m<4;m++)vx=spk_h(vx,d->vtx[m].hash);
+        const u32 vsame=d->vcb_slot==prev_vcb;prev_vcb=d->vcb_slot;
+        u64 A=SPK_FNV0;A=spk_h64(A,pso);A=spk_h64(A,tex);A=spk_h64(A,rt);A=spk_h64(A,vf);
+        u64 B=spk_h64(A,vx);B=spk_h(B,vsame);
+        const u64 keys[SPK_NK]={fp,pso,tex,vf,rt,A,B};
+        for(int k=0;k<SPK_NK;k++)spk_run_step(&a->run[k],keys[k],i);
+        a->topo[d->topology<7?d->topology:7]++;
+        { const u32 v=d->vertex_count;a->verts+=v;
+          a->vb[v<=3?0:v<=6?1:v<=12?2:v<=32?3:v<=128?4:v<=512?5:v<=2048?6:7]++; }
+        { u64 pk=spk_h64(spk_h64(SPK_FNV0,pso),tex)|1ull;u32 s=(u32)(pk&4095);SpkPair* e=NULL;
+          for(u32 t=0;t<4096;t++,s=(s+1)&4095){
+              if(s_spk_tab[s].key==pk){e=&s_spk_tab[s];break;}
+              if(!s_spk_tab[s].key){ if(filled>=3500)break;
+                  e=&s_spk_tab[s];e->key=pk;e->fp=fp;e->t0off=d->tex[0].off;e->t0fmt=d->tex[0].fmt;e->t0w=d->tex[0].w;e->t0h=d->tex[0].h;e->rt=d->rt_off;filled++;break; } }
+          if(e){e->count++;e->vsum+=d->vertex_count;}else a->overflow++; }
+    }
+    for(int k=0;k<SPK_NK;k++)spk_run_end(&a->run[k]);
+    a->distinct=filled;
+    for(u32 t=0;t<10;t++){
+        u32 bi=0,bc=0;for(u32 s=0;s<4096;s++)if(s_spk_tab[s].count>bc){bc=s_spk_tab[s].count;bi=s;}
+        if(!bc)break;a->top[a->ntop++]=s_spk_tab[bi];s_spk_tab[bi].count=0;
+    }
+}
+static void spk_full(const SpkT* t)
+{
+    const SpkA* a=&s_spk_a;char cx[256];spk_ctx(cx);
+    spk_out("\n---- SPIKE frame=%llu t=%.1fs draws=%u (median=%u thr=%u) present=%d%c",(unsigned long long)s_d3d.frame_count+1,
+            perf_now()-spk.t_start,a->n,spk.median,spk.thr,(int)spk.present,10);
+    spk_out("ctx: %s%c",cx,10);
+    spk_out("ms: total=%.2f build=%.2f (gpu-wait=%.2f prepass=%.2f record=%.2f) present+pace=%.2f fence=%.2f%c",
+            t->total,t->build,t->wait,t->prepass,t->record,t->present,t->fence,10);
+    if(spk.perfon)spk_out("perf(PERF=1, this frame): prepass=%.2f tex=%.2f (%d uploads) srv=%.2f pso=%.2f gpu=%.2f%c",
+            t->pre,t->tex,t->ntex,t->srv,t->pso,t->gpu,10);
+    spk_out("draws: n=%u clear=%u copy=%u legacy(!is_vp)=%u verts=%llu mean_verts=%.1f tex_units_bound=%u distinct(pso,tex)=%u%s%c",
+            a->n,a->clr,a->cpy,a->legacy,(unsigned long long)a->verts,a->n>a->clr+a->cpy?(double)a->verts/(a->n-a->clr-a->cpy):0.0,
+            a->tex_units,a->distinct,a->overflow?" (pair table overflowed)":"",10);
+    spk_out("topology:");for(int k=0;k<8;k++)if(a->topo[k])spk_out(" %d=%s:%u",k,k<6?spk_tn[k]:"other",a->topo[k]);spk_out("%c",10);
+    spk_out("verts/draw: 1-3:%u 4-6:%u 7-12:%u 13-32:%u 33-128:%u 129-512:%u 513-2048:%u >2048:%u%c",
+            a->vb[0],a->vb[1],a->vb[2],a->vb[3],a->vb[4],a->vb[5],a->vb[6],a->vb[7],10);
+    spk_out("transitions: texture-set=%u fp=%u%c",a->run[2].runs?a->run[2].runs-1:0,a->run[0].runs?a->run[0].runs-1:0,10);
+    spk_out("runs of consecutive identical key (clear/copy break runs):%c",10);
+    for(int k=0;k<SPK_NK;k++){const SpkRun* r=&a->run[k];
+        spk_out("  %-18s runs=%-5u mean_run=%-7.2f draws_in_runs>=2=%-5u longest=%u at #%u fp=0x%X tex0=0x%X/fmt%02X/%ux%u rt=0x%08X verts=%u%c",
+            spk_kn[k],r->runs,r->runs?(double)(a->n-a->clr-a->cpy)/r->runs:0.0,r->in2,r->best,r->bat,r->bfp,r->bt0off,r->bt0fmt,r->bt0w,r->bt0h,r->brt,r->bvc,10);}
+    spk_out("top (pso,tex) pairs:%c",10);
+    for(u32 k=0;k<a->ntop;k++){const SpkPair* p=&a->top[k];
+        spk_out("  #%u count=%u mean_verts=%.1f fp=0x%X tex0=0x%X/fmt%02X/%ux%u rt=0x%08X%c",k+1,p->count,(double)p->vsum/p->count,p->fp,p->t0off,p->t0fmt,p->t0w,p->t0h,p->rt,10);}
+}
+/* Before the draw list is reset: spike test and (rate-limited) analysis. */
+static void spk_pre(void)
+{
+    spk.spike=spk.full=0;spk.n=s_rb.count;spk.present=(u32)s_rb.present;spk.perfon=perf_on()!=0;
+    const double now=perf_now();if(spk.t_start==0.0)spk.t_start=now;
+    if(!s_rb.present||!s_rb.count){spk.nonpresent++;return;}   /* offscreen-only batches do not count as frames */
+    const char*e=getenv("CV_DRAW_SPIKE");const int absv=e?atoi(e):0;
+    spk.thr=absv>1?(u32)absv:(spk.median*5/2>8000u?spk.median*5/2:8000u);
+    spk.spike=spk.n>spk.thr;
+    spk.ring[spk.pos]=spk.n;spk.pos=(spk.pos+1)%240;if(spk.nring<240)spk.nring++;spk.frames++;
+    if(++spk.since>=30){spk.since=0;u32 c[240];memcpy(c,spk.ring,sizeof c);const u32 m=spk.nring;
+        for(u32 i=1;i<m;i++){u32 x=c[i],j=i;while(j&&c[j-1]>x){c[j]=c[j-1];j--;}c[j]=x;}spk.median=c[m/2];}
+    if(spk.spike&&now-spk.last_full>=1.0){spk.last_full=now;spk.full=1;spk_analyze();}
+}
+/* After present: times known; write what spk_pre decided. */
+static void spk_post(const SpkT* t)
+{
+    if(!spk.present||!spk.n)return;
+    const double now=perf_now();char cx[256];
+    if(spk.spike){
+        spk.spikes++;
+        if(!spk.inburst){spk.inburst=1;spk.bframes=spk.bmax=0;spk.bsum=0;spk.bt0=spk.sec_t=now;spk.bms=spk.bms_max=spk.bpre=0.0;
+            spk.sframes=spk.smax=0;spk.ssum=0;spk.sms=spk.spre=0.0;
+            spk_ctx(cx);spk_out("[BURST-START] frame=%llu t=%.1fs draws=%u thr=%u %s%c",(unsigned long long)s_d3d.frame_count+1,now-spk.t_start,spk.n,spk.thr,cx,10);}
+        if(now-spk.cl_t>=1.0){spk.cl_t=now;spk.cl_n=0;}
+        if(spk.cl_n<30&&!spk.full){spk.cl_n++;spk_ctx(cx);
+            spk_out("[SPIKE] frame=%llu draws=%u total=%.1fms prepass=%.1fms wait=%.1fms %s%c",(unsigned long long)s_d3d.frame_count+1,spk.n,t->total,t->prepass,t->wait,cx,10);}
+        if(spk.full)spk_full(t);
+    }
+    if(spk.inburst){
+        spk.bframes++;spk.bsum+=spk.n;if(spk.n>spk.bmax)spk.bmax=spk.n;spk.bms+=t->total;if(t->total>spk.bms_max)spk.bms_max=t->total;spk.bpre+=t->prepass;
+        spk.sframes++;spk.ssum+=spk.n;if(spk.n>spk.smax)spk.smax=spk.n;spk.sms+=t->total;spk.spre+=t->prepass;
+        if(now-spk.sec_t>=1.0){spk_ctx(cx);
+            spk_out("[BURST 1s] frames=%u draws mean=%.0f max=%u | total mean=%.1fms prepass mean=%.1fms | median=%u thr=%u %s%c",spk.sframes,
+                (double)spk.ssum/spk.sframes,spk.smax,spk.sms/spk.sframes,spk.spre/spk.sframes,spk.median,spk.thr,cx,10);
+            spk.sec_t=now;spk.sframes=spk.smax=0;spk.ssum=0;spk.sms=spk.spre=0.0;}
+        if(spk.spike)spk.below=0;
+        else if(++spk.below>=30){spk.below=0;spk.inburst=0;
+            spk_out("[BURST-END] frames=%u duration=%.1fs draws mean=%.0f max=%u | total mean=%.1fms max=%.1fms prepass mean=%.1fms%c",spk.bframes,now-spk.bt0,
+                (double)spk.bsum/spk.bframes,spk.bmax,spk.bms/spk.bframes,spk.bms_max,spk.bpre/spk.bframes,10);}
+    }
+}
+#endif
+
 /* The prepass of one range of draws: textures uploaded, the draw's SRV
  * window filled, its pipeline looked up or queued. Each draw needs only its
  * own, so with RSX_SUBMIT_SPLIT the draw loop prepares one part, draws it and
@@ -10522,6 +10705,9 @@ static void prepass_range(u32 from, u32 to)
     int previous_draw=-1;RsxPreparedRepeatKey previous_key={0};const u8* previous_code=NULL;
     frame_detail_tag(FD_SETUP);
     double frame_profile_start=s_frame_profile.active?pose_time():0;
+#ifndef CV_DISTRIBUTION
+    const double spk_t0=draw_spike_on()?perf_now():0.0;
+#endif
     double _pd_t = s_pp_t; const D3D12DrawRecord* _pd_prev = s_pp_prev;
     for (u32 _d = from; _d < to && _d < s_rb.count && _d < MAX_DRAWS; _d++) {
         D3D12DrawRecord* dr = &s_rb.draws[_d];
@@ -10830,6 +11016,9 @@ static void prepass_range(u32 from, u32 to)
         if (perf_on()) s_perf_pso += perf_now() - _ps0;
     }
     s_pp_t = _pd_t; s_pp_prev = _pd_prev;
+#ifndef CV_DISTRIBUTION
+    if(spk_t0!=0.0)s_spike_prepass+=perf_now()-spk_t0;
+#endif
     if(s_frame_profile.active)s_frame_profile.prepass+=pose_time()-frame_profile_start;
 }
 
@@ -10891,6 +11080,10 @@ static void render_frame_impl(void)
     const int cv_diag = cv_cutscene_diag();
     const double cv_start = cv_diag ? perf_now() : 0.0;
     double cv_wait = 0.0, cv_present_start = 0.0, cv_present_ms = 0.0, cv_fence_start = 0.0;
+#ifndef CV_DISTRIBUTION
+    const int sp_on = draw_spike_on(); double sp_t0 = 0.0, sp_wait = 0.0, sp_tb = 0.0, sp_tp0 = 0.0, sp_tp1 = 0.0;
+    if (sp_on) { sp_t0 = perf_now(); s_spike_prepass = 0.0; }
+#endif
 
     double _rf0 = perf_on() ? perf_now() : 0.0;
     u32 fi = s_d3d.frame_index;
@@ -10910,7 +11103,13 @@ static void render_frame_impl(void)
     if (pose_early) { pose_interpolate_batch(); frame_profile_mark(FP_POSE); }
     { double _tw = perf_on() ? perf_now() : 0.0;
       const double cv_gpu_start = cv_diag ? perf_now() : 0.0;
+#ifndef CV_DISTRIBUTION
+      const double sp_w0 = sp_on ? perf_now() : 0.0;
+#endif
       wait_for_gpu();
+#ifndef CV_DISTRIBUTION
+      if (sp_on) sp_wait = perf_now() - sp_w0;
+#endif
       if (cv_diag) cv_wait = (perf_now() - cv_gpu_start) * 1000.0;
       if (perf_on()) { const double _d = perf_now() - _tw; s_perf_gpu += _d; s_perf_wait += _d; } }
     frame_profile_mark(FP_ENTRY);
@@ -12274,6 +12473,9 @@ static void render_frame_impl(void)
               fprintf(stderr, "%c", 10);
           }
       } }
+#ifndef CV_DISTRIBUTION
+    if (sp_on) { sp_tb = perf_now(); spk_pre(); }   /* draw-spike diagnostic: list complete, not yet reset */
+#endif
     if (cv_cutscene_diag() && s_rb.count >= 12288) {
         static unsigned int reports = 0;
         if (reports++ < 120)
@@ -12659,6 +12861,9 @@ skip_dump_consider: ;
 
 #endif
     if (cv_diag) cv_present_start = perf_now();
+#ifndef CV_DISTRIBUTION
+    if (sp_on) sp_tp0 = perf_now();
+#endif
     frame_profile_mark(FP_READBACK);
     /* Present */
     if (s_rb.present)
@@ -12673,11 +12878,25 @@ skip_dump_consider: ;
           perf_overlay_frame(); present_pace_note(); }   /* skipped for an offscreen-only batch */
 
     if (cv_diag) cv_present_ms = (perf_now() - cv_present_start) * 1000.0;
+#ifndef CV_DISTRIBUTION
+    if (sp_on) sp_tp1 = perf_now();
+#endif
     frame_profile_mark(FP_PRESENT);
     if (s_rs_pending != 0.0f) apply_res_scale();
     if (cv_diag) cv_fence_start = perf_now();
     move_to_next_frame();
     frame_profile_mark(FP_FENCE);
+#ifndef CV_DISTRIBUTION
+    if (sp_on) {   /* draw-spike diagnostic: times are complete now */
+        const double sp_now = perf_now(); SpkT st;
+        st.total = (sp_now - sp_t0) * 1000.0; st.build = (sp_tb - sp_t0) * 1000.0; st.wait = sp_wait * 1000.0;
+        st.prepass = s_spike_prepass * 1000.0; st.record = st.build - st.wait - st.prepass;
+        st.present = (sp_tp1 - sp_tp0) * 1000.0; st.fence = (sp_now - sp_tp1) * 1000.0;
+        st.pre = (s_perf_pre - _h_pre) * 1000.0; st.tex = (s_perf_tex - _h_tex) * 1000.0; st.ntex = s_perf_ntex - _h_ntex;
+        st.srv = (s_perf_srv - _h_srv) * 1000.0; st.pso = (s_perf_pso - _h_pso) * 1000.0; st.gpu = (s_perf_gpu - _h_gpu) * 1000.0;
+        spk_post(&st);
+    }
+#endif
     if (cv_diag) {
         const double now = perf_now();
         static unsigned int reports = 0;

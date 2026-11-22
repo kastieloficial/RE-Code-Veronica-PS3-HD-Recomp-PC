@@ -528,6 +528,28 @@ extern "C" void cv_modern_boot();
 extern "C" void cv_host_tuning_init(void);   /* cv_host_tuning.cpp */
 extern "C" void cv_hang_watch_init(void);    /* cv_hang_watch.cpp: hang-log.txt */
 extern "C" void cv_loading_screen_init(void);   /* cv_loading_screen.cpp */
+#ifndef CV_DISTRIBUTION
+/* CV_DRAW_SPIKE diagnostic (libs/video/rsx_d3d12_backend.c): where the game is,
+ * for the draw-spike log. Read-only, render thread; event = a cutscene/fade/
+ * check point state (cv_items' "playing" mask). */
+extern "C" void (*g_rsx_spike_context)(char* out,unsigned cap);
+static bool spike_mapped(uint32_t a,uint32_t n){
+    if(!vm_base||a>0x0FFFFFFFu||n>0x10000000u-a)return false;
+    const uint8_t* p=vm_base+a;const uint8_t* end=p+n;
+    while(p<end){MEMORY_BASIC_INFORMATION m{};
+        if(!VirtualQuery(p,&m,sizeof m)||m.State!=MEM_COMMIT||(m.Protect&(PAGE_NOACCESS|PAGE_GUARD)))return false;
+        const uint8_t* next=static_cast<const uint8_t*>(m.BaseAddress)+m.RegionSize;if(next<=p)return false;p=next;}
+    return true;
+}
+static void spike_context(char* out,unsigned cap){
+    const uint32_t state=CV_SRT_CHARACTER-0x94;
+    if(!spike_mapped(state,0x80)||!spike_mapped(CV_SRT_ROOM,4)||!spike_mapped(CV_SRT_STATUS,1)){snprintf(out,cap,"room=? (guest memory not mapped)");return;}
+    const uint32_t s64=vm_read32(state+0x64),s68=vm_read32(state+0x68),s70=vm_read32(state+0x70),s74=vm_read32(state+0x74),active=s64&~s68;
+    const int event=((s74&7)||(s70&0x1C040008u)||!(active&0x80))?1:0;
+    snprintf(out,cap,"room=0x%04X state64=%08X state68=%08X state70=%08X state74=%08X active=%08X status=%02X char=%u event=%d",
+        vm_read16(CV_SRT_ROOM),s64,s68,s70,s74,active,vm_read8(CV_SRT_STATUS),(unsigned)vm_read8(CV_SRT_CHARACTER),event);
+}
+#endif
 int main(int argc, char** argv)
 {
     std::string eboot_path;
@@ -551,6 +573,9 @@ int main(int argc, char** argv)
     cellpad_gameplay_filters_set(cv_gameplay_filter_key,cv_gameplay_filter_buttons,cv_gameplay_filter_stick);
     g_rsx_srt_hook = cv_hud_overlay_quads;   /* combat HUD + countdown under native 60 FPS */
     g_rsx_srt_sprites_hook = cv_srt_sprites;
+#ifndef CV_DISTRIBUTION
+    g_rsx_spike_context = spike_context;   /* CV_DRAW_SPIKE log: room/state */
+#endif
     /* The switchable sites lifted into this build (projects/code_veronica/
      * patches.json, this version's sites): a patch file with the same write
      * switches them. */
