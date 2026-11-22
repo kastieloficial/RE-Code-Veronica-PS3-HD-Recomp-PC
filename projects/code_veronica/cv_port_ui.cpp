@@ -401,7 +401,7 @@ float draw_glyph(Graphics& g,const Glyph& glyph,int kind,float x,float y,float s
     }
     case GlyphKind::SLASH: {const Font* f=&font_cached(1,Role::BODY500,17);const float w=text_width(g,L"/",*f)+8;
         text(g,L"/",RectF(x,y,w,size),*f,Color(255,136,146,174),StringAlignmentCenter,StringAlignmentCenter);return w;}
-    case GlyphKind::DPAD:cv_port_glyphs::btn_glyph(g,glyph_layout(kind),PB_UP,x,y,size);return size;
+    case GlyphKind::DPAD:cv_port_glyphs::btn_glyph(g,glyph_layout(kind),cv_port_glyphs::BTN_DPAD_NEUTRAL,x,y,size);return size;
     case GlyphKind::PAD:cv_port_glyphs::btn_glyph(g,glyph_layout(kind),glyph.value,x,y,size);return size;
     }
     return 0;

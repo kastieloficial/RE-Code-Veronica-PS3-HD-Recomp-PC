@@ -58,6 +58,9 @@ inline void key_glyph(Graphics& gr, int vk, float x, float y, float s)
     cv_keycap::draw(gr, vk > 0 ? cv_key_cap_label(vk) : L"", x, y, s, s);
 }
 
+/* pb = BTN_DPAD_NEUTRAL: the whole d-pad, no direction lit (footers say "use the d-pad", not "press up"). */
+constexpr int BTN_DPAD_NEUTRAL = -2;
+
 inline void btn_glyph(Graphics& gr, int layout, int pb, float x, float y, float s = 30.0f)
 {
     const float cx = x + s / 2, cy = y + s / 2, k = s / 26.0f;
@@ -132,7 +135,7 @@ inline void btn_glyph(Graphics& gr, int layout, int pb, float x, float y, float 
         g_label(gr, layout ? (pb == PB_L3 ? L"LS" : L"RS") : (pb == PB_L3 ? L"L3" : L"R3"),
                 RectF(x, y, s, s), 8.5f * k, G_LINE);
         break; }
-    case PB_UP: case PB_DOWN: case PB_LEFT: case PB_RIGHT: {
+    case BTN_DPAD_NEUTRAL: case PB_UP: case PB_DOWN: case PB_LEFT: case PB_RIGHT: {
         const float w = 5.6f * k, h = 8.5f * k;   /* arm width, arm length from centre */
         GraphicsPath p;
         PointF pts[12] = {
@@ -142,6 +145,11 @@ inline void btn_glyph(Graphics& gr, int layout, int pb, float x, float y, float 
             PointF(cx - h, cy + w / 2), PointF(cx - h, cy - w / 2), PointF(cx - w / 2, cy - w / 2) };
         p.AddPolygon(pts, 12);
         SolidBrush body(Color(255, 74, 66, 66)); gr.FillPath(&body, &p);
+        if (pb == BTN_DPAD_NEUTRAL) {   /* four identical arms: a lighter rim and a centre dot, nothing lit */
+            Pen rim(Color(255, 150, 142, 136), 1.0f * k); rim.SetLineJoin(LineJoinRound); gr.DrawPath(&rim, &p);
+            SolidBrush dot(Color(255, 120, 112, 108)); gr.FillEllipse(&dot, cx - 1.3f * k, cy - 1.3f * k, 2.6f * k, 2.6f * k);
+            break;
+        }
         RectF arm = pb == PB_UP    ? RectF(cx - w / 2, cy - h, w, h - w / 2)
                   : pb == PB_DOWN  ? RectF(cx - w / 2, cy + w / 2, w, h - w / 2)
                   : pb == PB_LEFT  ? RectF(cx - h, cy - w / 2, h - w / 2, w)
