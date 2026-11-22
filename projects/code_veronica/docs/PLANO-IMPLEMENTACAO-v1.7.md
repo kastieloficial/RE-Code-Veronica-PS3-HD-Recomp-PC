@@ -100,7 +100,7 @@ Target scale: std::atomic<float> output_scale written by frame_at = clamp(h/1080
 Progress line 2px #C41C22 bottom, width = remaining fraction: bake 4-row solid strip under the card in the same RGBA atlas; frame_at returns pointer to 2 sprites (card + line), sprite[0].after = count (document in rsx_ui_batch.h for this hook only); trophy_popup_draw (libs/video/rsx_d3d12_backend.c:965-982) draws N≤2 quads, honours u0..v1 (uv hard-coded 0..1 at :976 today), reserves 2 quads.
 Tests: update tests/test_trophy_popup.cpp:22-36 (size asserts 448×140 → scaled; second sprite width decreases; sound once per toast; PNGs per language/tier for review vs conquista-square-toasts.png); check tests/test_trophy_popup_gpu.c.
 
-## P6 Draw-spike diagnostic (dev only)
+## P6 Draw-spike diagnostic (dev only) — ADIADA por decisão do Gabriel (2026-11-22): NÃO implementar agora nem mexer no renderizador; fica para depois da v1.7. P7 não deve incluir CV_DRAW_SPIKE nem alterar capturar-shaders-live.cmd por causa dela.
 
 Files: libs/video/rsx_d3d12_backend.c (owned), launcher.cpp (one hook assignment), capturar-shaders-live.cmd, distribution/windows_entry.cpp strip list (add CV_DRAW_SPIKE).
 All inside #ifndef CV_DISTRIBUTION; in distribution draw_spike_on() is constant 0.
