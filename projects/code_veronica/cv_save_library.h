@@ -14,5 +14,7 @@ void cv_archives_show(int page,int language,int opening_input=0);
 bool cv_archives_visible();
 void cv_archives_maps(const std::vector<cv_test::Room>& rooms,unsigned current,bool (*travel)(unsigned,unsigned));
 bool cv_save_library_message(MSG* message);
-void cv_save_library_frame(ppu_context* ctx,bool available);
+// gameplay: a controllable game; title: the main menu is ready (a load works, a save does not).
+void cv_save_library_frame(ppu_context* ctx,bool gameplay,bool title);
+void cv_archives_release();   // the window, its fonts and the shared menu fonts: before GdiplusShutdown
 #endif

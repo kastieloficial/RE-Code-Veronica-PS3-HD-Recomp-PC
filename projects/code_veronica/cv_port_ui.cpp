@@ -319,7 +319,8 @@ namespace {
 void draw_text(Graphics& g,const std::wstring& s,RectF r,const Font& f,const Brush& b,Color box_color,StringAlignment h,StringAlignment v,bool wrap,float tracking) {
     if(s.empty())return;
     const bool rtl=cv_srt_i18n::rtl_text(s);
-    StringFormat sf;sf.SetAlignment(rtl&&h==StringAlignmentNear?StringAlignmentFar:h);sf.SetLineAlignment(v);sf.SetTrimming(StringTrimmingEllipsisCharacter);
+    // In a right-to-left format GDI+ swaps near and far: ask for the opposite so Near is still the left edge and Far the right one.
+    StringFormat sf;sf.SetAlignment(rtl&&h==StringAlignmentNear?StringAlignmentFar:rtl&&h==StringAlignmentFar?StringAlignmentNear:h);sf.SetLineAlignment(v);sf.SetTrimming(StringTrimmingEllipsisCharacter);
     INT flags=StringFormatFlagsLineLimit;if(!wrap)flags|=StringFormatFlagsNoWrap;if(rtl)flags|=StringFormatFlagsDirectionRightToLeft;sf.SetFormatFlags(flags);
     const size_t sq=s.find(L'□');
     // Right-aligned single lines are placed by their measured width: GDI+ drew nothing for Far-aligned Japanese text.
@@ -391,6 +392,8 @@ float draw_glyph(Graphics& g,const Glyph& glyph,int kind,float x,float y,float s
         for(int i=0;i<4;i++)if(glyph.value&(1<<i)){if(n++)cx+=3;cv_keycap::draw(g,arrows[i],cx,y,size,size);cx+=size;}
         return cx-x;
     }
+    case GlyphKind::SLASH: {const Font* f=&font_cached(1,Role::BODY500,17);const float w=text_width(g,L"/",*f)+8;
+        text(g,L"/",RectF(x,y,w,size),*f,Color(255,136,146,174),StringAlignmentCenter,StringAlignmentCenter);return w;}
     case GlyphKind::DPAD:cv_port_glyphs::btn_glyph(g,glyph_layout(kind),PB_UP,x,y,size);return size;
     case GlyphKind::PAD:cv_port_glyphs::btn_glyph(g,glyph_layout(kind),glyph.value,x,y,size);return size;
     }
@@ -399,43 +402,55 @@ float draw_glyph(Graphics& g,const Glyph& glyph,int kind,float x,float y,float s
 namespace {
 constexpr float GLYPH=28,GLYPH_GAP=3,LABEL_GAP=9,SEP_MARGIN=18,SEP=6;
 const std::vector<Glyph>& glyphs_for(const FooterGroup& group,int kind) {return kind==PAD_INPUT_KEYBOARD?group.keyboard:group.pad;}
+float slash_width() {static const float w=[]{Bitmap b(1,1,PixelFormat32bppARGB);Graphics g(&b);return text_width(g,L"/",font_cached(1,Role::BODY500,17))+8;}();return w;}
+// A note is smaller and dimmer than an action label.
+const Font& label_font(int lang,const FooterGroup& group) {return font_cached(lang,Role::BODY500,group.note?16.f:17.f);}
 // The widths draw_glyph returns, without drawing.
 float glyphs_width(const std::vector<Glyph>& list) {
     float w=0;int n=0;
     for(const auto& glyph:list){if(n++)w+=GLYPH_GAP;
         if(glyph.kind==GlyphKind::KEY||glyph.kind==GlyphKind::TEXT){const std::wstring label=!glyph.label.empty()?glyph.label:glyph.value>0?cv_key_cap_label(glyph.value):std::wstring();w+=keycap_width(label,GLYPH);}
         else if(glyph.kind==GlyphKind::ARROWS){int c=0;for(int i=0;i<4;i++)if(glyph.value&(1<<i))c++;w+=c?c*GLYPH+(c-1)*3:0;}
+        else if(glyph.kind==GlyphKind::SLASH)w+=slash_width();
         else w+=GLYPH;}
     return w;
 }
 }
 float footer_width(Graphics& g,int lang,int kind,const std::vector<FooterGroup>& groups) {
-    const Font* f=&font_cached(lang,Role::BODY500,17);float total=0;int n=0;
+    float total=0;int n=0;
     for(const auto& group:groups) {
         if(n++)total+=SEP_MARGIN*2+SEP;
         const float gw=glyphs_width(glyphs_for(group,kind));
-        total+=gw+(gw>0?LABEL_GAP:0)+text_width(g,group.label,*f,0.3f);
+        total+=gw+(gw>0?LABEL_GAP:0)+text_width(g,group.label,label_font(lang,group),0.3f);
     }
     return total;
 }
-void draw_footer(Graphics& g,RectF r,int lang,int kind,const std::vector<FooterGroup>& groups) {
+void draw_footer(Graphics& g,RectF r,int lang,int kind,const std::vector<FooterGroup>& groups,std::vector<RectF>* rects,int hover,int pressed) {
+    if(rects)rects->clear();
     if(groups.empty())return;
     const auto state=g.Save();g.SetSmoothingMode(SmoothingModeAntiAlias);
     SolidBrush line(Color(255,58,46,16));g.FillRectangle(&line,r.X,r.Y,r.Width,1.f);
     auto sheen=lin(RectF(r.X,r.Y+1,r.Width,r.Height-1),90,{{0,Color(0,255,255,255)},{.5f,Color(8,255,255,255)},{1,Color(0,255,255,255)}});
     g.FillRectangle(sheen.get(),RectF(r.X,r.Y+1,r.Width,r.Height-1));
-    const Font* f=&font_cached(lang,Role::BODY500,17);
     const float total=footer_width(g,lang,kind,groups),avail=std::max(1.f,r.Width-24),s=total>avail?avail/total:1.f;
-    const float cy=r.Y+1+(r.Height-1)/2;
-    if(s<1){g.TranslateTransform(r.X+r.Width/2,cy);g.ScaleTransform(s,s);g.TranslateTransform(-(r.X+r.Width/2),-cy);}
-    float x=r.X+(r.Width-total)/2;int n=0;
+    const float cy=r.Y+1+(r.Height-1)/2,mid=r.X+r.Width/2;
+    if(s<1){g.TranslateTransform(mid,cy);g.ScaleTransform(s,s);g.TranslateTransform(-mid,-cy);}
+    float x=r.X+(r.Width-total)/2;int n=0,index=0;
     for(const auto& group:groups) {
         if(n++){x+=SEP_MARGIN;diamond(g,x+SEP/2,cy,SEP);x+=SEP+SEP_MARGIN;}
-        const auto& list=glyphs_for(group,kind);int k=0;
+        const Font* f=&label_font(lang,group);
+        const auto& list=glyphs_for(group,kind);
+        const float gw=glyphs_width(list),lw=text_width(g,group.label,*f,0.3f),start=x,span=gw+(gw>0?LABEL_GAP:0)+lw;
+        const bool hot=index==hover,down=hot&&index==pressed;
+        if(rects){RectF box(start-6,cy-18,span+12,36);box.X=mid+(box.X-mid)*s;box.Y=cy+(box.Y-cy)*s;box.Width*=s;box.Height*=s;rects->push_back(box);}
+        if(hot){SolidBrush hi(Color(BYTE(down?60:34),255,216,106));auto p=round_path(RectF(start-6,cy-18,span+12,36),5);g.FillPath(&hi,p.get());
+            Pen edge(Color(BYTE(down?150:90),240,200,100),1);g.DrawPath(&edge,p.get());}
+        int k=0;
         for(const auto& glyph:list){if(k++)x+=GLYPH_GAP;x+=draw_glyph(g,glyph,kind,x,cy-GLYPH/2,GLYPH);}
         if(!list.empty())x+=LABEL_GAP;
-        const float w=text_width(g,group.label,*f,0.3f);
-        text(g,group.label,RectF(x,cy-16,w+8,32),*f,col::FOOT,StringAlignmentNear,StringAlignmentCenter,false,0.3f);x+=w;
+        const Color ink=group.note?Color(255,136,146,174):hot?Color(255,255,255,255):col::FOOT;
+        text(g,group.label,RectF(x,cy-16,lw+8,32),*f,ink,StringAlignmentNear,StringAlignmentCenter,false,0.3f);x+=lw;
+        index++;
     }
     g.Restore(state);
 }

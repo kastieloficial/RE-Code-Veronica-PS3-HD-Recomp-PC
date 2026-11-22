@@ -2,6 +2,8 @@
 #include <cassert>
 static std::array<unsigned char,16*1024*1024> memory{};
 static int frames=0,warps=0,serializations=0;
+static bool last_gameplay=false,last_title=false;
+static int toasts=0,toast_ok=0;static std::wstring last_toast;
 static ppu_context* caller_context;
 extern "C" {
 uint8_t* vm_base=memory.data();
@@ -17,6 +19,7 @@ void vm_write32(uint64_t a,uint32_t v){for(int i=0;i<4;i++)vm_write8(a+i,uint8_t
 void vm_write64(uint64_t a,uint64_t v){vm_write32(a,uint32_t(v>>32));vm_write32(a+4,uint32_t(v));}
 uint64_t vm_read64(uint64_t a){return uint64_t(vm_read32(a))<<32|vm_read32(a+4);}
 void* rsx_d3d12_window(){return nullptr;}
+void perf_overlay_toast(const wchar_t* text,int ok){++toasts;toast_ok=ok;last_toast=text;}
 int pad_phys_poll(int,PadPhys*){return 0;}
 }
 // The host windows and per-frame helpers cv_test_tools.cpp calls are not part of this test (it never linked without them).
@@ -26,7 +29,7 @@ void cv_save_library_close(){}
 void cv_save_library_show(bool,int){}
 void cv_archives_maps(const std::vector<cv_test::Room>&,unsigned,bool (*)(unsigned,unsigned)){}
 void cv_archives_show(int,int,int){}
-void cv_save_library_frame(ppu_context*,bool){}
+void cv_save_library_frame(ppu_context*,bool gameplay,bool title){last_gameplay=gameplay;last_title=title;}
 namespace cv_quick {void frame(ppu_context*){}bool consumes_stick(){return false;}}
 void cv_manual_reload_frame(ppu_context*){}
 void ORIGINAL_FRAME(ppu_context*){++frames;}
@@ -221,5 +224,90 @@ int main(){
  assert(!(vm_read32(state_base+0x70)&0x08000000)&&vm_read32(state_base+0x74)==0x100);
  for(size_t i=0;i<expected_fade.size();++i)assert(vm_read32(state_base+LoadReturnState::fade_offset+uint32_t(i*4))==expected_fade[i]);
  run_native_finish=false;
+ // ---- F7 from the title: the pure rules, then the whole flow on synthetic memory ----
+ {
+  using namespace cv_title_flow;
+  Snapshot snap;snap.mapped=true;snap.tasks=0x300048;snap.blocked=0;snap.flags74=0;snap.title_state=0xFFFFFFFFu;
+  assert(title_menu_ready(snap));                                   // the main menu, idle, past the intro
+  {auto s=snap;s.mapped=false;assert(!title_menu_ready(s));}
+  {auto s=snap;s.tasks=0x300040;assert(!title_menu_ready(s));}      // no menu task
+  {auto s=snap;s.tasks=0x300048|0x80;assert(!title_menu_ready(s));} // a room is running
+  {auto s=snap;s.tasks=0x300048|0x8000;assert(!title_menu_ready(s));}   // a save/load screen
+  {auto s=snap;s.tasks=0x300048|0x10;assert(!title_menu_ready(s));}     // new game / load setup
+  {auto s=snap;s.blocked=0x8;assert(!title_menu_ready(s));}         // the menu task is blocked
+  {auto s=snap;s.flags74=2;assert(!title_menu_ready(s));}           // a fade is running
+  for(uint32_t st=7;st<=9;st++){auto s=snap;s.title_state=st;assert(!title_menu_ready(s));}   // the intro movie
+  {auto s=snap;s.title_state=3;assert(title_menu_ready(s));}
+  assert(context_of(true,true)==CTX_GAMEPLAY&&context_of(false,true)==CTX_TITLE&&context_of(false,false)==CTX_NONE);
+  assert(load_allowed(CTX_GAMEPLAY)&&load_allowed(CTX_TITLE)&&!load_allowed(CTX_NONE));
+  assert(maps_allowed(CTX_TITLE)&&!maps_allowed(CTX_NONE));
+  assert(save_allowed(CTX_GAMEPLAY)&&!save_allowed(CTX_TITLE)&&!save_allowed(CTX_NONE));   // Save only in game
+  assert(new_game_writes(0x400200).flags50==0x400000&&new_game_writes(0).tasks==0x300010);
+  // The machine: refuse when the menu is not ready, start, wait for 30 frames of control, warp once.
+  Machine m;assert(!m.request(packet,false,0)&&!m.busy());
+  assert(m.request(packet,true,1000)&&m.busy()&&!m.request(packet,true,1000));
+  Inputs in;in.now_ms=1000;in.title_ready=false;
+  for(int i=0;i<5;i++)assert(m.step(in)==Step::NONE);              // waiting for the menu
+  in.now_ms=1000+Machine::START_TIMEOUT_MS+1;assert(m.step(in)==Step::ABORT_NOT_READY&&!m.busy());
+  assert(m.request(packet,true,5000));in.now_ms=5000;in.title_ready=true;assert(m.step(in)==Step::START_NEW_GAME);
+  in.title_ready=false;in.active=0x300010;in.game_ready=false;
+  for(int i=0;i<100;i++)assert(m.step(in)==Step::NONE);            // setup, opening: no control yet
+  in.game_ready=true;in.active=0x80;
+  for(unsigned i=1;i<Machine::CONTROL_FRAMES;i++)assert(m.step(in)==Step::NONE);
+  in.game_ready=false;assert(m.step(in)==Step::NONE);              // control lost (a cutscene): the count restarts
+  in.game_ready=true;
+  for(unsigned i=1;i<Machine::CONTROL_FRAMES;i++)assert(m.step(in)==Step::NONE);
+  assert(m.step(in)==Step::WARP&&m.pending==packet&&!m.busy());     // after the 30th frame in a row
+  assert(m.step(in)==Step::NONE);                                  // once
+  // Aborts: the menu comes back (after the grace frames), and the 240 s limit.
+  assert(m.request(packet,true,0));in.title_ready=true;in.now_ms=0;assert(m.step(in)==Step::START_NEW_GAME);
+  in.title_ready=false;in.game_ready=false;in.active=0x8;
+  for(unsigned i=0;i<Machine::GRACE_FRAMES;i++)assert(m.step(in)==Step::NONE);   // the tasks may still show it right after the writes
+  assert(m.step(in)==Step::ABORT_MENU&&!m.busy());
+  assert(m.request(packet,true,0));in.title_ready=true;assert(m.step(in)==Step::START_NEW_GAME);
+  in.title_ready=false;in.active=0x300010;in.now_ms=Machine::TIMEOUT_MS;assert(m.step(in)==Step::NONE);
+  in.now_ms=Machine::TIMEOUT_MS+1;assert(m.step(in)==Step::ABORT_TIMEOUT&&!m.busy());
+ }
+ {
+  // TEST_FRAME with the main menu on screen (EU memory map, synthetic): contexts, the request, the new game, the warp.
+  static uint64_t fake_now=1000;clock_ms=[]()->uint64_t{return fake_now;};
+  for(auto& b:memory)b=0;
+  cv_test_tools_enable(true);
+  vm_write32(CV_TITLE_STATE,0xFFFFFFFFu);vm_write32(state_base+0x64,0x300048);vm_write32(state_base+0x68,0);vm_write32(state_base+0x74,0);vm_write32(state_base+0x50,0x400200);
+  const int warps_before=warps;
+  TEST_FRAME(&c);
+  assert(last_title&&!last_gameplay&&archives_context==cv_title_flow::CTX_TITLE&&title_ready&&!ready);
+  assert(cv_archives_travel(0x00020E01u>>0,3));                    // accepted at the title menu (the room key is unused by the stub warp)
+  request=packet;   // the window's request, as cv_archives_travel packs it
+  TEST_FRAME(&c);
+  assert(title_flow.busy()&&flow_busy&&toasts==1&&toast_ok==1&&last_toast==cv_archives_i18n::strings[language][cv_archives_i18n::STARTING]);
+  assert(vm_read32(state_base+0x64)==0x300010&&(vm_read32(state_base+0x50)&0x200)==0&&vm_read32(state_base+0x50)==0x400000);   // the menu's New Game writes
+  assert(!cv_archives_travel(0x00020E01u,3));                      // one flow at a time
+  for(int i=0;i<10;i++){fake_now+=16;TEST_FRAME(&c);}
+  assert(warps==warps_before&&title_flow.busy()&&!last_title);     // loading the new game: nothing yet
+  // Control reached (the same fixture the other tests use for a controllable game).
+  vm_write32(CV_SRT_RDX,0x3D650);vm_write8(CV_SRT_CHARACTER,0);vm_write32(CV_SRT_HEALTH,160);vm_write32(state_base+0x64,0x18080);vm_write32(state_base+0x68,0x18000);
+  for(unsigned i=0;i<cv_title_flow::Machine::CONTROL_FRAMES-1;i++){fake_now+=16;TEST_FRAME(&c);assert(warps==warps_before);}
+  fake_now+=16;TEST_FRAME(&c);
+  assert(warps==warps_before+1&&!title_flow.busy()&&!flow_busy&&last_gameplay);
+  assert(c.gpr[1]==0x9000&&g_active_ctx==&c&&g_trampoline_fn==nullptr);
+  // A menu that is not ready (loading) accepts nothing; Save stays out of reach at the title.
+  vm_write32(state_base+0x64,0x300058);vm_write32(state_base+0x68,0);vm_write32(CV_SRT_HEALTH,0);TEST_FRAME(&c);
+  assert(!last_title&&archives_context==cv_title_flow::CTX_NONE&&!title_ready&&!cv_archives_travel(0x00020E01u,3));
+  // The menu comes back during the wait: nothing more is written, the user is told.
+  vm_write32(state_base+0x64,0x300048);vm_write32(state_base+0x50,0x400200);TEST_FRAME(&c);assert(title_ready);
+  request=packet;const int t0=toasts;TEST_FRAME(&c);assert(title_flow.busy()&&toasts==t0+1);
+  vm_write32(state_base+0x64,0x300048);   // the menu task is back after the writes
+  for(int i=0;i<6;i++){fake_now+=16;TEST_FRAME(&c);}
+  assert(!title_flow.busy()&&!flow_busy&&toasts==t0+2&&toast_ok==0&&last_toast==cv_archives_i18n::strings[language][cv_archives_i18n::TITLE_FLOW_FAILED]);
+  // The 240 s limit, and turning F7 off mid-flow.
+  vm_write32(state_base+0x64,0x300048);TEST_FRAME(&c);request=packet;TEST_FRAME(&c);assert(title_flow.busy());
+  vm_write32(state_base+0x64,0x300010);fake_now+=cv_title_flow::Machine::TIMEOUT_MS+1;TEST_FRAME(&c);assert(!title_flow.busy()&&toast_ok==0);
+  vm_write32(state_base+0x64,0x300048);TEST_FRAME(&c);request=packet;TEST_FRAME(&c);assert(title_flow.busy());
+  cv_test_tools_enable(false);TEST_FRAME(&c);assert(!title_flow.busy()&&!flow_busy&&archives_context==cv_title_flow::CTX_NONE);
+  // i18n of the new strings is complete (the static_assert, and no cell left as the English one in another language except proper names).
+  using namespace cv_archives_i18n;
+  for(int l=2;l<13;l++)for(Id id:{ENTRY_HINT,SAVE_TITLE_BLOCKED,MAP_TITLE_NOTE,STARTING,TITLE_FLOW_FAILED})assert(std::wcscmp(strings[l][id],strings[1][id])!=0);
+ }
  std::puts("[map-tools-test] PASS: maps/save regression; native finalizer reproduces stale load flags, F7 clears them; independent native UI opacity reset on load and cancel; multi-phase room fade return (" CV_TITLE_ID ")");
 }

@@ -84,15 +84,19 @@ void text(Gdiplus::Graphics& g,const std::wstring& s,Gdiplus::RectF r,const Gdip
 float text_width(Gdiplus::Graphics& g,const std::wstring& s,const Gdiplus::Font& f,float tracking=0);
 
 // ---- Footer -----------------------------------------------------------------
-enum class GlyphKind { KEY, PAD, DPAD, ARROWS, TEXT };
+enum class GlyphKind { KEY, PAD, DPAD, ARROWS, TEXT, SLASH };
 // KEY: value = a virtual key, label its cap (empty: cv_key_cap_label); PAD: value = PB_*; DPAD: the d-pad;
-// ARROWS: value = bitmask 1 up, 2 down, 4 left, 8 right (keycaps); TEXT: a keycap with `label`.
+// ARROWS: value = bitmask 1 up, 2 down, 4 left, 8 right (keycaps); TEXT: a keycap with `label`; SLASH: a muted "/" between two glyph sets.
 struct Glyph { GlyphKind kind; int value=0; std::wstring label; };
 // One footer group: the glyphs shown with a keyboard, the ones shown with a controller, and the action.
-struct FooterGroup { std::vector<Glyph> keyboard,pad; std::wstring label; };
+// `note`: a hint without glyphs, drawn smaller and dimmer (the "hold up or down to scroll faster" line).
+struct FooterGroup { std::vector<Glyph> keyboard,pad; std::wstring label; bool note=false; };
 // Draws the groups centred in `r` (a thin gold line on top), separated by gold diamonds; scaled down when too wide.
 // `kind` is hint_kind(): keyboard, PlayStation, Xbox or Switch glyphs.
-void draw_footer(Gdiplus::Graphics& g,Gdiplus::RectF r,int lang,int kind,const std::vector<FooterGroup>& groups);
+// `rects` (optional) receives the design-unit rectangle of each group, for hit testing; `hover`/`pressed` index the group
+// under the mouse: it gets a soft gold plate and a brighter label (a clickable footer group, such as "Back").
+void draw_footer(Gdiplus::Graphics& g,Gdiplus::RectF r,int lang,int kind,const std::vector<FooterGroup>& groups,
+                 std::vector<Gdiplus::RectF>* rects=nullptr,int hover=-1,int pressed=-1);
 float footer_width(Gdiplus::Graphics& g,int lang,int kind,const std::vector<FooterGroup>& groups);
 // A glyph alone (tab side keycaps, close button hints): its width is returned.
 float draw_glyph(Gdiplus::Graphics& g,const Glyph& glyph,int kind,float x,float y,float size);

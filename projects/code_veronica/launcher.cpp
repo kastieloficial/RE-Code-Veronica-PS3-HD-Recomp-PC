@@ -67,6 +67,7 @@
 #include "log_viewer.h"
 #include "cv_test_tools.h"
 #include "cv_item_menu.h"
+#include "cv_save_library.h"
 #include "cv_keycap_style.h"
 #include "cv_port_glyphs.h"
 #include "cv_port_modal.h"
@@ -4206,6 +4207,7 @@ DWORD WINAPI launcher_thread(void*)
     image_fit_forget();
     delete g.brand_logo;g.brand_logo=nullptr;
     delete g.castle;g.castle=nullptr;for(int i=0;i<3;i++){delete g.cover[i];delete g.cover_bg[i];g.cover[i]=g.cover_bg[i]=nullptr;}
+    cv_item_menu::release();cv_archives_release();   /* the menus' images and embedded fonts go before GDI+ does */
     GdiplusShutdown(gtok);
     return 0;
 }

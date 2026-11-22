@@ -7,6 +7,9 @@
 #include "../cv_item_icons_hd.h"
 #include "../cv_srt_icons.h"
 #include "../cv_item_menu.h"
+#include "../cv_archives_ui.h"
+#include "../cv_archives_i18n.h"
+#include "../cv_test_tools_i18n.h"
 #include "../cv_items_i18n.h"
 #include "../cv_srt_i18n.h"
 #include "../cv_version.h"
@@ -15,6 +18,9 @@
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <map>
+#include <memory>
+#include <cmath>
 #include <set>
 #include <string>
 #include <vector>
@@ -510,14 +516,157 @@ static void previews(const char* folder,const char* game_path) {
         char tag[32];std::snprintf(tag,sizeof tag,"lang-%02d",l);export_png(file(tag),each,game,1400,820);
     }
 }
+
+// ---- The F7 archives window (cv_archives_ui): hit geometry, mouse feedback, every language, and the preview PNGs ----
+namespace au=cv_archives_ui;
+// Stand-in pictures for the saves: crops of the mock-up's gameplay photo when it is there, else a plain gradient.
+static std::vector<uint32_t> photo_crop(Gdiplus::Bitmap* src,float xp,float yp,float zoom,float brightness) {
+    std::vector<uint32_t> px(au::THUMB_W*au::THUMB_H,0xff3a1a14);
+    if(src&&src->GetLastStatus()==Gdiplus::Ok) {
+        Gdiplus::Bitmap dst(int(au::THUMB_W),int(au::THUMB_H),PixelFormat32bppARGB);
+        {Gdiplus::Graphics g(&dst);const float w=src->GetWidth()/zoom,h=w*9/16,x0=(src->GetWidth()-w)*xp,y0=(src->GetHeight()-h)*yp;
+         g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);g.DrawImage(src,Gdiplus::RectF(0,0,float(au::THUMB_W),float(au::THUMB_H)),x0,y0,w,h,Gdiplus::UnitPixel);}
+        Gdiplus::BitmapData d{};Gdiplus::Rect r(0,0,int(au::THUMB_W),int(au::THUMB_H));
+        if(dst.LockBits(&r,Gdiplus::ImageLockModeRead,PixelFormat32bppARGB,&d)==Gdiplus::Ok) {
+            for(unsigned y=0;y<au::THUMB_H;y++)std::memcpy(&px[size_t(y)*au::THUMB_W],static_cast<uint8_t*>(d.Scan0)+y*d.Stride,au::THUMB_W*4);dst.UnlockBits(&d);
+            for(auto& c:px){auto ch=[&](unsigned v){return std::min(255u,unsigned(v*brightness));};c=0xff000000u|(ch((c>>16)&255)<<16)|(ch((c>>8)&255)<<8)|ch(c&255);}
+        }
+    }
+    return px;
+}
+struct Photos {std::unique_ptr<Gdiplus::Bitmap> source;std::vector<uint32_t> list[6];};
+static Photos& photos() {
+    static Photos p;static bool loaded=false;
+    if(!loaded){loaded=true;
+        std::string here=__FILE__;const auto cut=here.find_last_of("/\\");
+        const std::string path=here.substr(0,cut)+"/../docs/mockup-inventario/gameplay.jpg";
+        p.source.reset(new Gdiplus::Bitmap(std::wstring(path.begin(),path.end()).c_str()));
+        const float pos[5][2]={{.20f,.45f},{.78f,.38f},{.48f,.78f},{.08f,.70f},{.92f,.60f}},bright[5]={1.15f,1.0f,1.25f,.9f,1.05f};
+        for(int i=0;i<5;i++)p.list[i]=photo_crop(p.source.get(),pos[i][0],pos[i][1],3.2f,bright[i]);
+        p.list[5]=photo_crop(p.source.get(),.62f,.42f,1.6f,.7f);   // the map picture
+    }
+    return p;
+}
+static const wchar_t* tx(int lang,cv_archives_i18n::Id id) {return cv_archives_i18n::strings[lang][id];}
+static std::wstring where_text(int lang,int stage,int room,int variant) {
+    if(lang==1) {static const std::map<std::pair<int,int>,const wchar_t*> names={{{0,5},L"Prison: Courtyard"},{{0,11},L"Prison: Dissection room"},{{1,5},L"Palace: Gold Luger room"},{{1,2},L"Palace: Main hall"}};
+        auto at=names.find({stage,room});return at!=names.end()?at->second:L"Prison: Cell block (start)";}
+    wchar_t out[128];swprintf(out,128,cv_test_i18n::k_text[lang][cv_test_i18n::WHERE],stage,room);wchar_t code[32];swprintf(code,32,L"  ·  rm_%d%02d%d",stage,room,variant);return std::wstring(out)+code;
+}
+// The three approved screens (docs/previas-v1.7/arquivos-*.png). `page` Load / Save / Maps, `selected` the chosen row.
+static au::View archives_view(int lang,int input,int page,int selected) {
+    au::View v;v.language=lang;v.input=input;v.page=page;v.selected=selected;const auto& ph=photos();
+    namespace ci=cv_archives_i18n;
+    auto event=[&](int n){wchar_t e[100];swprintf(e,100,cv_test_i18n::k_text[lang][cv_test_i18n::EVENT],n);return std::wstring(e);};
+    if(page==au::PAGE_MAPS) {
+        const int rooms[][3]={{0,0,0},{0,0,1},{0,2,0},{0,3,0},{0,5,0}};v.count=38;v.now_room=L"rm_0000";
+        for(const auto& r:rooms){au::Row row;row.kind=au::Row::MAP;wchar_t code[24];swprintf(code,24,L"rm_%d%02d%d",r[0],r[1],r[2]);row.title=code;row.where=where_text(lang,r[0],r[1],r[2]);if(r[2])row.event=event(r[2]);v.rows.push_back(row);}
+        v.heading=where_text(lang,0,3,0);v.note=tx(lang,ci::MAP_NOTE);v.tag=L"rm_0030";v.image=ph.list[5].data();
+        v.status=tx(lang,ci::UNAVAILABLE);v.tone=au::Tone::WARN;v.search_cue=tx(lang,ci::SEARCH);
+        return v;
+    }
+    struct E {int stage,room,var;const wchar_t* date;const wchar_t* time;int photo;};
+    const E entries[]={{1,5,0,L"2026-11-21  20:14:52",L"03:27:18",0},{1,2,0,L"2026-11-21  19:48:09",L"03:02:41",1},{0,11,0,L"2026-11-20  23:12:30",L"01:46:05",2},{0,5,0,L"2026-11-19  21:03:44",L"00:38:12",3},{0,0,0,L"2026-11-15  10:21:03",L"00:02:19",-1}};
+    const bool saving=page==au::PAGE_SAVE;v.files=5;v.count=5+(saving?1:0);
+    if(saving){au::Row n;n.kind=au::Row::NEW_SAVE;n.title=tx(lang,ci::NEW_SAVE);n.where=tx(lang,ci::NEW_HINT);v.rows.push_back(n);}
+    for(const auto& e:entries){if(int(v.rows.size())>=au::ROWS_VISIBLE)break;au::Row row;row.kind=au::Row::SAVE;row.title=L"Claire Redfield";row.where=where_text(lang,e.stage,e.room,e.var);row.when=e.date;
+        if(e.photo>=0)row.thumb=ph.list[e.photo].data();else row.original=true;v.rows.push_back(row);}
+    const int at=selected-(saving?1:0);
+    if(at>=0){const E& e=entries[at];v.heading=where_text(lang,e.stage,e.room,e.var);v.character=L"Claire Redfield";v.play_time=e.time;
+        if(e.photo>=0)v.image=ph.list[e.photo].data();else v.placeholder=tx(lang,ci::ORIGINAL);}
+    else{v.heading=tx(lang,ci::NEW_SAVE);v.note=tx(lang,ci::NEW_HINT);v.placeholder=std::wstring(L"+  ")+tx(lang,ci::NEW_SAVE);}
+    v.can_overwrite=saving&&at>=0&&at<4;
+    return v;
+}
+static void export_archives_png(const std::string& file,const au::View& v,int w,int h,bool backdrop) {
+    using namespace Gdiplus;
+    Bitmap image(w,h,PixelFormat32bppARGB);
+    {Graphics g(&image);
+     if(backdrop) {LinearGradientBrush bg(Point(0,0),Point(w,h),Color(255,40,18,14),Color(255,8,8,12));g.FillRectangle(&bg,0,0,w,h);
+         const float s=std::min(w/1920.f,h/1080.f);g.TranslateTransform((w-au::W*s)/2,(h-au::H*s)/2);g.ScaleTransform(s,s);}
+     else g.ScaleTransform(float(w)/au::W,float(h)/au::H);
+     au::draw(g,v);}
+    UINT n=0,size=0;GetImageEncodersSize(&n,&size);std::vector<uint8_t> buffer(size);
+    auto* codecs=reinterpret_cast<ImageCodecInfo*>(buffer.data());GetImageEncoders(n,size,codecs);
+    CLSID png{};for(UINT i=0;i<n;i++)if(!wcscmp(codecs[i].MimeType,L"image/png"))png=codecs[i].Clsid;
+    const std::wstring name(file.begin(),file.end());
+    const auto saved=image.Save(name.c_str(),&png);assert(saved==Ok);(void)saved;
+}
+static void check_archives_drawing() {
+    Gdiplus::Bitmap bmp(au::W,au::H,PixelFormat32bppARGB);
+    auto render=[&](const au::View& v){Gdiplus::Graphics g(&bmp);au::draw(g,v);};
+    // Geometry: the hits come from the same named rectangles the drawing uses.
+    {au::View v=archives_view(0,PAD_INPUT_KEYBOARD,au::PAGE_MAPS,3);render(v);
+     const auto list=au::hits(v);auto find=[&](int kind,int value)->const au::Hit*{for(const auto& h:list)if(h.kind==kind&&h.value==value)return &h;return nullptr;};
+     for(int i=0;i<3;i++){const auto* t=find(au::HIT_TAB,i);assert(t&&std::fabs(t->rect.Width-413.33f)<0.1f&&t->rect.Height==44&&t->rect.Y==80);}
+     assert(find(au::HIT_TAB_PREV,0)&&find(au::HIT_TAB_NEXT,0));
+     for(int i=0;i<5;i++){const auto* r=find(au::HIT_ROW,i);assert(r&&r->rect.Width==820&&r->rect.Height==104&&r->rect.X==24&&r->rect.Y==186+112*i);}
+     assert(!find(au::HIT_ROW,5));
+     assert(find(au::HIT_STEP_MINUS,0)&&find(au::HIT_STEP_PLUS,0)&&find(au::HIT_PRIMARY,0)&&!find(au::HIT_SECONDARY,0)&&find(au::HIT_BACK,0));   // (the footer's Back, from the draw)
+     const auto* primary=find(au::HIT_PRIMARY,0);assert(primary->rect.X==880&&primary->rect.Y==650&&primary->rect.Width==496&&primary->rect.Height==46);
+     assert(au::hit_at(list,primary->rect.X+5,primary->rect.Y+5)==primary&&!au::hit_at(list,2,2));
+     v.confirming=true;const auto dialog=au::hits(v);assert(dialog.size()==2&&dialog[0].kind==au::HIT_DIALOG_CANCEL&&dialog[1].kind==au::HIT_DIALOG_YES);
+     v.confirming=false;v.busy=true;assert(au::hits(v).empty());}
+    {au::View v=archives_view(1,PAD_KIND_XINPUT,au::PAGE_SAVE,2);render(v);   // Save: the overwrite button; Save at the title: neither
+     const auto list=au::hits(v);bool secondary=false,primary=false;for(const auto& h:list){secondary|=h.kind==au::HIT_SECONDARY;primary|=h.kind==au::HIT_PRIMARY;}assert(secondary&&primary);
+     v.can_overwrite=false;v.primary_enabled=false;v.status=tx(1,cv_archives_i18n::SAVE_TITLE_BLOCKED);v.tone=au::Tone::WARN;render(v);
+     secondary=primary=false;for(const auto& h:au::hits(v)){secondary|=h.kind==au::HIT_SECONDARY;primary|=h.kind==au::HIT_PRIMARY;}assert(!secondary&&!primary);}
+    // Every kind of clickable control: normal, hover and pressed look different.
+    {au::View v=archives_view(0,PAD_INPUT_KEYBOARD,au::PAGE_SAVE,2);render(v);
+     const auto list=au::hits(v);
+     auto hash=[&](Gdiplus::RectF r){return region_hash(bmp,int(r.X)-4,int(r.Y)-4,int(r.Width)+8,int(r.Height)+8);};
+     for(const auto& h:list) {
+         if(h.kind==au::HIT_BACK)continue;   // (its look is the footer's own)
+         const int id=au::hit_id(h.kind,h.value);
+         v.mouse.leave();render(v);const auto normal=hash(h.rect);
+         v.mouse.move(id);render(v);const auto hover=hash(h.rect);
+         v.mouse.down(id);render(v);const auto pressed=hash(h.rect);
+         if(!(normal!=hover&&hover!=pressed&&normal!=pressed))std::fprintf(stderr,"no feedback: kind=%d value=%d\n",h.kind,h.value);
+         assert(normal!=hover&&hover!=pressed&&normal!=pressed);
+         v.mouse.leave();
+     }
+     render(v);   // the footer's Back
+     const auto back=v.back_rect;assert(back.Width>20);
+     const auto n0=region_hash(bmp,int(back.X),int(back.Y),int(back.Width),int(back.Height));
+     v.mouse.move(au::hit_id(au::HIT_BACK));render(v);assert(region_hash(bmp,int(back.X),int(back.Y),int(back.Width),int(back.Height))!=n0);v.mouse.leave();
+     // The footer follows the input device.
+     v.input=PAD_INPUT_KEYBOARD;render(v);const auto kb=region_hash(bmp,24,776,1352,40);
+     v.input=PAD_KIND_DS4;render(v);const auto psx=region_hash(bmp,24,776,1352,40);
+     v.input=PAD_KIND_XINPUT;render(v);const auto xb=region_hash(bmp,24,776,1352,40);
+     v.input=PAD_KIND_SWITCH;render(v);const auto sw=region_hash(bmp,24,776,1352,40);
+     assert(kb!=psx&&psx!=xb&&xb!=sw&&kb!=xb&&psx!=sw);}
+    // Every language, every page, with the dialog and the title's notes: all draw.
+    for(int l=0;l<13;l++)for(int pg=0;pg<3;pg++) {
+        au::View v=archives_view(l,l&1?PAD_KIND_DS4:PAD_INPUT_KEYBOARD,pg,2);
+        if(pg==au::PAGE_MAPS){v.status=tx(l,cv_archives_i18n::MAP_TITLE_NOTE);}
+        render(v);
+        if(pg==au::PAGE_SAVE){v.confirming=true;render(v);}
+    }
+}
+static void archives_previews(const std::string& dir) {
+    auto file=[&](const char* name){return dir+"/arquivos-"+name+".png";};
+    export_archives_png(file("mapas"),archives_view(0,PAD_KIND_DS4,au::PAGE_MAPS,3),1920,1080,true);          // arquivos-mapas: PT, PlayStation
+    export_archives_png(file("carregar"),archives_view(0,PAD_INPUT_KEYBOARD,au::PAGE_LOAD,1),1920,1080,true);   // arquivos-carregar: PT, keyboard
+    export_archives_png(file("salvar"),archives_view(1,PAD_KIND_XINPUT,au::PAGE_SAVE,2),1920,1080,true);        // arquivos-salvar: EN, Xbox
+    {auto v=archives_view(1,PAD_KIND_XINPUT,au::PAGE_SAVE,2);v.confirming=true;export_archives_png(file("salvar-confirmar"),v,1920,1080,true);}
+    // The title screen: Load works, Save and Maps show their notes; mouse states; the other languages.
+    {auto v=archives_view(0,PAD_INPUT_KEYBOARD,au::PAGE_SAVE,2);v.primary_enabled=false;v.can_overwrite=false;v.status=tx(0,cv_archives_i18n::SAVE_TITLE_BLOCKED);v.tone=au::Tone::WARN;export_archives_png(file("titulo-salvar"),v,1400,820,false);}
+    {auto v=archives_view(0,PAD_INPUT_KEYBOARD,au::PAGE_MAPS,3);v.status=tx(0,cv_archives_i18n::MAP_TITLE_NOTE);export_archives_png(file("titulo-mapas"),v,1400,820,false);}
+    {auto v=archives_view(0,PAD_INPUT_KEYBOARD,au::PAGE_MAPS,3);v.spawn=12;v.search_focus=true;v.mouse.move(au::hit_id(au::HIT_ROW,2));export_archives_png(file("hover-linha"),v,1400,820,false);}
+    {auto v=archives_view(0,PAD_INPUT_KEYBOARD,au::PAGE_LOAD,1);v.mouse.down(au::hit_id(au::HIT_PRIMARY));export_archives_png(file("pressionado-botao"),v,1400,820,false);}
+    {auto v=archives_view(0,PAD_INPUT_KEYBOARD,au::PAGE_LOAD,1);v.mouse.move(au::hit_id(au::HIT_TAB,2));export_archives_png(file("hover-aba"),v,1400,820,false);}
+    {auto v=archives_view(0,PAD_INPUT_KEYBOARD,au::PAGE_LOAD,1);v.status=tx(0,cv_archives_i18n::UNAVAILABLE);v.tone=au::Tone::BAD;v.primary_enabled=false;v.mouse.move(au::hit_id(au::HIT_BACK));export_archives_png(file("hover-voltar"),v,1400,820,false);}
+    for(int l:{9,10,11}){char tag[32];std::snprintf(tag,sizeof tag,"maps-%02d",l);auto v=archives_view(l,PAD_INPUT_KEYBOARD,au::PAGE_MAPS,3);v.status=tx(l,cv_archives_i18n::MAP_TITLE_NOTE);export_archives_png(file(tag),v,1400,820,false);}
+    for(int l=0;l<13;l++){char tag[32];std::snprintf(tag,sizeof tag,"lang-%02d",l);auto v=archives_view(l,PAD_KIND_XINPUT,l%3,2);if(v.page==au::PAGE_MAPS)v.status=tx(l,cv_archives_i18n::MAP_TITLE_NOTE);export_archives_png(file(tag),v,1400,820,false);}
+}
 #endif
 int main(int argc,char** argv) {
     check_catalog();check_encoding();check_read();check_place();check_wide();check_layout();check_writes();check_navigation();
 #ifdef _WIN32
     Gdiplus::GdiplusStartupInput input;ULONG_PTR token=0;Gdiplus::GdiplusStartup(&token,&input,nullptr);
     cv_port_ui::fonts_available();   // loaded before any Graphics exists, as the menu window does when it opens
-    check_drawing();
-    if(argc>1)previews(argv[1],argc>2?argv[2]:nullptr);
+    check_drawing();check_archives_drawing();
+    if(argc>1){previews(argv[1],argc>2?argv[2]:nullptr);archives_previews(argv[1]);}
     cv_item_menu::release();cv_item_icons_hd::release();
     // No GdiplusShutdown: the keycap cache (cv_keycap::draw) holds GDI+ images in a function-static map that is destroyed at exit.
     (void)token;

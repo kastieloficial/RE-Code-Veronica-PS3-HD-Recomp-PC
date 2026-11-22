@@ -1,6 +1,9 @@
 // Optional host-side test window. Guest calls are consumed only by the game dispatcher.
 #include "cv_test_tools.h"
 #include "cv_save_library.h"
+#include "cv_archives_ui.h"
+#include "cv_archives_i18n.h"
+#include "cv_title_flow.h"
 #include "cv_port_modal.h"
 #include "cv_version.h"
 #include "ppu_recomp.h"
@@ -32,11 +35,13 @@ extern "C" uint8_t* vm_base;
 extern "C" PPU_THREAD_LOCAL ppu_context* g_active_ctx;
 extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 extern "C" void* rsx_d3d12_window(void);
+extern "C" void perf_overlay_toast(const wchar_t*,int);   // the notice in the game's corner
 // JP/US: the same functions as EU, matched by their normalized lifted bodies;
 // they differ only in global addresses, with the same state and save-object
 // offsets (CONTINUAR-MAPAS-E-SAVES.md).
 #if defined(CV_REGION_JP)
 #define TEST_FRAME func_00032F80
+#define TITLE_TASK_TABLE 0x00A79C40u   /* 0xA80000-25536, from the lift of TEST_FRAME (not seen in game) */
 #define ORIGINAL_FRAME cv_original_00032F80
 #define TEST_WARP func_0018ED00
 #define TEST_SERIALIZE func_001D76D0
@@ -59,6 +64,7 @@ extern "C" void* rsx_d3d12_window(void);
 #define ORIGINAL_ROW cv_original_001D63F0
 #elif defined(CV_REGION_US)
 #define TEST_FRAME func_00032FA0
+#define TITLE_TASK_TABLE 0x00A79BDCu   /* 0xA80000-25636, from the lift of TEST_FRAME (not seen in game) */
 #define ORIGINAL_FRAME cv_original_00032FA0
 #define TEST_WARP func_0018ED68
 #define TEST_SERIALIZE func_001D7550
@@ -81,6 +87,7 @@ extern "C" void* rsx_d3d12_window(void);
 #define ORIGINAL_ROW cv_original_001D6270
 #else
 #define TEST_FRAME func_000333A0
+#define TITLE_TASK_TABLE 0x00A89BDCu   /* the task dispatcher's table of OPDs, bits 0..25 */
 #define ORIGINAL_FRAME cv_original_000333A0
 #define TEST_WARP func_00190700
 #define TEST_SERIALIZE func_001D9370
@@ -111,6 +118,11 @@ namespace {
 namespace fs=std::filesystem;
 constexpr uint32_t state_base=CV_SRT_CHARACTER-0x94;
 std::atomic<bool> enabled{false},ready{false};
+// The title menu is ready (F7 Load / Maps may act there) and the Maps-from-title flow is running; both set by TEST_FRAME.
+std::atomic<bool> title_ready{false},flow_busy{false};
+std::atomic<int> archives_context{cv_title_flow::CTX_NONE};
+cv_title_flow::Machine title_flow;   // game thread
+uint64_t (*clock_ms)()=[]()->uint64_t{return uint64_t(GetTickCount64());};   // tests replace it
 // Zero means no request; bit 31 is set on every published request, including rm_0000.
 std::atomic<uint32_t> request{0};
 std::atomic<int> result{0}; // 0 idle, 1 queued, 2 native request issued, 3 busy, 4 wrong state, 5 timeout
@@ -465,8 +477,9 @@ void cv_test_tools_enable(bool on) {enabled=on;if(!on){request=0;save_request=fa
 bool cv_test_tools_visible() {return cv_archives_visible()||(window&&IsWindowVisible(window));}
 void cv_test_tools_close() {cv_save_library_close();if(window)SendMessageW(window,WM_CLOSE,0,0);}
 // Publish only a room request; the existing game-thread dispatcher performs the warp.
+// At the title menu the same request starts a new game and warps once there is control (the game thread decides).
 bool cv_archives_travel(unsigned key,unsigned spawn) {
- if(!enabled||!ready||spawn>255||save_request||load_request)return false;
+ if(!enabled||(!ready&&!title_ready)||spawn>255||save_request||load_request||flow_busy)return false;
  const uint32_t packed=0x80000000u|(((key>>16)&15)<<24)|(((key>>8)&255)<<16)|((key&15)<<8)|spawn;
  uint32_t empty=0;return request.compare_exchange_strong(empty,packed);
 }
@@ -475,10 +488,77 @@ void cv_test_tools_show(HWND owner,const std::wstring& game,int lang,int opening
  language=std::clamp(lang,0,12);
  if(game_root!=game||rooms.empty()){game_root=game;catalog(game);}
  cv_archives_maps(rooms,room_known?room_now.load():~0u,cv_archives_travel);
- cv_archives_show(0,language,opening_input);
+ cv_archives_show(cv_archives_ui::PAGE_LOAD,language,opening_input);   // F7 opens on Load
+}
+namespace {
+const wchar_t* flow_text(cv_archives_i18n::Id id) {return cv_archives_i18n::strings[std::clamp(language,0,12)][id];}
+cv_title_flow::Snapshot title_snapshot() {
+    cv_title_flow::Snapshot s;
+    s.mapped=mapped(state_base,0x84)&&mapped(CV_TITLE_STATE,4);
+    if(!s.mapped)return s;
+    s.tasks=vm_read32(state_base+0x64);s.blocked=vm_read32(state_base+0x68);s.flags74=vm_read32(state_base+0x74);s.title_state=vm_read32(CV_TITLE_STATE);
+    return s;
+}
+#ifndef CV_DISTRIBUTION
+// Dev only (CV_TITLE_PROBE=1): logs every frame where the watched title/menu state changes, and once the task table.
+// Capture one natural New Game and one natural Load Game from the main menu to confirm the menu's writes.
+void title_probe() {
+    static int on=-1;
+    if(on<0){const char* e=std::getenv("CV_TITLE_PROBE");on=e&&*e&&*e!='0';}
+    if(!on||!mapped(state_base,0x84))return;
+    static bool first=true;static uint32_t last[9]={};static unsigned frame=0;++frame;
+    if(first) {
+        first=false;
+        for(unsigned i=0;i<26;i++) {
+            const uint32_t opd=mapped(TITLE_TASK_TABLE+i*4,4)?vm_read32(TITLE_TASK_TABLE+i*4):0;
+            const uint32_t entry=opd&&mapped(opd,4)?vm_read32(opd):0;
+            std::printf("[TITLE-PROBE] task bit %2u (0x%08X) -> opd=%08X func=%08X\n",i,1u<<i,opd,entry);
+        }
+        std::printf("[TITLE-PROBE] watching +50 +58 +5C +64 +68 +70 +74, difficulty, title state; tasks are +64 & ~+68\n");std::fflush(stdout);
+        last[0]=~vm_read32(state_base+0x50);   // forces the first line
+    }
+    const uint32_t cur[9]={vm_read32(state_base+0x50),vm_read32(state_base+0x58),vm_read16(state_base+0x5C),vm_read32(state_base+0x64),vm_read32(state_base+0x68),
+        vm_read32(state_base+0x70),vm_read32(state_base+0x74),vm_read8(CV_SRT_DIFFICULTY),mapped(CV_TITLE_STATE,4)?vm_read32(CV_TITLE_STATE):0};
+    if(std::memcmp(cur,last,sizeof cur)==0)return;
+    std::memcpy(last,cur,sizeof cur);
+    std::printf("[TITLE-PROBE] f=%u +50=%08X +58=%08X +5C=%04X +64=%08X +68=%08X active=%08X +70=%08X +74=%08X difficulty=%u titleState=%08X\n",
+        frame,cur[0],cur[1],cur[2],cur[3],cur[4],cur[3]&~cur[4],cur[5],cur[6],cur[7],cur[8]);std::fflush(stdout);
+}
+#else
+inline void title_probe() {}
+#endif
+// One game frame of "Maps" from the title: accept the request, start the new game, wait for control, warp.
+void title_flow_frame(ppu_context* ctx,bool title,bool game_ready) {
+    using cv_title_flow::Step;
+    if(!title_flow.busy())return;
+    cv_title_flow::Inputs in;in.title_ready=title;in.game_ready=game_ready;
+    in.active=cv_title_flow::active_tasks(vm_read32(state_base+0x64),vm_read32(state_base+0x68));in.now_ms=clock_ms();
+    switch(title_flow.step(in)) {
+    case Step::START_NEW_GAME: {
+        const auto w=cv_title_flow::new_game_writes(vm_read32(state_base+0x50));
+#ifndef CV_DISTRIBUTION
+        if(const char* d=std::getenv("CV_TITLE_DIFFICULTY"))if(*d)vm_write8(CV_SRT_DIFFICULTY,uint8_t(std::atoi(d)));   // dev: the probe may show the menu sets it first
+#endif
+        vm_write32(state_base+0x50,w.flags50);vm_write32(state_base+0x64,w.tasks);
+        std::printf("[TITLE-FLOW] new game started from the title menu (+50=%08X +64=%08X); warp after control\n",w.flags50,w.tasks);std::fflush(stdout);
+        break;}
+    case Step::WARP:
+        call_warp(ctx,title_flow.pending);result=2;ready=false;
+        std::printf("[TITLE-FLOW] control reached: warp done\n");std::fflush(stdout);break;
+    case Step::ABORT_NOT_READY:case Step::ABORT_TIMEOUT:case Step::ABORT_MENU:
+        result=4;perf_overlay_toast(flow_text(cv_archives_i18n::TITLE_FLOW_FAILED),0);
+        std::printf("[TITLE-FLOW] aborted (%s): nothing more is written\n",in.active&0xC?"menu or title is back":"timeout / not ready");std::fflush(stdout);break;
+    default:break;
+    }
+    flow_busy=title_flow.busy();
+}
 }
 void TEST_FRAME(ppu_context* ctx) {
-    cv_save_library_frame(ctx,enabled&&active_game()&&!tool_load&&!tool_save);
+    const bool gameplay=enabled&&active_game()&&!tool_load&&!tool_save;
+    const bool title=enabled&&!gameplay&&!tool_load&&cv_title_flow::title_menu_ready(title_snapshot());
+    archives_context=cv_title_flow::context_of(gameplay,title);title_ready=title;
+    title_probe();
+    cv_save_library_frame(ctx,gameplay,title);
     cv_quick::frame(ctx);
     if(!cv_quick::consumes_stick())cv_manual_reload_frame(ctx);
     cv_items::frame();   // the F6 item menu's one write, between game frames
@@ -487,7 +567,14 @@ void TEST_FRAME(ppu_context* ctx) {
         room_known=live_character();
         if(room_known)room_now=(vm_read8(state_base+0x95)<<16)|(vm_read8(state_base+0x96)<<8)|vm_read8(state_base+0x97);
         uint32_t pending=request.exchange(0);
-        if(pending){if(valid){call_warp(ctx,pending);result=2;ready=false;valid=false;}else{result=4;std::printf("[CVTest] warp refused: no controllable live game\n");}}
+        if(pending) {
+            if(valid){call_warp(ctx,pending);result=2;ready=false;valid=false;}
+            else if(title&&title_flow.request(pending,true,clock_ms())) {   // the title menu: a new game first
+                flow_busy=true;result=1;perf_overlay_toast(flow_text(cv_archives_i18n::STARTING),1);
+                std::printf("[TITLE-FLOW] request accepted at the title menu\n");std::fflush(stdout);}
+            else{result=4;std::printf("[CVTest] warp refused: no controllable live game\n");}
+        }
+        title_flow_frame(ctx,title,valid);
         // The request the typewriter makes once its ribbon is accepted:
         // func_001AEED4 (EU; JP func_001AD524, US func_001AD47C) sees +74 bit 0x00200000 and opens the save screen.
         if(save_request.exchange(false)) {
@@ -534,7 +621,7 @@ void TEST_FRAME(ppu_context* ctx) {
                 vm_read32(state_base+0x50),vm_read32(state_base+0x70),vm_read32(state_base+0x74),vm_read32(state_base+0x1B104),
                 vm_read32(state_base+0x2A5D8),vm_read32(state_base+0x2A5E4),vm_read32(state_base+0x2A5F0),vm_read32(state_base+0x2A5FC),vm_read32(state_base+0x2A5CC),vm_read32(state_base+0x2A5D0),vm_read32(state_base+0x2A608));std::fflush(stdout);
         }
-    }else ready=false;
+    }else{ready=false;if(title_flow.busy()){title_flow.reset();flow_busy=false;}}
     ORIGINAL_FRAME(ctx);
 }
 // Redirect only an F7 load request, after the native save-mode initializer
