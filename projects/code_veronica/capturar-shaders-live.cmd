@@ -26,6 +26,10 @@ rem Teste A/B do reaproveitamento de trabalho do prepass entre draws iguais: rod
 rem set "CV_PREP_REUSE2=0"
 rem Verificacao (so dev): CV_PREP_VERIFY=1 recalcula cada reaproveitamento e compara; mande de volta as linhas [PREP-REUSE-MISMATCH] e "prepass reuse:" do log.
 rem set "CV_PREP_VERIFY=1"
+rem Juncao de draws consecutivos iguais na gravacao (liga por padrao). Teste A/B: rode uma vez com a linha abaixo ativa (CV_DRAW_MERGE=0 desliga) e uma vez sem; compare "ms: total/prepass/record" e as linhas "merge:" no draw-spike-log.txt.
+rem set "CV_DRAW_MERGE=0"
+rem Verificacao (so dev): CV_DRAW_MERGE_VERIFY=1 reconfere cada corrida juntada campo a campo; mande de volta as linhas [DRAW-MERGE-VIOLATION] (esperado: nenhuma) e "merge(actual...)" do log.
+rem set "CV_DRAW_MERGE_VERIFY=1"
 set "base="
 set "EXE=%~dp0build-release\bin\CodeVeronicaPort.exe"
 if not exist "%EXE%" (
