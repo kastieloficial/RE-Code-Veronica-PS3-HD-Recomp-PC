@@ -11205,7 +11205,7 @@ static int prep_tex_memo_match(const PrepTexMemo* m,const D3D12DrawRecord* dr){
 #endif
 /* What the record reads from a draw's prepass results, captured to compare a covered draw with a fresh computation
  * (CV_DRAW_RUNS_VERIFY, dev). */
-typedef struct { u32 srv_win; PreparedFp pf; DmInfo info; int tex_rt[FP_TEX_UNITS]; float cell[FP_TEX_UNITS]; } RunSnap;
+typedef struct { u32 srv_win, vtex_win; PreparedFp pf; DmInfo info; int tex_rt[FP_TEX_UNITS]; float cell[FP_TEX_UNITS]; } RunSnap;
 
 static void prepass_range(u32 from, u32 to)
 {
@@ -11263,7 +11263,7 @@ static void prepass_range(u32 from, u32 to)
 #ifndef CV_DISTRIBUTION
         int cov_ver=0;RunSnap rsn;float rorig[FP_TEX_UNITS];
 #endif
-        if (lead>=0&&lead_last+1==_d&&!dr->vtex_mask) {
+        if (lead>=0&&lead_last+1==_d) {
             const int why=dm_pair_x(&s_rb.draws[_d-1],_d-1,dr,_d,run_v,-1,0);
             if (why==DM_OK) {
                 const D3D12DrawRecord* ld=&s_rb.draws[lead];
@@ -11273,12 +11273,13 @@ static void prepass_range(u32 from, u32 to)
                 if (runs_verify) for (int u=0;u<FP_TEX_UNITS;u++) rorig[u]=_tc?_tc[u*4+2]:0.0f;
 #endif
                 s_srv_win[_d]=s_srv_win[lead];s_prepared_fp[_d]=s_prepared_fp[lead];s_dm_info[_d]=*li;
+                if (dr->vtex_mask) s_vtex_win[_d]=s_vtex_win[lead];   /* same vertex-texture hashes/shapes (dm_pair) = same window */
                 memcpy(dr->tex_rt,ld->tex_rt,sizeof dr->tex_rt);
                 if (_tc) for (int u=0;u<FP_TEX_UNITS;u++) if ((li->mask>>u)&1u) _tc[u*4+2]=li->g[u];
 #ifndef CV_DISTRIBUTION
                 if (runs_verify) {
                     /* keep what the cover produced, restore the cells to what the record wrote, and run the normal path */
-                    rsn.srv_win=s_srv_win[_d];rsn.pf=s_prepared_fp[_d];rsn.info=s_dm_info[_d];memcpy(rsn.tex_rt,dr->tex_rt,sizeof rsn.tex_rt);
+                    rsn.srv_win=s_srv_win[_d];rsn.vtex_win=dr->vtex_mask?s_vtex_win[_d]:0;rsn.pf=s_prepared_fp[_d];rsn.info=s_dm_info[_d];memcpy(rsn.tex_rt,dr->tex_rt,sizeof rsn.tex_rt);
                     for (int u=0;u<FP_TEX_UNITS;u++) rsn.cell[u]=_tc?_tc[u*4+2]:0.0f;
                     if (_tc) for (int u=0;u<FP_TEX_UNITS;u++) _tc[u*4+2]=rorig[u];
                     s_srv_win[_d]=_d;s_prepared_fp[_d].valid=0;tm.valid=0;previous_draw=-1;cov_ver=1;
@@ -11501,6 +11502,7 @@ static void prepass_range(u32 from, u32 to)
             const PreparedFp* fp0=&rsn.pf;const PreparedFp* fp1=&s_prepared_fp[_d];
             float* _tc2=prep_tsg_cells(dr);
             if (rsn.srv_win!=s_srv_win[_d]) bad="srv_window";
+            else if (dr->vtex_mask&&rsn.vtex_win!=s_vtex_win[_d]) bad="vtex_window";
             else if (memcmp(rsn.tex_rt,dr->tex_rt,sizeof rsn.tex_rt)) bad="tex_rt";
             else if (rsn.info.fb!=s_dm_info[_d].fb) bad="feedback_flag";
             else if (rsn.info.mask!=s_dm_info[_d].mask) bad="gamma_mask";
@@ -11527,11 +11529,7 @@ static void prepass_range(u32 from, u32 to)
          * which the next draw may copy it), without feedback risk or vertex textures, with a ready frozen pipeline. */
         if (runs_on) {
             int cand=0;
-            if (dr->vtex_mask) {
-#ifndef CV_DISTRIBUTION
-                if(_prx_on)s_runs_inel[0]++;
-#endif
-            } else if (_fb_risk) {
+            if (_fb_risk) {
 #ifndef CV_DISTRIBUTION
                 if(_prx_on)s_runs_inel[1]++;
 #endif
