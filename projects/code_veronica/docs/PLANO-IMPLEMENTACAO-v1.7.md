@@ -145,3 +145,10 @@ User request: clickable controls must show they were hovered/pressed, starting w
 
 ## Riskiest (needs user in game)
 1. Return to title via Game Over task; US/JP addresses unverified. 2. Maps from title: menu return mapping and difficulty unknown until probe; opening skip TBD. 3. Load from title skips main menu exit. 4. Cross-thread owned windows. 5. 2-slot layout vs game's own screen. 6. Font family names / PL-TR glyph coverage in Cinzel.
+
+## P7 as built
+- Version v1.7.0 in launcher.cpp and distribution/windows_entry.cpp (distribution strip list already had CV_TITLE_PROBE / CV_TITLE_DIFFICULTY). Launcher Shortcuts page: new fixed row F2 / chord + Select+Start (Back+Start on Xbox, Minus+Plus on Switch), new string S_SC_TITLE_RET in 13 languages (launcher_i18n.h); not rebindable, like the other rows.
+- EN trophy toast is now "Achievement unlocked" (cv_trophy_i18n.h); other languages unchanged.
+- Drafts (unpublished): distribution/NOTAS-RELEASE-v1.7.0.md, docs/CHECKLIST-TESTES-v1.7.md (what only the user can verify in game).
+- Per the user's decision, the automated test suites were NOT run in P7; only the real executables for EU, JP and US were compiled. The distribution build check was skipped as well. P6 (draw-spike) remains postponed.
+- Everything that depends on the game (return to title, F7 from the title, inventory layout, US/JP addresses) is untested in game: see the checklist.
