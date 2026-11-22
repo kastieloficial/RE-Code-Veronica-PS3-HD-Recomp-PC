@@ -73,6 +73,15 @@ int main() {
         assert(m.step(true,true,0x80)==Step::START);m.finish();assert(!m.running&&m.step(false,false,0)==Step::IDLE);
         assert(returned(0x300048)&&!returned(0x300050)&&!returned(0x80));
         assert(TASKS_AFTER_RETURN==0x00300048);
+        assert(returned(0x300044)&&TASKS_AFTER_RETURN_TITLE==0x00300044);                                // the title sequence is the other end the game picks
+    }
+    {   // the game's own reset (REINICIAR JOGO): when the request word may be raised, and the bits the reset task wants clear
+        assert(watcher_running(0x0073DFC0,0x0003DC80)&&!watcher_running(0x80,0)&&!watcher_running(0x0073DFC0,0x00200000));
+        assert(can_arm(0x0073DFC0,0x0003DC80));                                                        // in the room (or the inventory screen): yes
+        assert(!can_arm(0x0073DFC0|0x10,0x0003DC80));                                                  // an early task bit: the program's shutdown watcher could take it
+        assert(!can_arm(0x80,0)&&!can_arm(0x00300048,0));                                              // no reset task, or the menu's early bit (0x8): no
+        assert(armed_flags50(0x00520200)==0x200&&armed_flags50(0x00020000)==0&&armed_flags50(0x100)==0x100);
+        assert((F50_RESET_BLOCKERS&0x00020000)&&(F50_RESET_BLOCKERS&0x00100000)&&!(F50_RESET_BLOCKERS&F50_MENU_CONTINUE));
     }
     {   // the chord: Start+Select with the four shoulders already held
         const uint32_t sh=lc::shoulders,ss=lc::start_select;

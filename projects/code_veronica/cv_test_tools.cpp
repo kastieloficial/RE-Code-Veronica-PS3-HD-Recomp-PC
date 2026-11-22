@@ -541,6 +541,7 @@ void title_flow_frame(ppu_context* ctx,bool title,bool game_ready) {
         if(const char* d=std::getenv("CV_TITLE_DIFFICULTY"))if(*d)vm_write8(CV_SRT_DIFFICULTY,uint8_t(std::atoi(d)));   // dev: the probe may show the menu sets it first
 #endif
         vm_write32(state_base+0x50,w.flags50);vm_write32(state_base+0x64,w.tasks);
+        cv_title_shortcut_started("new game");   // the menu object as its exit leaves it; the gate bits of the game's reset follow
         std::printf("[TITLE-FLOW] new game started from the title menu (+50=%08X +64=%08X); warp after control\n",w.flags50,w.tasks);std::fflush(stdout);
         break;}
     case Step::WARP:

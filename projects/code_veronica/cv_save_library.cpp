@@ -13,6 +13,7 @@
 #include "cv_port_ui.h"
 #include "cv_archives_ui.h"
 #include "cv_title_flow.h"
+#include "cv_title_return.h"
 #include <cwctype>
 #include <algorithm>
 #include <array>
@@ -379,7 +380,7 @@ void cv_save_library_frame(ppu_context* ctx,bool gameplay,bool title){
  if(now==tf::CTX_NONE){busy=false;publish(tr(ui::UNAVAILABLE),false);return;}
  if(!mapped(state+0x8c,slot_size)||!mapped(state+0x34,common_size)){busy=false;publish(tr(ui::UNAVAILABLE),false);return;}
  // A load works in game and at the title menu (the same native slot copy and restart tasks); a save only in game.
- if(!p.save){bool ok=valid_slot(p.data)&&restore(ctx,p.data);if(ok&&now==tf::CTX_TITLE){std::fprintf(stderr,"[TITLE-LOAD] library entry loaded from the title menu\n");}busy=false;publish(ok?tr(ui::LOADING):tr(ui::CORRUPT),ok);return;}
+ if(!p.save){bool ok=valid_slot(p.data)&&restore(ctx,p.data);if(ok&&now==tf::CTX_TITLE){cv_title_shortcut_started("library save");std::fprintf(stderr,"[TITLE-LOAD] library entry loaded from the title menu\n");}busy=false;publish(ok?tr(ui::LOADING):tr(ui::CORRUPT),ok);return;}
  if(now!=tf::CTX_GAMEPLAY){busy=false;publish(tr(ui::SAVE_TITLE_BLOCKED),false);return;}
  if(!capture(p.data)){busy=false;publish(tr(ui::UNAVAILABLE),false);return;}
  const uint32_t original=vm_read32(SAVE_DATA_PTR);if(mapped(original,0x7cc0))p.data.option=vm_read32(original+0x7bac);

@@ -43,9 +43,10 @@ constexpr bool maps_allowed(int ctx) { return ctx == CTX_GAMEPLAY || ctx == CTX_
 constexpr bool save_allowed(int ctx) { return ctx == CTX_GAMEPLAY; }
 
 // The writes of the main menu's "New Game" branch (return value 2: +0x50 &= ~0x200, +0x64 = 0x00300010), unproven
-// until the CV_TITLE_PROBE capture of a natural New Game confirms it.
+// until the CV_TITLE_PROBE capture of a natural New Game confirms it. The menu's own exit also clears +0x50 0x20000 (the bit that
+// keeps the game's reset task, REINICIAR JOGO, from acting): the shortcut does the same.
 struct NewGameWrites { uint32_t flags50, tasks; };
-constexpr NewGameWrites new_game_writes(uint32_t flags50) { return { flags50 & ~0x200u, 0x00300010u }; }
+constexpr NewGameWrites new_game_writes(uint32_t flags50) { return { flags50 & ~0x00020200u, 0x00300010u }; }
 
 enum class Phase { IDLE, NEWGAME, WAIT_CONTROL, DONE };
 enum class Step { NONE, START_NEW_GAME, WARP, ABORT_NOT_READY, ABORT_TIMEOUT, ABORT_MENU };

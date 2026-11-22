@@ -20,14 +20,17 @@ extern "C" PPU_THREAD_LOCAL ppu_context* g_active_ctx;
 extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 extern "C" void* rsx_d3d12_window(void);
 extern "C" void perf_overlay_toast(const wchar_t*,int);
-void CV_FN_TITLE_RETURN_TASK(ppu_context*);   // the Game Over return task of this region (cv_version.h)
 void CV_FN_STOP_BANK(ppu_context*);           // (sound manager, bank): stops that bank's voices
 namespace {
 namespace rules=cv_title_return;
 namespace ui=cv_title_return_ui;
 namespace tr=cv_title_return_i18n;
 constexpr uint32_t state=CV_SRT_CHARACTER-0x94;
-constexpr uint32_t F2A70C=state+0x2A70C;   // the Game Over task's "fade started" halfword
+// The word the game's reset task reads (EU 0xBC3458, US 0xBB3158, JP 0xBB31D8: the same distance from the system block in the three
+// regions, checked against the recompiled readers of each). The options menu raises it after a "Yes" on REINICIAR JOGO.
+constexpr uint32_t RESET_REQUEST=state-0x3B0;
+// The title / main menu object: +4 its state (CV_TITLE_STATE), +0xB0 and +0x94 bytes the menu's own exit clears.
+constexpr uint32_t MENU_OBJECT=CV_TITLE_STATE-4;
 const wchar_t* text(int lang,tr::Id id) {return tr::tr(lang,id);}
 
 bool mapped(uint32_t a,size_t n) {
@@ -69,16 +72,49 @@ bool from_inventory=false;
 struct Call {ppu_context c;ppu_context* previous;void(*tail)(void*);Call(ppu_context* p):c(*p),previous(g_active_ctx),tail(g_trampoline_fn){c.gpr[1]-=0x2000;vm_write64(c.gpr[1],p->gpr[1]);c.gpr[2]=CV_TOC;g_active_ctx=&c;g_trampoline_fn=nullptr;}
  ~Call(){g_active_ctx=previous;g_trampoline_fn=tail;}void run(void(*fn)(ppu_context*),uint32_t a=0,uint32_t b=0){c.gpr[3]=a;c.gpr[4]=b;fn(&c);while(g_trampoline_fn){auto next=g_trampoline_fn;g_trampoline_fn=nullptr;next(&c);}}};
 void log_state(const char* what) {
-    std::fprintf(stderr,"[TITLE-RETURN] %s: tasks=%08X blocked=%08X flags50=%08X flags70=%08X flags74=%08X\n",what,
-        vm_read32(state+0x64),vm_read32(state+0x68),vm_read32(state+0x50),vm_read32(state+0x70),vm_read32(state+0x74));
+    std::fprintf(stderr,"[TITLE-RETURN] %s: tasks=%08X blocked=%08X flags50=%08X flags70=%08X flags74=%08X resetRequest=%u menuState=%08X\n",what,
+        vm_read32(state+0x64),vm_read32(state+0x68),vm_read32(state+0x50),vm_read32(state+0x70),vm_read32(state+0x74),
+        vm_read32(RESET_REQUEST),vm_read32(CV_TITLE_STATE));
 }
-void finish(ppu_context* ctx) {
-    // The sound bank the way a load stops it, then the typewriter's flags the Game Over path may have left.
-    {Call call(ctx);if(const uint32_t sound=vm_read32(CV_SOUND_MANAGER))call.run(CV_FN_STOP_BANK,sound,9);}
+// What the game's two watchers of the request word would do with the state right now (dev log of the gate).
+const char* gate_verdict(uint32_t f50,uint32_t tasks,uint32_t blocked) {
+    if(!rules::watcher_running(tasks,blocked))return "the reset task (0x200000) is not running: nothing acts on it";
+    if(tasks&rules::TASKS_LOW)return "early task bits set (+64 & 3F): the reset task ignores it";
+    if(f50&rules::F50_RESET_BLOCKERS)return "BLOCKED: +50 has 0x20000 or 0x100000 (the menu was left without its own exit): the reset task ignores it";
+    if(f50&rules::F50_MENU_CONTINUE)return "+50 has 0x400000 (game started by the menu's Continue branch): the reset task ignores it, the program's shutdown watcher takes it";
+    return "the reset task will take the game back to the title";
+}
+bool shortcut_pending=false;   // game thread: a game was started from the title by F7; its gate bits are normalised once it runs
+unsigned shortcut_frames=0;
+// Every frame (cheap): the request word's changes are logged with the gate, so one natural REINICIAR JOGO tells whether the
+// game's reset can act; and the gate bits of a game started by the F7 shortcut are put as the menu's own exit leaves them.
+void watch_reset_gate() {
+    static bool ok=false;static uint32_t last=0;
+    if(!ok){ok=mapped(RESET_REQUEST,4)&&mapped(state,0x84)&&mapped(MENU_OBJECT,0xC0);if(!ok)return;last=vm_read32(RESET_REQUEST);}
+    const uint32_t request_now=vm_read32(RESET_REQUEST);
+    const uint32_t f50=vm_read32(state+0x50),tasks=vm_read32(state+0x64),blocked=vm_read32(state+0x68);
+    if(request_now!=last) {
+        std::fprintf(stderr,"[RESET-GATE] request word %u -> %u: +50=%08X +64=%08X +68=%08X +70=%08X +74=%08X; %s\n",last,request_now,f50,tasks,blocked,
+            vm_read32(state+0x70),vm_read32(state+0x74),request_now==1?gate_verdict(f50,tasks,blocked):"(consumed or cleared)");
+        last=request_now;
+    }
+    if(!shortcut_pending)return;
+    // Controllable room: the room task runs, the early task bits are gone.
+    const bool room=((tasks&~blocked)&rules::TASK_ROOM)!=0&&(tasks&rules::TASKS_LOW)==0;
+    shortcut_frames=room?shortcut_frames+1:0;
+    if(shortcut_frames<60)return;
+    shortcut_pending=false;
+    const uint32_t fixed=rules::armed_flags50(f50);
+    if(fixed!=f50)vm_write32(state+0x50,fixed);
+    std::fprintf(stderr,"[TITLE-GATE] game running after the F7 start from the title: +50 %08X -> %08X (cleared %08X: the menu's exit / a menu Continue mark), "
+        "REINICIAR JOGO: %s\n",f50,fixed,f50&~fixed,gate_verdict(fixed,tasks,blocked));
+}
+void finish(ppu_context*) {
+    // The game's reset has run. The typewriter's flags the room may have left stay cleared; the sound was stopped before.
     const uint32_t f70=vm_read32(state+0x70),f74=vm_read32(state+0x74);
     if(f70&rules::F70_TYPEWRITER)vm_write32(state+0x70,f70&~rules::F70_TYPEWRITER);
     if(f74&rules::F74_SAVE_REQUEST)vm_write32(state+0x74,f74&~rules::F74_SAVE_REQUEST);
-    log_state(from_inventory?"back at the main menu (from the inventory screen)":"back at the main menu");
+    log_state(from_inventory?"back at the title (from the inventory screen)":"back at the title");
 }
 
 // ---- The window (launcher thread) --------------------------------------------------------
@@ -206,10 +242,23 @@ void cv_title_return_close() {if(cv_title_return_visible())close_box();}
 bool cv_title_return_visible() {return window&&IsWindowVisible(window);}
 void cv_title_return_release() {if(window)DestroyWindow(window);cv_port_ui::release_fonts();}
 
-// One game frame, before the game's own dispatcher: the request after "Yes", then the Game Over return task each frame until the
-// game is at its main menu. The task is the one the game runs after a Game Over (fade out, clean the room up, then
-// system+0x64 = 0x300048): the same ending, started by us instead of by dying.
+// A game started from the title by the F7 window (a saved game or a new game): the main menu's own exit is skipped, and it leaves
+// the game's reset (REINICIAR JOGO of the Select options, and ours) blocked: +50 0x20000 stays set, the menu state stays in its
+// screen. Put the menu object as its exit does (state 0, bytes 0xB0 and 0x94 clear); the +50 bits follow once the room runs.
+void cv_title_shortcut_started(const char* how) {
+    if(!mapped(MENU_OBJECT,0xC0)||!mapped(state,0x84))return;
+    const uint32_t f50=vm_read32(state+0x50);
+    vm_write32(state+0x50,f50&~0x00020000u);   // the menu's exit clears it (the load path clears 0x30000 itself)
+    vm_write8(MENU_OBJECT+0xB0,0);vm_write32(CV_TITLE_STATE,0);vm_write8(MENU_OBJECT+0x94,0);
+    shortcut_pending=true;shortcut_frames=0;
+    std::fprintf(stderr,"[TITLE-GATE] F7 start from the title (%s): menu object reset (state 0), +50 %08X -> %08X; the rest follows when the room runs\n",how,f50,f50&~0x00020000u);
+}
+
+// One game frame, before the game's own dispatcher: the request after "Yes". The return is the game's own: the request word of its
+// REINICIAR JOGO is raised and its reset task (running beside the room every frame) takes the game to the title. Nothing else is
+// called or written here beyond the gate bits the task wants clear, so the result is exactly the native one.
 void cv_title_return_frame(ppu_context* ctx) {
+    watch_reset_gate();
     const bool requested=!machine.running&&request.exchange(false);
     if(!machine.running&&!requested)return;
     const rules::State now=read_state();
@@ -219,17 +268,30 @@ void cv_title_return_frame(ppu_context* ctx) {
     case rules::Step::IDLE:return;
     case rules::Step::ABORT:
         if(requested){perf_overlay_toast(text(request_language.load(),tr::BLOCKED),0);std::fprintf(stderr,"[TITLE-RETURN] refused on the game thread (%s)\n",verdict_name(verdict));}
-        else {std::fprintf(stderr,"[TITLE-RETURN] gave up after %u frames without reaching the main menu\n",rules::MAX_FRAMES);log_state("aborted");}
+        else {
+            // Do not leave the request raised: the program's own shutdown watcher would take it.
+            if(vm_read32(RESET_REQUEST)==1)vm_write32(RESET_REQUEST,0);
+            std::fprintf(stderr,"[TITLE-RETURN] gave up after %u frames without reaching the title: %s\n",rules::MAX_FRAMES,gate_verdict(vm_read32(state+0x50),tasks,now.blocked));
+            log_state("aborted");}
         return;
-    case rules::Step::START:
+    case rules::Step::START: {
         from_inventory=verdict==rules::Verdict::INVENTORY_SCREEN;
-        vm_write16(F2A70C,0);   // the task's "fade started" mark is only reset when a new game starts: clear it once
+        const uint32_t f50=vm_read32(state+0x50);
+        if(!rules::can_arm(tasks,now.blocked)) {
+            machine.finish();perf_overlay_toast(text(request_language.load(),tr::BLOCKED),0);
+            std::fprintf(stderr,"[TITLE-RETURN] cannot start: %s (+50=%08X +64=%08X +68=%08X)\n",gate_verdict(f50,tasks,now.blocked),f50,tasks,now.blocked);
+            return;}
         log_state(from_inventory?"started (from the inventory screen)":"started");
-        break;
+        // The room's voices stop first (as a load stops them), then the gate bits are put as the reset task wants them and the
+        // request word is raised: the reset task of this same frame's dispatcher takes it.
+        {Call call(ctx);if(const uint32_t sound=vm_read32(CV_SOUND_MANAGER))call.run(CV_FN_STOP_BANK,sound,9);}
+        const uint32_t fixed=rules::armed_flags50(f50);
+        if(fixed!=f50)vm_write32(state+0x50,fixed);
+        vm_write32(RESET_REQUEST,1);
+        std::fprintf(stderr,"[TITLE-RETURN] request raised: +50 %08X -> %08X; the game's reset task takes it: %s\n",f50,fixed,gate_verdict(fixed,tasks,now.blocked));
+        return;}
     case rules::Step::DONE:finish(ctx);return;
-    case rules::Step::CALL:break;
+    case rules::Step::CALL:return;   // the game is carrying it out
     }
-    {Call call(ctx);call.run(CV_FN_TITLE_RETURN_TASK);}
-    if(rules::returned(vm_read32(state+0x64))){machine.finish();finish(ctx);}
 }
 #endif
