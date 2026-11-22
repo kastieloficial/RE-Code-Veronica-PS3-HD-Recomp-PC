@@ -1093,7 +1093,7 @@ void section(Graphics& gr, const std::wstring& t, float x, float y, float w, con
 
 
 /* Release shown under the sidebar, beside the credit. Bump it per release. */
-const wchar_t* const k_launcher_version = L"v1.6.1";
+const wchar_t* const k_launcher_version = L"v1.7.0";
 extern "C" const wchar_t* cv_launcher_version(void) { return k_launcher_version; }   /* cv_discord.cpp */
 
 /* ---------------------------------------------------------------- updates
@@ -2709,6 +2709,7 @@ void draw_atalhos(Graphics& gr, const Font& head, const Font& body, const Font& 
     swprintf(maps, 300, T(S_SC_MAPS), T(S_NAV_ITEMS));
     struct Row { const wchar_t* key; const wchar_t* ps; const wchar_t* xb; const wchar_t* sw; const wchar_t* what; };
     const Row rows[] = {
+        { L"F2", L"\nSelect+Start", L"\nBack+Start", L"\nMinus+Plus", T(S_SC_TITLE_RET) },   /* fixed, not rebindable: return to the title screen */
         { L"Insert / F5", L"L3", L"LS", L"LS", T(S_SC_MENU) },
         { L"F6", L"△", L"Y", L"X", items },
         { L"F7", L"○", L"B", L"A", maps },
