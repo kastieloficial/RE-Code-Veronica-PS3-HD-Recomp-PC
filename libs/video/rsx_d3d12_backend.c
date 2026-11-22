@@ -12244,7 +12244,7 @@ static void render_frame_impl(void)
              * (rt_off, fp_exp32, fp_bytes, program snapshot, number of targets: all compared by dm_pair), and the leader was
              * not dropped, so no member would be either. The depth-of-field filter reads the vertex count but only matches the one 416-byte program
              * (cv_depth_of_field_skip), so it forces the scan only for a leader with that program size; the letterbox reads
-             * vertex data and always needs the scan. */
+             * vertex data but only matches a 16-byte program (letterbox_bar), so the scan is forced only for a leader of that size. */
             const int cv_filters_on=cv_no_letterbox();   /* + the depth-of-field case, decided per leader (fp_bytes 416 only) */
             unsigned char cv_shadow_neutralized[MAX_OFF_RTS]={0};
             const int _pt_on = perf_on(); unsigned long long _pt_last = 0;
@@ -12761,7 +12761,7 @@ static void render_frame_impl(void)
                      * dm_pair record-field rules, same pipeline, window and b1 words). What is left to check is what only
                      * the record knows: the leader's pipeline is live, the bound target is not sampled, the group fits the
                      * command-list split, the depth-conversion/FSR boundaries and pp_done, and no per-draw filter is on. */
-                    if(s_run_last[d]>d&&(cv_filters_on||(!cv_depth_of_field_enabled&&dr->fp_bytes==416u))){
+                    if(s_run_last[d]>d&&((cv_filters_on&&dr->fp_bytes==16u)||(!cv_depth_of_field_enabled&&dr->fp_bytes==416u))){
 #ifndef CV_DISTRIBUTION
                         s_runs_rec_no[0]++;
 #endif
