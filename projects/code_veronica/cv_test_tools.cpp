@@ -5,6 +5,7 @@
 #include "cv_archives_i18n.h"
 #include "cv_title_flow.h"
 #include "cv_port_modal.h"
+#include "cv_title_return.h"
 #include "cv_version.h"
 #include "ppu_recomp.h"
 #include <atomic>
@@ -554,6 +555,7 @@ void title_flow_frame(ppu_context* ctx,bool title,bool game_ready) {
 }
 }
 void TEST_FRAME(ppu_context* ctx) {
+    cv_title_return_frame(ctx);   // the return to the title after the box's "Yes" (cv_title_return.cpp): before anything else of this frame
     const bool gameplay=enabled&&active_game()&&!tool_load&&!tool_save;
     const bool title=enabled&&!gameplay&&!tool_load&&cv_title_flow::title_menu_ready(title_snapshot());
     archives_context=cv_title_flow::context_of(gameplay,title);title_ready=title;

@@ -70,6 +70,11 @@
 #define CV_OG_MEMSET  cv_original_007B5568
 #define CV_FN_MEMMOVE func_007AD0E0
 #define CV_OG_MEMMOVE cv_original_007AD0E0
+/* Return to the title (cv_title_return.cpp): the Game Over task (called once a frame it fades out, cleans the room up and writes
+ * system+0x64 = 0x300048), the sound bank stop and the sound manager pointer (as cv_save_library.cpp's load). JP body checked against the EU one. */
+#define CV_FN_TITLE_RETURN_TASK func_001AF100
+#define CV_FN_STOP_BANK func_00259C4C
+#define CV_SOUND_MANAGER 0x00AB5F64u
 #elif defined(CV_REGION_US)
 #define CV_TITLE_ID        "NPUB30467"
 /* Engine frame pacing: uses real time and emits a delta in 60 Hz ticks. */
@@ -116,6 +121,11 @@
 #define CV_OG_MEMSET  cv_original_007B4C78
 #define CV_FN_MEMMOVE func_007AC7F0
 #define CV_OG_MEMMOVE cv_original_007AC7F0
+/* Return to the title (cv_title_return.cpp): the Game Over task (called once a frame it fades out, cleans the room up and writes
+ * system+0x64 = 0x300048), the sound bank stop and the sound manager pointer (as cv_save_library.cpp's load). US body checked against the EU one. */
+#define CV_FN_TITLE_RETURN_TASK func_001AF058
+#define CV_FN_STOP_BANK func_0025935C
+#define CV_SOUND_MANAGER 0x00AB5EA8u
 #else
 #define CV_TITLE_ID        "NPEB00553"
 /* Engine frame pacing: uses real time and emits a delta in 60 Hz ticks. */
@@ -162,4 +172,9 @@
 #define CV_OG_MEMSET  cv_original_007B6C38
 #define CV_FN_MEMMOVE func_007AE7B0
 #define CV_OG_MEMMOVE cv_original_007AE7B0
+/* Return to the title (cv_title_return.cpp): the Game Over task (called once a frame it fades out, cleans the room up and writes
+ * system+0x64 = 0x300048), the sound bank stop and the sound manager pointer (as cv_save_library.cpp's load). */
+#define CV_FN_TITLE_RETURN_TASK func_001B0AC8
+#define CV_FN_STOP_BANK func_0025B32C
+#define CV_SOUND_MANAGER 0x00AC61F4u
 #endif

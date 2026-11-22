@@ -32,6 +32,7 @@ void cv_archives_show(int,int,int){}
 void cv_save_library_frame(ppu_context*,bool gameplay,bool title){last_gameplay=gameplay;last_title=title;}
 namespace cv_quick {void frame(ppu_context*){}bool consumes_stick(){return false;}}
 void cv_manual_reload_frame(ppu_context*){}
+void cv_title_return_frame(ppu_context*){}   // cv_title_return.cpp
 void ORIGINAL_FRAME(ppu_context*){++frames;}
 void ORIGINAL_SERIALIZE(ppu_context*){++serializations;}
 static int save_screens=0,load_screens=0,finishes=0;

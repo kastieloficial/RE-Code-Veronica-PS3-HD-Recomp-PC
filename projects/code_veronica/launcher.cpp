@@ -66,6 +66,7 @@
 #include "cv_launcher_controls.h"
 #include "log_viewer.h"
 #include "cv_test_tools.h"
+#include "cv_title_return.h"
 #include "cv_item_menu.h"
 #include "cv_save_library.h"
 #include "cv_keycap_style.h"
@@ -918,6 +919,7 @@ struct UI {
     uint32_t pad_prev[PAD_PHYS_MAX] = {};
     uint32_t test_combo_prev=0;
     uint32_t items_combo_prev=0;   /* the F6 item menu chord, per controller */
+    uint32_t title_pad_prev[PAD_PHYS_MAX]={};   /* last sample of each controller: the return-to-title chord needs the shoulders held first */
     uint32_t shot_combo_prev=0;    /* the F10 screenshot chord */
     std::vector<Hit> hits;
     std::wstring play_msg;
@@ -3114,15 +3116,17 @@ void sync_srt_positions() {
 }
 const UINT WM_TEST_MAPS = WM_APP + 20;
 const UINT WM_ITEM_MENU = WM_APP + 21;
+const UINT WM_TITLE_RETURN = WM_APP + 22;   /* F2 / L1+L2+R1+R2+Start+Select: the return-to-title box (cv_title_return.cpp) */
 static_assert(WM_PC_SETTINGS_READ_EFFECTS!=WM_TOGGLE_TEXTURES && WM_PC_SETTINGS_READ_EFFECTS!=WM_TOGGLE_SRT &&
-              WM_PC_SETTINGS_READ_EFFECTS!=WM_TEST_MAPS && WM_PC_SETTINGS_READ_EFFECTS!=WM_ITEM_MENU,
+              WM_PC_SETTINGS_READ_EFFECTS!=WM_TEST_MAPS && WM_PC_SETTINGS_READ_EFFECTS!=WM_ITEM_MENU && WM_PC_SETTINGS_READ_EFFECTS!=WM_TITLE_RETURN,
               "Native settings message must not consume launcher shortcuts");
-/* F5..F10 in the game window: the options menu (Insert as well), the item
+/* F2 (return to the title) and F5..F10 in the game window: the options menu (Insert as well), the item
  * menu, the maps, the SRT and the texture mods; F10 (a screenshot) is the
  * game window's own. */
 void key_hook(unsigned vk) { if (vk == VK_F9) PostMessageW(g.hwnd, WM_TOGGLE_TEXTURES, 0, 0);
     else if(vk==VK_F5)menu_hook();
     else if(vk==VK_F6)PostMessageW(g.hwnd,WM_ITEM_MENU,0,0);
+    else if(vk==VK_F2)PostMessageW(g.hwnd,WM_TITLE_RETURN,PAD_INPUT_KEYBOARD,0);
     else if(vk==VK_F8)PostMessageW(g.hwnd,WM_TOGGLE_SRT,0,0);
     else if(vk==VK_F7)PostMessageW(g.hwnd,WM_TEST_MAPS,PAD_INPUT_KEYBOARD,0); }   /* game window thread */
 /* F9 in the game or R1+R2+L1+L2+square on a controller: texture mods on or off at once,
@@ -3679,6 +3683,13 @@ LRESULT CALLBACK wndproc(HWND h, UINT m, WPARAM wp, LPARAM lp)
             for(int i=0;i<PAD_PHYS_MAX;i++){PadPhys p{};if(pad_phys_poll(i,&p)&&cv_launcher_controls::chord_active(p.buttons,cv_launcher_controls::items_chord))items_combo|=1u<<i;}
             if(items_combo&~g.items_combo_prev)PostMessageW(g.hwnd,WM_ITEM_MENU,0,0);
             g.items_combo_prev=items_combo;
+            {   /* R1+R2+L1+L2 held, then Start+Select: return to the title screen, as F2 (cv_launcher_controls.h title_chord_rising) */
+                int title_input=PAD_KIND_NONE;bool title_fire=false;
+                for(int i=0;i<PAD_PHYS_MAX;i++){PadPhys p{};if(!pad_phys_poll(i,&p)){g.title_pad_prev[i]=0;continue;}
+                    if(cv_launcher_controls::title_chord_rising(g.title_pad_prev[i],p.buttons)){title_fire=true;title_input=p.kind;}
+                    g.title_pad_prev[i]=p.buttons;}
+                if(title_fire)PostMessageW(g.hwnd,WM_TITLE_RETURN,WPARAM(title_input),0);
+            }
             uint32_t combo = 0;
             for (int i = 0; i < PAD_PHYS_MAX; i++) {
                 PadPhys p; if (!pad_phys_poll(i, &p)) continue;
@@ -3763,6 +3774,7 @@ LRESULT CALLBACK wndproc(HWND h, UINT m, WPARAM wp, LPARAM lp)
     if(m==WM_UPDATE) {upd_message(wp,lp);return 0;}
     if(m==WM_TEST_MAPS) {if(g.running)cv_test_tools_show(g.hwnd,g.s.game,g_lang,int(wp));return 0;}
     if(m==WM_ITEM_MENU) {if(g.running&&g.s.items_menu)cv_item_menu_toggle(g.s.game,g_lang);return 0;}   /* off: F6 does nothing */
+    if(m==WM_TITLE_RETURN) {if(g.running)cv_title_return_toggle(g_lang,int(wp));return 0;}
     return DefWindowProcW(h, m, wp, lp);
 }
 
@@ -4207,7 +4219,7 @@ DWORD WINAPI launcher_thread(void*)
     image_fit_forget();
     delete g.brand_logo;g.brand_logo=nullptr;
     delete g.castle;g.castle=nullptr;for(int i=0;i<3;i++){delete g.cover[i];delete g.cover_bg[i];g.cover[i]=g.cover_bg[i]=nullptr;}
-    cv_item_menu::release();cv_archives_release();   /* the menus' images and embedded fonts go before GDI+ does */
+    cv_item_menu::release();cv_archives_release();cv_title_return_release();   /* the menus' images and embedded fonts go before GDI+ does */
     GdiplusShutdown(gtok);
     return 0;
 }

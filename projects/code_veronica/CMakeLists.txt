@@ -725,6 +725,28 @@ if(WIN32)
     target_compile_options(code_veronica_port_modal_tests PRIVATE /UNDEBUG)
 endif()
 
+# Return to the title (F2 / L1+L2+R1+R2+Start+Select): the box, its input and the game-thread carry-out. Pure rules and the controller
+# gate have their own test; the box's drawing is checked (13 languages, input kinds, hover/pressed) and exported to PNG by the second one.
+if(WIN32)
+    target_sources(MyGameRecomp PRIVATE cv_title_return.cpp cv_title_return_ui.cpp)
+    add_executable(code_veronica_title_return_tests EXCLUDE_FROM_ALL tests/test_title_return.cpp)
+    target_include_directories(code_veronica_title_return_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_options(code_veronica_title_return_tests PRIVATE /UNDEBUG)
+    add_executable(code_veronica_title_return_ui_tests EXCLUDE_FROM_ALL
+        tests/test_title_return_ui.cpp cv_title_return_ui.cpp cv_port_ui.cpp cv_srt_i18n.cpp
+        "${CMAKE_CURRENT_BINARY_DIR}/cv_port_ui.rc" "${CMAKE_CURRENT_BINARY_DIR}/launcher_art.rc"
+        "${PS3RECOMP_DIR}/libs/filesystem/edat.c")
+    target_include_directories(code_veronica_title_return_ui_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_options(code_veronica_title_return_ui_tests PRIVATE /UNDEBUG)
+    target_link_libraries(code_veronica_title_return_ui_tests PRIVATE gdi32 user32 gdiplus ole32 dwmapi)
+    set_target_properties(code_veronica_title_return_ui_tests PROPERTIES OUTPUT_NAME "cv_title_return_ui_tests_${CV_REGION_LC}")
+    if(CV_REGION_LC STREQUAL "jp")
+        target_compile_definitions(code_veronica_title_return_ui_tests PRIVATE CV_REGION_JP=1)
+    elseif(CV_REGION_LC STREQUAL "us")
+        target_compile_definitions(code_veronica_title_return_ui_tests PRIVATE CV_REGION_US=1)
+    endif()
+endif()
+
 # The F6 item menu's HD icons (assets/items-hd/item_XX.png, made by tools/extract_item_icons_hd.py): RCDATA ITEM_HD_XX.
 if(WIN32)
     file(GLOB CV_ITEM_ICONS_HD CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/items-hd/item_*.png")

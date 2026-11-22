@@ -287,6 +287,19 @@ if "%CV_PORT_UI_TESTS%"=="1" (
  build-release\bin\code_veronica_port_modal_tests.exe || exit /b 1
 )
 
+rem Return to the title: the opening rules matrix, the move / chord logic and the controller gate (pure), then the box's drawing in 13 languages;
+rem with CV_TITLE_RETURN_PREVIEW=<folder> it also exports the PNG previews (PT/PS, EN/KB).
+if "%CV_TITLE_RETURN_TESTS%"=="1" (
+ cmake --build build-release --target code_veronica_title_return_tests -j 6 || exit /b 1
+ build-release\bin\code_veronica_title_return_tests.exe || exit /b 1
+ cmake --build build-release --target code_veronica_title_return_ui_tests -j 6 || exit /b 1
+ if defined CV_TITLE_RETURN_PREVIEW (
+  build-release\bin\cv_title_return_ui_tests_eu.exe "%CV_TITLE_RETURN_PREVIEW%" || exit /b 1
+ ) else (
+  build-release\bin\cv_title_return_ui_tests_eu.exe || exit /b 1
+ )
+)
+
 rem Optional visual preview of the shared keyboard icon artwork.
 if "%CV_KEYCAP_PREVIEW%"=="1" (
  cmake --build build-release --target code_veronica_keycap_preview -j 6 || exit /b 1
