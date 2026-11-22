@@ -6100,8 +6100,9 @@ static ID3D12PipelineState* vp_get_fp_pso(int vs_idx, u32 fp_addr, u32 blend, in
     /* Programs exceeding b1's existing constant capacity use literals. Their
      * cache identity must include the values, or a larger program would reuse
      * the first draw's lights. Buffered programs retain the fast code hash. */
-    const int literal_key = constants > FP_MAX_K ||
-        (getenv("FP_CONSTBUF") && getenv("FP_CONSTBUF")[0] == '0');
+    static int fpcb_off = -1;   /* hoisted: getenv twice per draw was a measurable share of the lookup */
+    if (fpcb_off < 0) { const char* e = getenv("FP_CONSTBUF"); fpcb_off = (e && e[0] == '0') ? 1 : 0; }
+    const int literal_key = constants > FP_MAX_K || fpcb_off;
     if (constants > FP_MAX_K) { static int n = 0; if (n++ < 30)
         printf("[FPK] fp=0x%08X has %u constants (> %d): keyed on its values%c", fp_addr, constants, FP_MAX_K, 10); }
     if (snap && snap_hdr[0] == FP_SNAP_MAGIC &&
@@ -10528,6 +10529,10 @@ static int submit_split(u32 fi)
 static int draw_spike_on(void){static int on=-1;if(on<0){const char*e=getenv("CV_DRAW_SPIKE");on=e&&*e&&*e!='0'?(atoi(e)>1?atoi(e):1):0;}return on;}
 void (*g_rsx_spike_context)(char* out,unsigned cap)=NULL;   /* set by main.cpp: room/state of the game */
 static double s_spike_prepass;                               /* prepass_range seconds this frame */
+/* Prepass reuse (CV_PREP_REUSE2) and per-step prepass time, this frame. Steps: 0 head (debug probes, bookkeeping),
+ * 1 vtex window, 2 texture views, 3 srv_commit, 4 pipeline lookup; ticks are TSC, scaled to the measured prepass ms. */
+static u64 s_prx_t[5],s_prx_tot,s_prx_hit[2],s_prx_miss[2],s_prx_mis[2];   /* [0]=tex step, [1]=pso step */
+static int prep_verify_on(void){static int on=-1;if(on<0){const char*e=getenv("CV_PREP_VERIFY");on=e&&e[0]=='1'&&!e[1];}return on;}
 #define SPK_NK 7
 #define SPK_FNV0 14695981039346656037ull
 static const char* const spk_kn[SPK_NK]={"fp","pso","tex","vfmt","rt","A=pso+tex+rt+vfmt","B=A+vtx+vcb_same"};
@@ -10651,6 +10656,15 @@ static void spk_full(const SpkT* t)
             t->total,t->build,t->wait,t->prepass,t->record,t->present,t->fence,10);
     if(spk.perfon)spk_out("perf(PERF=1, this frame): prepass=%.2f tex=%.2f (%d uploads) srv=%.2f pso=%.2f gpu=%.2f%c",
             t->pre,t->tex,t->ntex,t->srv,t->pso,t->gpu,10);
+    { const u64 th=s_prx_hit[0]+s_prx_hit[1],tm=s_prx_miss[0]+s_prx_miss[1],tx=s_prx_mis[0]+s_prx_mis[1];
+      const double tk=s_prx_tot?(double)s_prx_tot:1.0,pm=t->prepass;u64 acc=0;for(int k=0;k<5;k++)acc+=s_prx_t[k];
+      spk_out("prepass steps (ms, est. from TSC share of prepass=%.2f): head=%.2f vtex=%.2f tex=%.2f srv=%.2f pso=%.2f other=%.2f%c",pm,
+              pm*(double)s_prx_t[0]/tk,pm*(double)s_prx_t[1]/tk,pm*(double)s_prx_t[2]/tk,pm*(double)s_prx_t[3]/tk,pm*(double)s_prx_t[4]/tk,
+              pm*(double)(s_prx_tot>acc?s_prx_tot-acc:0)/tk,10);
+      spk_out("prepass reuse: hits=%llu misses=%llu mismatches=%llu (tex: hits=%llu misses=%llu mismatches=%llu | pso: hits=%llu misses=%llu mismatches=%llu) reuse2=%s verify=%s%c",
+              (unsigned long long)th,(unsigned long long)tm,(unsigned long long)tx,(unsigned long long)s_prx_hit[0],(unsigned long long)s_prx_miss[0],(unsigned long long)s_prx_mis[0],
+              (unsigned long long)s_prx_hit[1],(unsigned long long)s_prx_miss[1],(unsigned long long)s_prx_mis[1],
+              getenv("CV_PREP_REUSE2")&&getenv("CV_PREP_REUSE2")[0]=='0'?"OFF":"on",prep_verify_on()?"ON":"off",10); }
     spk_out("draws: n=%u clear=%u copy=%u legacy(!is_vp)=%u verts=%llu mean_verts=%.1f tex_units_bound=%u distinct(pso,tex)=%u%s%c",
             a->n,a->clr,a->cpy,a->legacy,(unsigned long long)a->verts,a->n>a->clr+a->cpy?(double)a->verts/(a->n-a->clr-a->cpy):0.0,
             a->tex_units,a->distinct,a->overflow?" (pair table overflowed)":"",10);
@@ -10724,125 +10738,14 @@ static void spk_post(const SpkT* t)
 }
 #endif
 
-/* The prepass of one range of draws: textures uploaded, the draw's SRV
- * window filled, its pipeline looked up or queued. Each draw needs only its
- * own, so with RSX_SUBMIT_SPLIT the draw loop prepares one part, draws it and
- * hands it to the GPU before preparing the next: done all at once first, the
- * prepass held the GPU idle for most of a heavy frame. */
-static double s_pp_t; static const D3D12DrawRecord* s_pp_prev;
-
-static void prepass_range(u32 from, u32 to)
+/* Resolve a draw's t0-t7 views (prepass step "tex"): each unit becomes an offscreen RT, an uploaded
+ * guest texture or a null SRV. Out: the requests, whether a unit may sample the draw's own target (_fb_risk),
+ * whether a texture slot could not be had (volatile: the answer may differ next time) and the per-unit
+ * texture-gamma word it wrote into this draw's b1 slot (tsgm bit u = tsgv[u]; prepass reuse replays them). */
+static void prepass_tex_units(D3D12DrawRecord* dr, SrvReq* _rq, int* pfb_risk, int* pvol, unsigned* tsgm, float* tsgv)
 {
-    const int repeat_on=prepass_repeat_on();
-    int previous_draw=-1;RsxPreparedRepeatKey previous_key={0};const u8* previous_code=NULL;
-    frame_detail_tag(FD_SETUP);
-    double frame_profile_start=s_frame_profile.active?pose_time():0;
-#ifndef CV_DISTRIBUTION
-    const double spk_t0=draw_spike_on()?perf_now():0.0;
-#endif
-    double _pd_t = s_pp_t; const D3D12DrawRecord* _pd_prev = s_pp_prev;
-    for (u32 _d = from; _d < to && _d < s_rb.count && _d < MAX_DRAWS; _d++) {
-        D3D12DrawRecord* dr = &s_rb.draws[_d];
-        s_srv_win[_d] = _d;s_prepared_fp[_d].valid=0;
-        /* PERF: one draw's prepass over 3 ms (time to the next draw) names it. */
-        if (perf_on()) {
-            double now = perf_now();
-            if (_pd_prev && now - _pd_t > 0.003) {
-                static int n = 0;
-                if (n++ < 300)
-                    fprintf(stderr, "[PREPASS-SLOW] %.1fms draw %u fp=0x%X vtex=0x%X rt=0x%08X"
-                            " tex0=%ux%u fmt 0x%02X tex1=%ux%u verts=%u%c",
-                            (now - _pd_t) * 1000.0, _d - 1, _pd_prev->fp_addr, _pd_prev->vtex_mask,
-                            _pd_prev->rt_off, _pd_prev->tex[0].w, _pd_prev->tex[0].h,
-                            _pd_prev->tex[0].fmt, _pd_prev->tex[1].w, _pd_prev->tex[1].h,
-                            _pd_prev->vertex_count, 10);
-            }
-            _pd_t = now; _pd_prev = dr;
-        }
-        if (!dr->is_vp || dr->is_clear || dr->is_copy) { previous_draw=-1;continue; }
-        /* Debug: RTT_VIEWRT=<hex raw offset> makes display draws sample that
-         * offscreen RT at t0 (the composite blit then shows it fullscreen). */
-        { static const char* vr = (const char*)1;     /* hoisted: this runs per DRAW */
-          if (vr == (const char*)1) vr = getenv("RTT_VIEWRT");
-          if (vr && dr->rt_off == 0) {
-              dr->tex[0].raw = (u32)strtoul(vr, NULL, 16);
-              dr->tex[0].off = 0;
-              dr->tex[0].set = 1;
-          } }
-        /* SCREENTEX=1: report draws that sample a DISPLAY-SIZED texture. On RSX
-         * a title renders a reflection/refraction into a surface and then
-         * samples it; our backend renders into a D3D backbuffer, so the guest
-         * memory that sampler reads is never written and the texture comes back
-         * empty. Finding which geometry does it is the first step to feeding it
-         * the rendered image instead. */
-        /* EMPTYTEX=1: which geometry binds a texture whose source is all zero.
-         * An unresolved texture renders untextured, so this names the surfaces
-         * affected instead of leaving it to guesswork. */
-        { static int ed = -1;
-          if (ed < 0) { const char* e = getenv("EMPTYTEX"); ed = e ? atoi(e) : 0; }
-          extern uint8_t* vm_base;
-          if (ed && vm_base) for (int _u = 0; _u < 4; _u++) {
-              if (!dr->tex[_u].set || !dr->tex[_u].off) continue;
-              u32 nz = 0, sz = dr->tex[_u].w * dr->tex[_u].h * 4u;
-              for (u32 i2 = 0; i2 < sz && i2 < 0x20000u; i2 += 997)
-                  if (vm_base[dr->tex[_u].off + i2]) { nz = 1; break; }
-              if (!nz) {
-                  static u32 seen[24]; static int ns = 0; int known = 0;
-                  for (int k = 0; k < ns; k++) if (seen[k] == dr->fp_addr) known = 1;
-                  if (!known && ns < 24) { seen[ns++] = dr->fp_addr;
-                      /* Scan a window around the resolved address: if the pass
-                       * that fills this surface ran but landed elsewhere, the
-                       * data is nearby; if the whole window is zero it was never
-                       * produced. */
-                      /* Same offset through BOTH context DMAs: a texture the
-                       * guest put in main memory but that we resolve as LOCAL
-                       * reads as untouched VRAM, i.e. all zeros. */
-                      { extern u32 cellGcmResolveLocated(int, u32);
-                        u32 la = cellGcmResolveLocated(1, dr->tex[_u].raw);
-                        u32 ma = cellGcmResolveLocated(0, dr->tex[_u].raw);
-                        u32 ln = 0, mn = 0;
-                        for (u32 i4 = 0; i4 < 0x20000u; i4 += 997) {
-                            if (vm_base[la + i4]) ln++;
-                            if (vm_base[ma + i4]) mn++;
-                        }
-                        fprintf(stderr, "[TEXLOC] raw=0x%08X LOCAL@0x%08X nz=%u  MAIN@0x%08X nz=%u%c",
-                                dr->tex[_u].raw, la, ln, ma, mn, 10); }
-                      { u32 base = dr->tex[_u].off & ~0xFFFFFu;
-                        for (u32 w = 0; w < 0x400000u; w += 0x100000u) {
-                            u32 nzc = 0;
-                            for (u32 i3 = 0; i3 < 0x100000u; i3 += 1021)
-                                if (vm_base[base + w + i3]) nzc++;
-                            fprintf(stderr, "[EMPTYSCAN] 0x%08X..+1MB nonzero %u/1027%c",
-                                    base + w, nzc, 10);
-                        } }
-                      fprintf(stderr, "[EMPTYTEX] fp=0x%X unit=%d raw=0x%08X res=0x%08X %ux%u"
-                                      " fmt=0x%02X verts=%u vp=%u,%u %ux%u%c",
-                              dr->fp_addr, _u, dr->tex[_u].raw, dr->tex[_u].off, dr->tex[_u].w,
-                              dr->tex[_u].h, dr->tex[_u].fmt, dr->vertex_count,
-                              dr->vp_x, dr->vp_y, dr->vp_w, dr->vp_h, 10); }
-              }
-          } }
-        { static int sd = -1;
-          if (sd < 0) { const char* e = getenv("SCREENTEX"); sd = e ? atoi(e) : 0; }
-          if (sd) for (int _u = 0; _u < 4; _u++)
-              if (dr->tex[_u].set && dr->tex[_u].w == s_d3d.width &&
-                  dr->tex[_u].h == s_d3d.height) {
-                  static u32 seen[16]; static int ns = 0; int known = 0;
-                  for (int k = 0; k < ns; k++) if (seen[k] == dr->fp_addr) known = 1;
-                  if (!known && ns < 16) { seen[ns++] = dr->fp_addr;
-                      fprintf(stderr, "[SCREENTEX] unit=%d raw=0x%08X %ux%u fmt=0x%02X"
-                                      " fp=0x%X verts=%u vp=%u,%u %ux%u%c",
-                              _u, dr->tex[_u].raw, dr->tex[_u].w, dr->tex[_u].h,
-                              dr->tex[_u].fmt, dr->fp_addr, dr->vertex_count,
-                              dr->vp_x, dr->vp_y, dr->vp_w, dr->vp_h, 10); }
-              } }
-        if (dr->vtex_mask) vtex_fill_window(_d, dr);
-        /* Fill this draw's t0-t3 SRV window (DRAW_SRV_BASE + d*4): each unit
-         * resolves to an offscreen RT (sampled directly), an uploaded guest
-         * texture, or a null SRV. */
-        double _sv0 = perf_on() ? perf_now() : 0.0;
-        SrvReq _rq[FP_TEX_UNITS]; int _fb_risk = 0;
-        memset(_rq, 0, sizeof _rq);
+    int _fb_risk = 0;
+    *pvol = 0; *tsgm = 0; memset(tsgv, 0, sizeof(float) * FP_TEX_UNITS);
         /* Units the program never samples get no view. They still hold the
          * game's last binding -- Code Veronica's lighter shadow passes leave
          * their own target on unit 3 -- and binding it made every one of those
@@ -10934,6 +10837,7 @@ static void prepass_range(u32 from, u32 to)
                         float* tsg = (float*)((char*)s_d3d.vp_fpcb_mapped
                             + ((u64)s_rb.parity * MAX_DRAWS + dr->cb_slot) * VP_FPCB_STRIDE);
                         tsg[_u*4+2] = (float)((dr->tex[_u].addr & 0xFu) | 128u);
+                        *tsgm |= 1u << _u; tsgv[_u] = tsg[_u*4+2];
                     }
                     if (s_d3d.off_rt[rt].off == dr->rt_off) _fb_risk = 1;   /* may need a feedback copy */
                     /* RT_NOGAMMA=1 (diagnostic): sample render targets without
@@ -10969,6 +10873,7 @@ static void prepass_range(u32 from, u32 to)
                                                 dr->tex[_u].h, dr->tex[_u].fmt,
                                                 _cube, dr->tex[_u].mips, dr->tex[_u].pitch);
                     if (perf_on()) { s_perf_tex += perf_now() - _tt; s_perf_ntex++; }
+                    if (ts < 0) *pvol = 1;   /* no slot (budget / all in use): the next ask may answer otherwise */
                     /* Both forms of the offset are in hand here; the filters
                      * compare the BOUND one. */
                     if (s_duck_off && dr->tex[_u].off == s_duck_off)
@@ -10991,7 +10896,8 @@ static void prepass_range(u32 from, u32 to)
                         if (!_tr) _tr = texrep_for_slot(ts,&_opaque);
                         if (_tr) { D3D12_RESOURCE_DESC _desc; _tr->lpVtbl->GetDesc(_tr,&_desc); sf=_desc.Format; }
                         else _tr = s_d3d.vp_tex[ts].res;
-                        { static int nb = 0; const char* e = getenv("TEX_DUMP");
+                        { static int nb = 0; static const char* e = (const char*)1;   /* hoisted: this runs per bound texture */
+                          if (e == (const char*)1) e = getenv("TEX_DUMP");
                           if (e && nb < 6 && ((dr->tex[_u].off & 0x0FFFFFFFu) ==
                                               ((u32)strtoul(e, NULL, 16) & 0x0FFFFFFFu))) { nb++;
                               fprintf(stderr, "[TEXBIND] unit=%d fp=0x%08X ts=%d cube=%d(st %d mask 0x%X) slotcube=%d "
@@ -11019,7 +10925,219 @@ static void prepass_range(u32 from, u32 to)
             srv_req(&_rq[_u], NULL, DXGI_FORMAT_R8G8B8A8_UNORM,
                       D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING);
         }
+    *pfb_risk = _fb_risk;
+}
+
+/* The prepass of one range of draws: textures uploaded, the draw's SRV
+ * window filled, its pipeline looked up or queued. Each draw needs only its
+ * own, so with RSX_SUBMIT_SPLIT the draw loop prepares one part, draws it and
+ * hands it to the GPU before preparing the next: done all at once first, the
+ * prepass held the GPU idle for most of a heavy frame. */
+static double s_pp_t; static const D3D12DrawRecord* s_pp_prev;
+/* Prepass reuse for repeated draws (v1.7 P6 follow-up). Gunfire frames are 13-16k tiny draws in a few hundred runs
+ * of draws that differ only in vertex data; the per-draw texture-view resolution is a pure function of the draw's
+ * texture units, its program snapshot and target, so a draw identical to the one just prepared copies the result.
+ * Scope is ONE prepass_range call (the render target table, texture slots in use and the snapshot arena cannot
+ * change inside it). Not reused: replacement/dump packs on, a texture slot that could not be had, reduced-viewport
+ * captures present, any texture debug env, a program not frozen in the snapshot arena. CV_PREP_REUSE2=0 disables;
+ * CV_PREP_VERIFY=1 (dev) recomputes every hit and compares. */
+typedef struct { int valid; u32 fp_addr,fp_snap,fp_bytes,rt_off; unsigned char tex[sizeof(((D3D12DrawRecord*)0)->tex)];
+                 SrvReq rq[FP_TEX_UNITS]; int tex_rt[FP_TEX_UNITS]; int fb_risk; unsigned tsgm; float tsgv[FP_TEX_UNITS]; } PrepTexMemo;
+static int prepass_reuse2_on(void){
+    static int on=-1;
+    if(on<0){const char*e=getenv("CV_PREP_REUSE2");on=!(e&&e[0]=='0'&&!e[1]);
+        static const char*const dbg[]={"TEX_BUDGET","RTT_VIEWRT","EMPTYTEX","SCREEN_AS_TEX","TEX_DUMP","TEX_BINDDBG","RT_NOGAMMA"};
+        for(unsigned i=0;i<sizeof dbg/sizeof *dbg;i++)if(getenv(dbg[i]))on=0;}
+    return on&&prep_reuse_on();
+}
+static float* prep_tsg_cells(const D3D12DrawRecord* dr){
+    return s_d3d.vp_fpcb_mapped?(float*)((char*)s_d3d.vp_fpcb_mapped+((u64)s_rb.parity*MAX_DRAWS+dr->cb_slot)*VP_FPCB_STRIDE):NULL;
+}
+/* The draw's program is frozen (its used-unit mask comes from the arena) or absent (mask 0xFFFF). */
+static int prep_tex_eligible(const D3D12DrawRecord* dr){return dr->fp_addr==0||(dr->fp_snap&&s_rb.fp_arena);}
+static int prep_tex_memo_match(const PrepTexMemo* m,const D3D12DrawRecord* dr){
+    return m->valid&&m->fp_snap==dr->fp_snap&&m->fp_bytes==dr->fp_bytes&&m->fp_addr==dr->fp_addr&&m->rt_off==dr->rt_off&&
+        !memcmp(m->tex,dr->tex,sizeof m->tex)&&prep_tex_eligible(dr);
+}
+#ifndef CV_DISTRIBUTION
+#define PRX_T(i) do{ if(_prx_on){ u64 _n=__rdtsc(); s_prx_t[i]+=_n-_prx_last; _prx_last=_n; } }while(0)
+#define PRX_VERIFY (_prx_on&&prep_verify_on())
+#else
+#define PRX_T(i) ((void)0)
+#define PRX_VERIFY 0
+#endif
+
+static void prepass_range(u32 from, u32 to)
+{
+    const int repeat_on=prepass_repeat_on();
+    int previous_draw=-1;RsxPreparedRepeatKey previous_key={0};const u8* previous_code=NULL;
+    frame_detail_tag(FD_SETUP);
+    double frame_profile_start=s_frame_profile.active?pose_time():0;
+#ifndef CV_DISTRIBUTION
+    const double spk_t0=draw_spike_on()?perf_now():0.0;
+    const int _prx_on=draw_spike_on()||prep_verify_on();
+    u64 _prx_last=0;const u64 _prx_start=_prx_on?__rdtsc():0;
+#endif
+    /* Texture-view reuse: decided once per call (the pack flags and reduced-viewport captures only change between
+     * calls); a call that cannot reuse takes the original path for every draw. */
+    const int tex_reuse=prepass_reuse2_on()&&!texpack_replace_on()&&!texpack_dump_on()&&!s_subvp_n;
+    const int pso_reuse2=prepass_reuse2_on();
+    PrepTexMemo tm;tm.valid=0;
+    double _pd_t = s_pp_t; const D3D12DrawRecord* _pd_prev = s_pp_prev;
+    for (u32 _d = from; _d < to && _d < s_rb.count && _d < MAX_DRAWS; _d++) {
+        D3D12DrawRecord* dr = &s_rb.draws[_d];
+#ifndef CV_DISTRIBUTION
+        if(_prx_on)_prx_last=__rdtsc();
+#endif
+        s_srv_win[_d] = _d;s_prepared_fp[_d].valid=0;
+        /* PERF: one draw's prepass over 3 ms (time to the next draw) names it. */
+        if (perf_on()) {
+            double now = perf_now();
+            if (_pd_prev && now - _pd_t > 0.003) {
+                static int n = 0;
+                if (n++ < 300)
+                    fprintf(stderr, "[PREPASS-SLOW] %.1fms draw %u fp=0x%X vtex=0x%X rt=0x%08X"
+                            " tex0=%ux%u fmt 0x%02X tex1=%ux%u verts=%u%c",
+                            (now - _pd_t) * 1000.0, _d - 1, _pd_prev->fp_addr, _pd_prev->vtex_mask,
+                            _pd_prev->rt_off, _pd_prev->tex[0].w, _pd_prev->tex[0].h,
+                            _pd_prev->tex[0].fmt, _pd_prev->tex[1].w, _pd_prev->tex[1].h,
+                            _pd_prev->vertex_count, 10);
+            }
+            _pd_t = now; _pd_prev = dr;
+        }
+        if (!dr->is_vp || dr->is_clear || dr->is_copy) { previous_draw=-1;tm.valid=0;continue; }
+        /* Debug: RTT_VIEWRT=<hex raw offset> makes display draws sample that
+         * offscreen RT at t0 (the composite blit then shows it fullscreen). */
+        { static const char* vr = (const char*)1;     /* hoisted: this runs per DRAW */
+          if (vr == (const char*)1) vr = getenv("RTT_VIEWRT");
+          if (vr && dr->rt_off == 0) {
+              dr->tex[0].raw = (u32)strtoul(vr, NULL, 16);
+              dr->tex[0].off = 0;
+              dr->tex[0].set = 1;
+          } }
+        /* SCREENTEX=1: report draws that sample a DISPLAY-SIZED texture. On RSX
+         * a title renders a reflection/refraction into a surface and then
+         * samples it; our backend renders into a D3D backbuffer, so the guest
+         * memory that sampler reads is never written and the texture comes back
+         * empty. Finding which geometry does it is the first step to feeding it
+         * the rendered image instead. */
+        /* EMPTYTEX=1: which geometry binds a texture whose source is all zero.
+         * An unresolved texture renders untextured, so this names the surfaces
+         * affected instead of leaving it to guesswork. */
+        { static int ed = -1;
+          if (ed < 0) { const char* e = getenv("EMPTYTEX"); ed = e ? atoi(e) : 0; }
+          extern uint8_t* vm_base;
+          if (ed && vm_base) for (int _u = 0; _u < 4; _u++) {
+              if (!dr->tex[_u].set || !dr->tex[_u].off) continue;
+              u32 nz = 0, sz = dr->tex[_u].w * dr->tex[_u].h * 4u;
+              for (u32 i2 = 0; i2 < sz && i2 < 0x20000u; i2 += 997)
+                  if (vm_base[dr->tex[_u].off + i2]) { nz = 1; break; }
+              if (!nz) {
+                  static u32 seen[24]; static int ns = 0; int known = 0;
+                  for (int k = 0; k < ns; k++) if (seen[k] == dr->fp_addr) known = 1;
+                  if (!known && ns < 24) { seen[ns++] = dr->fp_addr;
+                      /* Scan a window around the resolved address: if the pass
+                       * that fills this surface ran but landed elsewhere, the
+                       * data is nearby; if the whole window is zero it was never
+                       * produced. */
+                      /* Same offset through BOTH context DMAs: a texture the
+                       * guest put in main memory but that we resolve as LOCAL
+                       * reads as untouched VRAM, i.e. all zeros. */
+                      { extern u32 cellGcmResolveLocated(int, u32);
+                        u32 la = cellGcmResolveLocated(1, dr->tex[_u].raw);
+                        u32 ma = cellGcmResolveLocated(0, dr->tex[_u].raw);
+                        u32 ln = 0, mn = 0;
+                        for (u32 i4 = 0; i4 < 0x20000u; i4 += 997) {
+                            if (vm_base[la + i4]) ln++;
+                            if (vm_base[ma + i4]) mn++;
+                        }
+                        fprintf(stderr, "[TEXLOC] raw=0x%08X LOCAL@0x%08X nz=%u  MAIN@0x%08X nz=%u%c",
+                                dr->tex[_u].raw, la, ln, ma, mn, 10); }
+                      { u32 base = dr->tex[_u].off & ~0xFFFFFu;
+                        for (u32 w = 0; w < 0x400000u; w += 0x100000u) {
+                            u32 nzc = 0;
+                            for (u32 i3 = 0; i3 < 0x100000u; i3 += 1021)
+                                if (vm_base[base + w + i3]) nzc++;
+                            fprintf(stderr, "[EMPTYSCAN] 0x%08X..+1MB nonzero %u/1027%c",
+                                    base + w, nzc, 10);
+                        } }
+                      fprintf(stderr, "[EMPTYTEX] fp=0x%X unit=%d raw=0x%08X res=0x%08X %ux%u"
+                                      " fmt=0x%02X verts=%u vp=%u,%u %ux%u%c",
+                              dr->fp_addr, _u, dr->tex[_u].raw, dr->tex[_u].off, dr->tex[_u].w,
+                              dr->tex[_u].h, dr->tex[_u].fmt, dr->vertex_count,
+                              dr->vp_x, dr->vp_y, dr->vp_w, dr->vp_h, 10); }
+              }
+          } }
+        { static int sd = -1;
+          if (sd < 0) { const char* e = getenv("SCREENTEX"); sd = e ? atoi(e) : 0; }
+          if (sd) for (int _u = 0; _u < 4; _u++)
+              if (dr->tex[_u].set && dr->tex[_u].w == s_d3d.width &&
+                  dr->tex[_u].h == s_d3d.height) {
+                  static u32 seen[16]; static int ns = 0; int known = 0;
+                  for (int k = 0; k < ns; k++) if (seen[k] == dr->fp_addr) known = 1;
+                  if (!known && ns < 16) { seen[ns++] = dr->fp_addr;
+                      fprintf(stderr, "[SCREENTEX] unit=%d raw=0x%08X %ux%u fmt=0x%02X"
+                                      " fp=0x%X verts=%u vp=%u,%u %ux%u%c",
+                              _u, dr->tex[_u].raw, dr->tex[_u].w, dr->tex[_u].h,
+                              dr->tex[_u].fmt, dr->fp_addr, dr->vertex_count,
+                              dr->vp_x, dr->vp_y, dr->vp_w, dr->vp_h, 10); }
+              } }
+        PRX_T(0);
+        if (dr->vtex_mask) vtex_fill_window(_d, dr);
+        PRX_T(1);
+        /* Fill this draw's t0-t3 SRV window (DRAW_SRV_BASE + d*4): each unit
+         * resolves to an offscreen RT (sampled directly), an uploaded guest
+         * texture, or a null SRV. */
+        double _sv0 = perf_on() ? perf_now() : 0.0;
+        SrvReq _rq[FP_TEX_UNITS]; int _fb_risk = 0; int _vol = 0; unsigned _tsgm = 0; float _tsgv[FP_TEX_UNITS];
+        if (tex_reuse && prep_tex_memo_match(&tm, dr)) {
+            /* Same units, program and target as the draw just prepared: its views, sampled-target indices,
+             * feedback-risk flag and texture-gamma words (written to THIS draw's b1 slot) are this draw's too. */
+            memcpy(_rq, tm.rq, sizeof _rq); memcpy(dr->tex_rt, tm.tex_rt, sizeof dr->tex_rt);
+            _fb_risk = tm.fb_risk; _tsgm = tm.tsgm;
+            float* _tc = prep_tsg_cells(dr);
+#ifndef CV_DISTRIBUTION
+            float _to[FP_TEX_UNITS]; if (PRX_VERIFY && _tc) for (int u = 0; u < FP_TEX_UNITS; u++) _to[u] = _tc[u*4+2];
+#endif
+            if (_tc) for (int u = 0; u < FP_TEX_UNITS; u++) if ((_tsgm >> u) & 1u) _tc[u*4+2] = tm.tsgv[u];
+#ifndef CV_DISTRIBUTION
+            if (_prx_on) s_prx_hit[0]++;
+            if (PRX_VERIFY) {   /* recompute the normal way from the same starting state and compare everything */
+                float _ta[FP_TEX_UNITS]; int _rta[FP_TEX_UNITS]; memset(_ta, 0, sizeof _ta);
+                if (_tc) for (int u = 0; u < FP_TEX_UNITS; u++) { _ta[u] = _tc[u*4+2]; _tc[u*4+2] = _to[u]; }
+                memcpy(_rta, dr->tex_rt, sizeof _rta);
+                SrvReq _r2[FP_TEX_UNITS]; int _fb2 = 0, _vol2 = 0; unsigned _m2 = 0; float _v2[FP_TEX_UNITS];
+                memset(_r2, 0, sizeof _r2);
+                prepass_tex_units(dr, _r2, &_fb2, &_vol2, &_m2, _v2);
+                int _bad = memcmp(_r2, _rq, sizeof _r2) != 0 || memcmp(_rta, dr->tex_rt, sizeof _rta) != 0 || _fb2 != _fb_risk ||
+                           _m2 != _tsgm || _vol2;
+                if (_tc) for (int u = 0; u < FP_TEX_UNITS; u++) if (_ta[u] != _tc[u*4+2] && !(_ta[u] != _ta[u] && _tc[u*4+2] != _tc[u*4+2])) _bad = 1;
+                if (_bad) {
+                    s_prx_mis[0]++;
+                    static int _n = 0; if (_n++ < 40)
+                        fprintf(stderr, "[PREP-REUSE-MISMATCH] draw=%u step=tex fp=0x%X rt=0x%08X fb=%d/%d tsgm=0x%X/0x%X vol=%d (reused result discarded, fresh one used)%c",
+                                _d, dr->fp_addr, dr->rt_off, _fb_risk, _fb2, _tsgm, _m2, _vol2, 10);
+                    memcpy(_rq, _r2, sizeof _rq); _fb_risk = _fb2; tm.valid = 0;
+                }
+            }
+#endif
+        } else {
+            memset(_rq, 0, sizeof _rq);
+            prepass_tex_units(dr, _rq, &_fb_risk, &_vol, &_tsgm, _tsgv);
+            if (tex_reuse) {
+#ifndef CV_DISTRIBUTION
+                if (_prx_on) s_prx_miss[0]++;
+#endif
+                if (!_vol && prep_tex_eligible(dr)) {
+                    tm.valid = 1; tm.fp_addr = dr->fp_addr; tm.fp_snap = dr->fp_snap; tm.fp_bytes = dr->fp_bytes; tm.rt_off = dr->rt_off;
+                    memcpy(tm.tex, dr->tex, sizeof tm.tex); memcpy(tm.rq, _rq, sizeof tm.rq); memcpy(tm.tex_rt, dr->tex_rt, sizeof tm.tex_rt);
+                    tm.fb_risk = _fb_risk; tm.tsgm = _tsgm; memcpy(tm.tsgv, _tsgv, sizeof tm.tsgv);
+                } else tm.valid = 0;
+            }
+        }
+        PRX_T(2);
         srv_commit((u32)_d, _rq, _fb_risk);
+        PRX_T(3);
         if (perf_on()) s_perf_srv += perf_now() - _sv0;
         double _ps0 = perf_on() ? perf_now() : 0.0;
         if (dr->fp_addr) {
@@ -11030,12 +11148,32 @@ static void prepass_range(u32 from, u32 to)
                 dr_cube_mask(dr),dr->fp_bytes};
             const int frozen=dr->fp_snap&&s_rb.fp_arena&&snap;
             ID3D12PipelineState* prepared=NULL;
+            /* Same program snapshot (same arena offset = same bytes, deduplicated when recorded) needs no byte compare. */
             if(repeat_on&&frozen&&previous_draw>=0&&
-               rsx_prepared_repeat_match(&previous_key,&key,previous_code,snap)) {
+               (pso_reuse2&&previous_code==snap?previous_key.bytes&&previous_key.bytes<=4096&&!memcmp(&previous_key,&key,sizeof key)
+                                               :rsx_prepared_repeat_match(&previous_key,&key,previous_code,snap))) {
                 prepared=fp_prepared_ready((u32)previous_draw,dr);
                 if(prepared){s_prep_pipelines--;s_prepass_repeat_reused++;
-                    s_fp_result_index=s_prepared_fp[previous_draw].index;}
+                    s_fp_result_index=s_prepared_fp[previous_draw].index;
+#ifndef CV_DISTRIBUTION
+                    if(_prx_on)s_prx_hit[1]++;
+                    if(PRX_VERIFY){   /* the full lookup must give the same pipeline and cache index */
+                        const int idx=s_fp_result_index;
+                        ID3D12PipelineState* fresh=vp_get_fp_pso(dr->vs_idx,dr->fp_addr,dr->blend_key,
+                            (int)key.nrt,key.rtfmt,dr->fp_exp32,dr->cmask,key.cull,key.cube_mask,snap,dr_fp_urgent(dr));
+                        if(fresh!=prepared||s_fp_result_index!=idx||s_fp_skip_draw){
+                            s_prx_mis[1]++;
+                            static int _n=0;if(_n++<40)fprintf(stderr,"[PREP-REUSE-MISMATCH] draw=%u step=pso reused=%p/%d fresh=%p/%d skip=%d%c",
+                                _d,(void*)prepared,idx,(void*)fresh,s_fp_result_index,s_fp_skip_draw,10);
+                            prepared=fresh;
+                        }
+                    }
+#endif
+                }
             }
+#ifndef CV_DISTRIBUTION
+            if(!prepared&&_prx_on&&repeat_on&&frozen)s_prx_miss[1]++;
+#endif
             if(!prepared)prepared=vp_get_fp_pso(dr->vs_idx,dr->fp_addr,dr->blend_key,
                 (int)key.nrt,key.rtfmt,dr->fp_exp32,dr->cmask,key.cull,key.cube_mask,snap,dr_fp_urgent(dr));
             if(prep_reuse_on()&&snap&&prepared&&!s_fp_skip_draw&&s_fp_result_index>=0) {
@@ -11046,9 +11184,11 @@ static void prepass_range(u32 from, u32 to)
             else previous_draw=-1;
         } else previous_draw=-1;
         if (perf_on()) s_perf_pso += perf_now() - _ps0;
+        PRX_T(4);
     }
     s_pp_t = _pd_t; s_pp_prev = _pd_prev;
 #ifndef CV_DISTRIBUTION
+    if(_prx_on)s_prx_tot+=__rdtsc()-_prx_start;
     if(spk_t0!=0.0)s_spike_prepass+=perf_now()-spk_t0;
 #endif
     if(s_frame_profile.active)s_frame_profile.prepass+=pose_time()-frame_profile_start;
@@ -11114,7 +11254,7 @@ static void render_frame_impl(void)
     double cv_wait = 0.0, cv_present_start = 0.0, cv_present_ms = 0.0, cv_fence_start = 0.0;
 #ifndef CV_DISTRIBUTION
     const int sp_on = draw_spike_on(); double sp_t0 = 0.0, sp_wait = 0.0, sp_tb = 0.0, sp_tp0 = 0.0, sp_tp1 = 0.0;
-    if (sp_on) { sp_t0 = perf_now(); s_spike_prepass = 0.0; }
+    if (sp_on) { sp_t0 = perf_now(); s_spike_prepass = 0.0; memset(s_prx_t,0,sizeof s_prx_t);s_prx_tot=0;memset(s_prx_hit,0,sizeof s_prx_hit);memset(s_prx_miss,0,sizeof s_prx_miss);memset(s_prx_mis,0,sizeof s_prx_mis); }
 #endif
 
     double _rf0 = perf_on() ? perf_now() : 0.0;

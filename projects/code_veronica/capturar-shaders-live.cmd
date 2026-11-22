@@ -18,9 +18,14 @@ set "CV_SMOOTH_LOG=1"
 rem Medidor de desempenho: onde vai o tempo de cada quadro (run-log.txt, resumo com analisar-desempenho.cmd).
 set "PERF=1"
 rem Perfil da thread de renderizacao (render-profile.txt; use tools\perfil_renderizacao.py).
-set "CV_PROFILE_RENDER=1"
+rem (desligado: pausava a thread de desenho mil vezes por segundo e pode provocar um travamento ocasional na abertura; ligue so se precisar do render-profile.txt)
+rem set "CV_PROFILE_RENDER=1"
 rem Diagnostico de picos de draws (tiros): grava build-release\bin\draw-spike-log.txt. 1 = limite automatico; um numero maior = limite fixo de draws.
 set "CV_DRAW_SPIKE=1"
+rem Teste A/B do reaproveitamento de trabalho do prepass entre draws iguais: rode uma vez com a linha abaixo ativa (CV_PREP_REUSE2=0 desliga) e uma vez sem; compare as linhas "ms: total/prepass/record" no draw-spike-log.txt.
+rem set "CV_PREP_REUSE2=0"
+rem Verificacao (so dev): CV_PREP_VERIFY=1 recalcula cada reaproveitamento e compara; mande de volta as linhas [PREP-REUSE-MISMATCH] e "prepass reuse:" do log.
+rem set "CV_PREP_VERIFY=1"
 set "base="
 set "EXE=%~dp0build-release\bin\CodeVeronicaPort.exe"
 if not exist "%EXE%" (
