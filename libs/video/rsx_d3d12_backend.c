@@ -10633,6 +10633,7 @@ static int draw_runs_on(void) { static int on = -1; if (on < 0) { const char* e 
 static u64 s_dm_tot_runs, s_dm_tot_saved, s_dm_viol; static u32 s_dm_fr_runs, s_dm_fr_saved;
 /* Run-level prepass/record counters (dev). fr_* are this frame (reset with the spike prepass counters). */
 static u64 s_runs_mis_tot, s_runs_rec_tot; static u32 s_runs_fr_cov, s_runs_fr_grp, s_runs_fr_led, s_runs_fr_rec, s_runs_fr_recdraws;
+static u32 s_runs_rec_no[3];   /* record fell back to the scan for a leader: per-draw filter on, pipeline not live, bound target sampled */
 static u32 s_runs_broke[DM_NR], s_runs_inel[4];   /* group-join failures by dm_pair reason; leader refusals: vtex, feedback, no pipeline/texture memo, other */
 static int runs_verify_on(void) { static int on = -1; if (on < 0) { const char* e = getenv("CV_DRAW_RUNS_VERIFY"); on = e && e[0] == '1' && !e[1]; } return on; }
 static int dm_verify_on(void) { static int on = -1; if (on < 0) { const char* e = getenv("CV_DRAW_MERGE_VERIFY"); on = e && e[0] == '1' && !e[1]; } return on; }
@@ -10863,9 +10864,9 @@ static void spk_full(const SpkT* t)
         for(int k=1;k<DM_NR;k++)spk_out("%s%s=%u",k>1?" ":"",dm_name[k],s_runs_broke[k]);
         spk_out(" | no-leader: vtex=%u feedback=%u no-pipeline-or-memo=%u other=%u] (prepass join failures by dm_pair reason; groups = leaders with >=1 covered draw, led = draws prepared the full way)%c",
                 s_runs_inel[0],s_runs_inel[1],s_runs_inel[2],s_runs_inel[3],10); }
-      spk_out("runs(actual): enabled=%s verify=%s mismatches=%llu | this frame: prepass_covered=%u record_groups=%u record_draws_in_groups=%u | since start: record_groups=%llu%c",
+      spk_out("runs(actual): enabled=%s verify=%s mismatches=%llu | this frame: prepass_covered=%u record_groups=%u record_draws_in_groups=%u (scan fallbacks: filters=%u pso=%u target=%u) | since start: record_groups=%llu%c",
               draw_runs_on()?(s_runs_frame_ok?"on":"on(frame gated off: capture/probe/CV_DRAW_MERGE=0/native 60 only)"):"OFF[CV_DRAW_RUNS=0]",runs_verify_on()?"ON":"off",
-              (unsigned long long)s_runs_mis_tot,s_runs_fr_cov,s_runs_fr_rec,s_runs_fr_recdraws,(unsigned long long)s_runs_rec_tot,10);
+              (unsigned long long)s_runs_mis_tot,s_runs_fr_cov,s_runs_fr_rec,s_runs_fr_recdraws,s_runs_rec_no[0],s_runs_rec_no[1],s_runs_rec_no[2],(unsigned long long)s_runs_rec_tot,10);
       spk_out("prepass reuse: hits=%llu misses=%llu mismatches=%llu (tex: hits=%llu misses=%llu mismatches=%llu | pso: hits=%llu misses=%llu mismatches=%llu) reuse2=%s verify=%s gate(calls): open=%llu off[CV_PREP_REUSE2=0]=%llu off[debug env]=%llu off[prep_reuse_on false]=%llu off[CV30 package]=%llu%c",
               (unsigned long long)th,(unsigned long long)tm,(unsigned long long)tx,(unsigned long long)s_prx_hit[0],(unsigned long long)s_prx_miss[0],(unsigned long long)s_prx_mis[0],
               (unsigned long long)s_prx_hit[1],(unsigned long long)s_prx_miss[1],(unsigned long long)s_prx_mis[1],
@@ -11612,7 +11613,7 @@ static void render_frame_impl(void)
     const int sp_on = draw_spike_on(); double sp_t0 = 0.0, sp_wait = 0.0, sp_tb = 0.0, sp_tp0 = 0.0, sp_tp1 = 0.0;
     if (sp_on) { sp_t0 = perf_now(); s_spike_prepass = 0.0; memset(s_prx_t,0,sizeof s_prx_t);memset(s_prx_gate,0,sizeof s_prx_gate);s_prx_tot=0;memset(s_prx_hit,0,sizeof s_prx_hit);memset(s_prx_miss,0,sizeof s_prx_miss);memset(s_prx_mis,0,sizeof s_prx_mis);
         memset(s_prx_p,0,sizeof s_prx_p);s_prx_lk=0;memset(s_prx_t,0,sizeof s_prx_t);
-        s_runs_fr_cov=s_runs_fr_grp=s_runs_fr_led=s_runs_fr_rec=s_runs_fr_recdraws=0;memset(s_runs_broke,0,sizeof s_runs_broke);memset(s_runs_inel,0,sizeof s_runs_inel); }
+        s_runs_fr_cov=s_runs_fr_grp=s_runs_fr_led=s_runs_fr_rec=s_runs_fr_recdraws=0;memset(s_runs_broke,0,sizeof s_runs_broke);memset(s_runs_inel,0,sizeof s_runs_inel);memset(s_runs_rec_no,0,sizeof s_runs_rec_no); }
 #endif
 
     double _rf0 = perf_on() ? perf_now() : 0.0;
@@ -12239,7 +12240,11 @@ static void render_frame_impl(void)
             }
             /* The per-draw drop filters (shadow map neutralising, depth-of-field, letterbox): while one is on, the
              * record walks the draws to see which a group member would lose (the old merge scan). */
-            const int cv_filters_on=!cv_shadows_enabled||!cv_depth_of_field_enabled||cv_no_letterbox();
+            /* The shadow-map filter is not in this list: it reads only fields every member of a group shares with its leader
+             * (rt_off, fp_exp32, fp_bytes, program snapshot, number of targets: all compared by dm_pair), and the leader was
+             * not dropped, so no member would be either. Depth-of-field reads the vertex count and the letterbox the
+             * vertex data: those still need the scan. */
+            const int cv_filters_on=!cv_depth_of_field_enabled||cv_no_letterbox();
             unsigned char cv_shadow_neutralized[MAX_OFF_RTS]={0};
             const int _pt_on = perf_on(); unsigned long long _pt_last = 0;
             for (u32 d = 0; d < s_rb.count && d < MAX_DRAWS; d++) {
@@ -12755,10 +12760,22 @@ static void render_frame_impl(void)
                      * dm_pair record-field rules, same pipeline, window and b1 words). What is left to check is what only
                      * the record knows: the leader's pipeline is live, the bound target is not sampled, the group fits the
                      * command-list split, the depth-conversion/FSR boundaries and pp_done, and no per-draw filter is on. */
-                    if(s_run_last[d]>d&&!cv_filters_on&&fp_prepared_ready(d,dr)==dpso) {
+                    if(s_run_last[d]>d&&cv_filters_on){
+#ifndef CV_DISTRIBUTION
+                        s_runs_rec_no[0]++;
+#endif
+                    } else if(s_run_last[d]>d&&fp_prepared_ready(d,dr)!=dpso){
+#ifndef CV_DISTRIBUTION
+                        s_runs_rec_no[1]++;
+#endif
+                    } else if(s_run_last[d]>d) {
                         int fb=0;
                         for(int u=0;u<FP_TEX_UNITS;u++)if(dr->tex_rt[u]>=0&&dr->tex_rt[u]==cur_rt)fb=1;
-                        if(!fb) {
+                        if(fb){
+#ifndef CV_DISTRIBUTION
+                            s_runs_rec_no[2]++;
+#endif
+                        } else {
                             u32 end=s_run_last[d];
                             if(end>=pp_done)end=pp_done-1;
                             if(split_n){const u32 lim=split_last+(u32)split_n-1;if(end>lim)end=lim>d?lim:d;}
