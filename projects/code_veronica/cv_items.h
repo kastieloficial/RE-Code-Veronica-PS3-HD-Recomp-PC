@@ -8,7 +8,9 @@
  * game keeps it when an item is used up. The game shows 8 of them, or 10 once
  * the Side Pack was used: bit 0x08000000 of state +0x6C (EU func_0019FA5C,
  * the inventory screen, and func_00136FD4 read it; JP and US the same). Every
- * item takes one entry; the wide weapons are only drawn wider.
+ * item takes one entry; the six wide weapons (wide()) also take a second space,
+ * as the game counts them (EU func_001305D4: free spaces = empty entries - wide
+ * entries), so a wide weapon needs two free spaces side by side.
  *
  * The menu asks, the game frame writes: the game is paused while the menu is
  * open, so each choice joins a queue and the menu shows the inventory as it
@@ -40,6 +42,8 @@ struct Info {
 const std::vector<Info>& catalog();
 const Info* info(int id);
 std::vector<int> items(Category category);
+// Rocket launcher, assault rifle, sniper rifle, gold Lugers, submachine guns, M1P: one entry, two spaces.
+bool wide(int id);
 
 constexpr int kEntries = 11;   // entry 0 is the fixed slot
 
@@ -58,7 +62,15 @@ struct Inventory {
     bool is_equipped(int i) const { return equipped == i + 1; }
     int first_empty() const;   // 1..capacity, or -1
     int used() const;          // occupied entries among 1..capacity
+    int spaces_used() const;   // used() plus one more for every wide weapon
+    int free_spaces() const;   // capacity - spaces_used(), never below 0
 };
+// Where the entries sit in the menu's two-column grid (and the game's own screen): a wide weapon takes a whole
+// row; the others fill left to right; a wide that would start in the right column moves to the next row and
+// leaves that cell open for the next ordinary item; then empty cells up to the capacity and, without the Side
+// Pack, the locked cells up to 10. `entry` is the inventory entry of an ITEM cell, else 0.
+struct Cell { enum Kind { ITEM, EMPTY, LOCKED } kind; int entry, row, col, span; };
+std::vector<Cell> layout(const Inventory& inventory);
 
 // Reads the live inventory. Safe from any thread: reads only.
 Inventory read();
@@ -69,6 +81,7 @@ void report_refusal(const char* what);
 enum Result {
     R_NONE, R_QUEUED, R_DONE,
     R_FULL,          // no empty entry, and no entry chosen to replace
+    R_NO_ROOM_WIDE,  // a wide weapon without two free spaces
     R_EQUIPPED,      // the chosen entry holds the equipped weapon
     R_BAD,           // unknown item, quantity or entry
     R_NOT_PLAYING,   // a game screen, loading, no character (removal: also a door or event)

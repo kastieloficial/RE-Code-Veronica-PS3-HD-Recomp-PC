@@ -8,10 +8,10 @@ namespace {
 std::wstring original_item(int id,bool pt) {
     struct Named {int id;const wchar_t* en;const wchar_t* pt;};
     static const Named names[]={
-        {1,L"Rocket Launcher",L"Lança-foguetes"},{2,L"Assault Rifle",L"Fuzil de assalto"},{3,L"Sniper Rifle",L"Rifle de precisão"},
-        {4,L"Shotgun",L"Espingarda"},{5,L"Glock 17",L"Glock 17"},{6,L"Grenade Launcher",L"Lança-granadas"},{7,L"Bow Gun",L"Besta"},
-        {8,L"Combat Knife",L"Faca de combate"},{9,L"Handgun",L"Pistola"},{10,L"Custom Handgun",L"Pistola personalizada"},
-        {11,L"Linear Launcher",L"Canhão linear"},{12,L"Handgun Bullets",L"Munição de pistola"},{13,L"Magnum Bullets",L"Munição de Magnum"},
+        {1,L"Rocket launcher",L"Lança-foguetes"},{2,L"Assault rifle",L"Fuzil de assalto"},{3,L"Sniper rifle",L"Rifle de precisão"},
+        {4,L"Shotgun",L"Espingarda"},{5,L"Glock 17",L"Glock 17"},{6,L"Grenade launcher",L"Lança-granadas"},{7,L"Bow gun",L"Besta"},
+        {8,L"Combat knife",L"Faca de combate"},{9,L"Handgun",L"Pistola"},{10,L"Custom handgun",L"Pistola personalizada"},
+        {11,L"Linear launcher",L"Canhão linear"},{12,L"Handgun Bullets",L"Munição de pistola"},{13,L"Magnum Bullets",L"Munição de Magnum"},
         {14,L"Shotgun Shells",L"Cartuchos"},{15,L"Grenade Rounds",L"Granadas"},{16,L"Acid Rounds",L"Granadas ácidas"},
         {17,L"Flame Rounds",L"Granadas incendiárias"},{18,L"Bow Gun Arrows",L"Flechas"},{19,L"M93R Parts",L"Peças da M93R"},
         {20,L"First Aid Spray",L"Spray de primeiros socorros"},{21,L"Green Herb",L"Erva verde"},{22,L"Red Herb",L"Erva vermelha"},
@@ -19,7 +19,7 @@ std::wstring original_item(int id,bool pt) {
         {26,L"Mixed Herbs (G+B)",L"Ervas (V+A)"},{27,L"Mixed Herbs (G+G+B)",L"Ervas (V+V+A)"},
         {28,L"Mixed Herbs (G+G+G)",L"Ervas (V+V+V)"},{29,L"Mixed Herbs (G+R+B)",L"Ervas (V+Vm+A)"},
         {30,L"Magnum Bullets",L"Munição de Magnum"},{31,L"Ink Ribbon",L"Fita de tinta"},{32,L"Magnum",L"Magnum"},
-        {33,L"Gold Lugers",L"Lugers douradas"},{34,L"Submachine Guns",L"Submetralhadoras"},{35,L"Bow Gun Powder",L"Pólvora para flechas"},
+        {33,L"Gold Lugers",L"Lugers douradas"},{34,L"Submachine guns",L"Submetralhadoras"},{35,L"Bow Gun Powder",L"Pólvora para flechas"},
         {36,L"Explosive Arrows",L"Flechas explosivas"},{37,L"B.O.W. Gas Rounds",L"Granadas B.O.W."},
         {38,L"Machine Gun Bullets",L"Munição de metralhadora"},{39,L"Gas Mask",L"Máscara de gás"},
         {40,L"Rifle Bullets",L"Munição de rifle"},{42,L"Assault Rifle Bullets",L"Munição de fuzil"},
@@ -112,7 +112,7 @@ std::wstring original_item(int id,bool pt) {
         {0x80,L"Case: Bow Gun Powder",L"Maleta: pólvora para flechas"},
         {0x81,L"Case: Magnum Rounds",L"Maleta: munição de Magnum"},
         {0x82,L"Bow Gun Powder",L"Pólvora para flechas"},
-        {0x83,L"Enhanced Handgun",L"Pistola aprimorada"},
+        {0x83,L"Enhanced handgun",L"Pistola aprimorada"},
         {0x84,L"Memo",L"Memorando"},
         {0x85,L"Board Clip",L"Recorte"},
         {0x86,L"Card",L"Cartão"},

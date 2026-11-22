@@ -651,7 +651,8 @@ endif()
 
 # Optional tests of host map commands against isolated synthetic guest memory.
 if(WIN32)
-    add_executable(code_veronica_map_tests EXCLUDE_FROM_ALL tests/test_map_tools.cpp cv_items.cpp)
+    add_executable(code_veronica_map_tests EXCLUDE_FROM_ALL tests/test_map_tools.cpp cv_items.cpp cv_srt_icons.cpp
+        "${PS3RECOMP_DIR}/libs/filesystem/edat.c")
     target_include_directories(code_veronica_map_tests PRIVATE "${RECOMP_DIR}")
     target_compile_options(code_veronica_map_tests PRIVATE /UNDEBUG)
     target_link_libraries(code_veronica_map_tests PRIVATE user32 gdi32)
@@ -724,11 +725,28 @@ if(WIN32)
     target_compile_options(code_veronica_port_modal_tests PRIVATE /UNDEBUG)
 endif()
 
+# The F6 item menu's HD icons (assets/items-hd/item_XX.png, made by tools/extract_item_icons_hd.py): RCDATA ITEM_HD_XX.
+if(WIN32)
+    file(GLOB CV_ITEM_ICONS_HD CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/assets/items-hd/item_*.png")
+    set(_items_rc "")
+    foreach(_f IN LISTS CV_ITEM_ICONS_HD)
+        get_filename_component(_n "${_f}" NAME_WE)
+        string(SUBSTRING "${_n}" 5 -1 _hex)
+        string(TOUPPER "${_hex}" _hex)
+        string(APPEND _items_rc "ITEM_HD_${_hex} RCDATA \"${_f}\"
+")
+    endforeach()
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/cv_item_icons.rc" "${_items_rc}")
+    set_source_files_properties("${CMAKE_CURRENT_BINARY_DIR}/cv_item_icons.rc" PROPERTIES OBJECT_DEPENDS "${CV_ITEM_ICONS_HD}")
+    target_sources(MyGameRecomp PRIVATE cv_item_icons_hd.cpp "${CMAKE_CURRENT_BINARY_DIR}/cv_item_icons.rc")
+endif()
+
 # The F6 item menu: catalog, placement, the guest write and the drawing,
 # against synthetic memory with this build's region addresses.
 if(WIN32)
     add_executable(code_veronica_items_tests EXCLUDE_FROM_ALL
         tests/test_items.cpp cv_items.cpp cv_item_menu.cpp cv_srt_icons.cpp cv_srt_i18n.cpp
+        cv_item_icons_hd.cpp "${CMAKE_CURRENT_BINARY_DIR}/cv_item_icons.rc"
         cv_port_ui.cpp cv_port_modal.cpp "${CMAKE_CURRENT_BINARY_DIR}/cv_port_ui.rc"
         "${CMAKE_CURRENT_BINARY_DIR}/launcher_art.rc"
         "${PS3RECOMP_DIR}/libs/filesystem/edat.c")

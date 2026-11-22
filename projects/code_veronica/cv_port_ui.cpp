@@ -10,6 +10,8 @@
 #include <cstring>
 #include <cwchar>
 #include <initializer_list>
+#include <map>
+#include <tuple>
 #include <utility>
 #pragma comment(lib,"gdiplus.lib")
 using namespace Gdiplus;
@@ -20,37 +22,77 @@ namespace {
 constexpr int ROLES=6;
 const wchar_t* const k_resource[ROLES]={L"CV_FONT_CINZEL_700",L"CV_FONT_CINZEL_600",L"CV_FONT_BARLOW_400",L"CV_FONT_BARLOW_500",L"CV_FONT_BARLOW_600",L"CV_FONT_BARLOW_700"};
 const wchar_t* const k_expected[ROLES]={L"Cinzel",L"Cinzel SemiBold",L"Barlow Semi Condensed",L"Barlow Semi Condensed Medium",L"Barlow Semi Condensed SemiBold",L"Barlow Semi Condensed"};
+// The family GDI+ reports for each file ("Cinzel" holds Bold and SemiBold, "Barlow Semi Condensed" Regular and Bold) and the style of the role in it.
+const wchar_t* const k_family[ROLES]={L"Cinzel",L"Cinzel",L"Barlow Semi Condensed",L"Barlow Semi Condensed Medium",L"Barlow Semi Condensed SemiBold",L"Barlow Semi Condensed"};
 const int k_style[ROLES]={FontStyleBold,FontStyleRegular,FontStyleRegular,FontStyleRegular,FontStyleRegular,FontStyleBold};
 std::unique_ptr<PrivateFontCollection> collection;
-std::unique_ptr<FontFamily> families[ROLES];
+std::vector<std::unique_ptr<PrivateFontCollection>> collections_extra;
+const FontFamily* families[ROLES]={};   // point into family_arrays: the originals GDI+ listed, never copies
+std::vector<std::unique_ptr<FontFamily[]>> family_arrays;
+std::vector<std::vector<unsigned char>> font_bytes;   // the collection reads these: they stay alive
 bool loaded=false,load_failed=false,gdi_done=false;
 bool resource(const wchar_t* name,const void*& data,DWORD& size) {
     const HMODULE module=GetModuleHandleW(nullptr);const HRSRC res=FindResourceW(module,name,MAKEINTRESOURCEW(10));
     if(!res)return false;size=SizeofResource(module,res);data=LockResource(LoadResource(module,res));return data&&size;
 }
-bool load_fonts() {
-    if(loaded)return true;if(load_failed)return false;
-    auto pfc=std::make_unique<PrivateFontCollection>();
-    if(pfc->GetLastStatus()==GdiplusNotInitialized)return false;   // too early: try again later
-    int added=0;
-    for(int i=0;i<ROLES;i++) {
-        const void* data=nullptr;DWORD size=0;if(!resource(k_resource[i],data,size))continue;
-        if(pfc->AddMemoryFont(data,size)==Ok)added++;
-    }
-    const int count=pfc->GetFamilyCount();
-    if(!added||count<=0){load_failed=true;std::fprintf(stderr,"[PORT-UI] embedded fonts unavailable: using the system faces\n");return false;}
+// The embedded fonts go in one GDI+ PrivateFontCollection. The bytes are copied to the heap first: the resource pages
+// are read-only and GDI+ then listed only the first family. If it still does not list them all, the files are written to
+// the temporary folder and added from there. Fonts registered with AddFontMemResourceEx (the F7 search box) are
+// invisible to GDI+.
+void add_gdi_fonts();
+int match_families(PrivateFontCollection& pfc,std::wstring& log,int first=0,int last=ROLES-1) {
+    const int count=pfc.GetFamilyCount();if(count<=0)return 0;
     std::unique_ptr<FontFamily[]> all(new FontFamily[count]);int found=0;
-    if(pfc->GetFamilies(count,all.get(),&found)!=Ok){load_failed=true;return false;}
-    std::wstring log;
+    if(pfc.GetFamilies(count,all.get(),&found)!=Ok)return 0;
+    int matched=0;
     for(int f=0;f<found;f++) {
         WCHAR name[LF_FACESIZE]={};all[f].GetFamilyName(name);log+=std::wstring(f?L"; ":L"")+name;
-        for(int i=0;i<ROLES;i++)if(!families[i]&&_wcsicmp(name,k_expected[i])==0)families[i].reset(all[f].Clone());
+        for(int i=first;i<=last;i++)if(!families[i]&&_wcsicmp(name,k_family[i])==0&&all[f].IsStyleAvailable(k_style[i])){families[i]=&all[f];matched++;}
     }
+    family_arrays.push_back(std::move(all));
+    return matched;
+}
+bool load_fonts() {
+    if(loaded)return true;if(load_failed)return false;
+    {Bitmap probe(1,1,PixelFormat32bppARGB);if(probe.GetLastStatus()==GdiplusNotInitialized)return false;}   // too early: try again later
+    std::wstring log;int matched=0;
+    // One collection with all six files: several collections mixed their faces up in GDI+, and a collection that listed only
+    // some of the families (AddMemoryFont did, now and then) is dropped whole and the next source tried. "Cinzel" holds Bold and
+    // SemiBold (Regular).
+    for(int source=0;source<2&&matched<ROLES;source++) {
+        for(auto& f:families)f=nullptr;
+        family_arrays.clear();collection.reset();font_bytes.clear();log.clear();matched=0;
+        auto pfc=std::make_unique<PrivateFontCollection>();
+        WCHAR tmp[MAX_PATH]={};const bool from_files=source==0;
+        std::wstring dir;
+        if(from_files) {   // the files, from the temporary folder
+            if(!GetTempPathW(MAX_PATH,tmp))continue;
+            dir=std::wstring(tmp)+L"CodeVeronicaFonts"+L"\\";CreateDirectoryW(dir.c_str(),nullptr);
+        } else font_bytes.reserve(ROLES);
+        for(int i=0;i<ROLES;i++) {
+            const void* data=nullptr;DWORD size=0;if(!resource(k_resource[i],data,size))continue;
+            if(from_files) {
+                const std::wstring path=dir+k_resource[i]+L".ttf";
+                HANDLE h=CreateFileW(path.c_str(),GENERIC_WRITE,FILE_SHARE_READ,nullptr,CREATE_ALWAYS,FILE_ATTRIBUTE_TEMPORARY,nullptr);
+                if(h!=INVALID_HANDLE_VALUE){DWORD w=0;WriteFile(h,data,size,&w,nullptr);CloseHandle(h);pfc->AddFontFile(path.c_str());}
+            } else {
+                font_bytes.emplace_back(size_t(size)+65536,0);std::memcpy(font_bytes.back().data(),data,size);   // zero padding: GDI+ may read past the end
+                pfc->AddMemoryFont(font_bytes.back().data(),INT(size));
+            }
+        }
+        matched=match_families(*pfc,log,0,ROLES-1);collection=std::move(pfc);
+        std::fprintf(stderr,"[PORT-UI] fonts from %s: %d of %d roles\n",from_files?"files":"memory",matched,ROLES);
+    }
+    if(!matched){load_failed=true;std::fprintf(stderr,"[PORT-UI] embedded fonts unavailable: using the system faces\n");return false;}
     // A weight that did not register borrows the nearest one that did.
-    auto borrow=[&](int to,int from){if(!families[to]&&families[from])families[to].reset(families[from]->Clone());};
+    auto borrow=[&](int to,int from){if(!families[to]&&families[from])families[to]=families[from];};
     borrow(1,0);borrow(0,1);borrow(3,2);borrow(4,5);borrow(3,4);borrow(4,3);borrow(2,3);borrow(5,4);
-    std::fprintf(stderr,"[PORT-UI] fonts registered: %ls\n",log.c_str());
-    collection=std::move(pfc);loaded=true;return true;
+    std::fprintf(stderr,"[PORT-UI] fonts registered: %d of %d (%ls)\n",matched,ROLES,log.c_str());
+    loaded=true;return true;
+}
+void add_gdi_fonts() {
+    if(gdi_done)return;gdi_done=true;
+    for(int i=0;i<ROLES;i++){const void* data=nullptr;DWORD size=0,n=0;if(resource(k_resource[i],data,size))AddFontMemResourceEx(const_cast<void*>(data),size,nullptr,&n);}
 }
 bool bold_role(Role r) {return r==Role::TITLE||r==Role::TITLE_SEMI||r==Role::BODY600||r==Role::BODY700;}
 int role_index(Role r) {return int(r);}
@@ -89,20 +131,42 @@ const wchar_t* family_name(Role role) {
     if(!load_fonts()||!families[role_index(role)])return nullptr;
     static WCHAR names[ROLES][LF_FACESIZE];WCHAR* out=names[role_index(role)];families[role_index(role)]->GetFamilyName(out);return out;
 }
-void register_gdi_fonts() {
-    if(gdi_done)return;gdi_done=true;
-    for(int i=0;i<ROLES;i++){const void* data=nullptr;DWORD size=0,n=0;if(resource(k_resource[i],data,size))AddFontMemResourceEx(const_cast<void*>(data),size,nullptr,&n);}
+void register_gdi_fonts() {add_gdi_fonts();}
+namespace {
+std::map<std::wstring,std::unique_ptr<FontFamily>>& system_families() {static std::map<std::wstring,std::unique_ptr<FontFamily>> m;return m;}
 }
 bool native_fonts(int lang) {return lang>=0&&lang<13&&lang!=3&&lang!=9&&lang!=10&&lang!=11&&lang!=12;}
 std::unique_ptr<Font> font(int lang,Role role,float px) {
     const int i=role_index(role);lang=std::clamp(lang,0,12);
-    if(native_fonts(lang)&&load_fonts()&&families[i]) {
-        int style=k_style[i];if(!families[i]->IsStyleAvailable(style))style=style==FontStyleBold?FontStyleRegular:FontStyleBold;
-        return std::make_unique<Font>(families[i].get(),px,style,UnitPixel);
+    if(native_fonts(lang)&&load_fonts()) {
+        // The role's own face first, then the nearest weight that exists.
+        static const int order[ROLES][ROLES]={{0,1,5,4,3,2},{1,0,5,4,3,2},{2,3,4,5,1,0},{3,2,4,5,1,0},{4,5,3,2,1,0},{5,4,3,2,1,0}};
+        for(int k=0;k<ROLES;k++) {
+            const int f=order[i][k];if(!families[f])continue;
+            auto made=std::make_unique<Font>(families[f],px,k_style[f],UnitPixel);
+            if(made->IsAvailable())return made;
+        }
     }
     const bool bold=bold_role(role);
-    FontFamily fallback(cv_srt_i18n::font_face(cv_srt_i18n::Language(lang),bold));
-    return std::make_unique<Font>(&fallback,px,bold?FontStyleBold:FontStyleRegular,UnitPixel);
+    // The family outlives the Font (a cached Font keeps pointing at it): one object per face name, kept until release_fonts().
+    auto& family=system_families()[cv_srt_i18n::font_face(cv_srt_i18n::Language(lang),bold)];
+    if(!family)family=std::make_unique<FontFamily>(cv_srt_i18n::font_face(cv_srt_i18n::Language(lang),bold));
+    return std::make_unique<Font>(family.get(),px,bold?FontStyleBold:FontStyleRegular,UnitPixel);
+}
+
+namespace {
+std::map<std::tuple<int,int,int>,std::unique_ptr<Font>>& font_cache() {static std::map<std::tuple<int,int,int>,std::unique_ptr<Font>> cache;return cache;}
+}
+const Font& font_cached(int lang,Role role,float px) {
+    auto& cache=font_cache();
+    const auto key=std::make_tuple(std::clamp(lang,0,12),int(role),int(std::lround(px*4)));
+    auto found=cache.find(key);if(found!=cache.end())return *found->second;
+    return *(cache[key]=font(lang,role,float(std::get<2>(key))/4));
+}
+void release_fonts() {
+    font_cache().clear();system_families().clear();   // every Font and family goes before GdiplusShutdown (at exit they would be freed after it)
+    for(auto& f:families)f=nullptr;
+    family_arrays.clear();collection.reset();font_bytes.clear();loaded=false;load_failed=false;
 }
 
 // ---- Primitives ---------------------------------------------------------------
@@ -175,14 +239,14 @@ void plate(Graphics& g,RectF r,bool active,ButtonState st) {
     g.Restore(state);
 }
 void plate_label(Graphics& g,RectF r,bool active,const std::wstring& label,int lang,float px,float tracking,ButtonState st) {
-    plate(g,r,active,st);auto f=font(lang,Role::BODY600,px);r=pressed_rect(r,st);
+    plate(g,r,active,st);const Font* f=&font_cached(lang,Role::BODY600,px);r=pressed_rect(r,st);
     text(g,label,inset(r,4),*f,active?col::INK:tone(Color(255,201,208,226),st==ButtonState::HOVER?ButtonState::HOVER:ButtonState::NORMAL),StringAlignmentCenter,StringAlignmentCenter,false,tracking);
 }
 void badge_gold(Graphics& g,RectF r,const std::wstring& label,int lang,float px,float tracking) {
     const auto state=g.Save();g.SetSmoothingMode(SmoothingModeAntiAlias);
     SolidBrush shadow(Color(120,0,0,0));fill_round(g,RectF(r.X,r.Y+1,r.Width,r.Height),2,shadow);
     auto fill=lin(r,180,{{0,Color(255,255,240,180)},{.6f,Color(255,217,170,62)},{1,Color(255,176,131,42)}});fill_round(g,r,2,*fill);
-    auto f=font(lang,Role::BODY700,px);text(g,label,r,*f,col::INK,StringAlignmentCenter,StringAlignmentCenter,false,tracking);
+    const Font* f=&font_cached(lang,Role::BODY700,px);text(g,label,r,*f,col::INK,StringAlignmentCenter,StringAlignmentCenter,false,tracking);
     g.Restore(state);
 }
 void stepper_arrow(Graphics& g,RectF r,bool left,ButtonState st) {
@@ -203,7 +267,7 @@ void primary_button_red(Graphics& g,RectF r,const std::wstring& label,int lang,f
     auto border=lin(r,135,{{0,tone(col::GOLD_HI,st)},{.5f,tone(col::GOLD,st)},{1,tone(col::GOLD_LO,st)}});
     auto fill=lin(r,180,{{0,tone(Color(255,167,30,36),st)},{.55f,tone(Color(255,122,20,24),st)},{1,tone(Color(255,90,13,17),st)}});
     bordered(g,r,3,2,*border,*fill);top_highlight(g,inset(r,2),st==ButtonState::PRESSED?20:64);
-    auto f=font(lang,Role::BODY600,px*(st==ButtonState::PRESSED?0.97f:1.f));RectF t=inset(r,6);
+    const Font* f=&font_cached(lang,Role::BODY600,px*(st==ButtonState::PRESSED?0.97f:1.f));RectF t=inset(r,6);
     text(g,label,RectF(t.X,t.Y+1,t.Width,t.Height),*f,Color(170,0,0,0),StringAlignmentCenter,StringAlignmentCenter,false,tracking);
     text(g,label,t,*f,Color(255,255,255,255),StringAlignmentCenter,StringAlignmentCenter,false,tracking);
     g.Restore(state);
@@ -232,14 +296,21 @@ void button_disabled(Graphics& g,RectF r,const std::wstring& label,int lang,floa
     auto border=lin(r,135,{{0,Color(255,122,112,84)},{1,Color(255,60,50,30)}});
     auto fill=lin(r,180,{{0,Color(255,70,60,60)},{1,Color(255,44,38,38)}});
     bordered(g,r,3,2,*border,*fill);
-    auto f=font(lang,Role::BODY600,px);text(g,label,inset(r,6),*f,Color(255,150,146,146),StringAlignmentCenter,StringAlignmentCenter,false,tracking);
+    const Font* f=&font_cached(lang,Role::BODY600,px);text(g,label,inset(r,6),*f,Color(255,150,146,146),StringAlignmentCenter,StringAlignmentCenter,false,tracking);
     g.Restore(state);
 }
 void warning_box(Graphics& g,RectF r,const std::wstring& message,int lang,float px) {
     const auto state=g.Save();g.SetSmoothingMode(SmoothingModeAntiAlias);
     SolidBrush bg(Color(40,240,180,76));fill_round(g,r,3,bg);stroke_round(g,inset(r,0.5f),3,Color(110,240,180,76),1);
     SolidBrush bar(col::WARN);g.FillRectangle(&bar,r.X,r.Y+1,5.f,r.Height-2);
-    auto f=font(lang,Role::BODY500,px);text(g,message,RectF(r.X+20,r.Y,r.Width-34,r.Height),*f,Color(255,247,217,160),StringAlignmentNear,StringAlignmentCenter,true);
+    const Font* f=&font_cached(lang,Role::BODY500,px);text(g,message,RectF(r.X+20,r.Y,r.Width-34,r.Height),*f,Color(255,247,217,160),StringAlignmentNear,StringAlignmentCenter,true);
+    g.Restore(state);
+}
+void panel_gold(Graphics& g,RectF r) {
+    const auto state=g.Save();g.SetSmoothingMode(SmoothingModeAntiAlias);
+    auto border=lin(r,135,{{0,col::GOLD_HI},{.5f,col::GOLD},{1,col::GOLD_LO}});
+    auto fill=lin(r,180,{{0,Color(255,14,23,48)},{1,Color(255,8,12,26)}});
+    bordered(g,r,3,2,*border,*fill);
     g.Restore(state);
 }
 
@@ -251,15 +322,28 @@ void draw_text(Graphics& g,const std::wstring& s,RectF r,const Font& f,const Bru
     StringFormat sf;sf.SetAlignment(rtl&&h==StringAlignmentNear?StringAlignmentFar:h);sf.SetLineAlignment(v);sf.SetTrimming(StringTrimmingEllipsisCharacter);
     INT flags=StringFormatFlagsLineLimit;if(!wrap)flags|=StringFormatFlagsNoWrap;if(rtl)flags|=StringFormatFlagsDirectionRightToLeft;sf.SetFormatFlags(flags);
     const size_t sq=s.find(L'□');
+    // Right-aligned single lines are placed by their measured width: GDI+ drew nothing for Far-aligned Japanese text.
+    if(h==StringAlignmentFar&&!wrap&&!rtl&&sq==std::wstring::npos&&tracking<0.5f) {
+        StringFormat tf(StringFormat::GenericTypographic());tf.SetFormatFlags(StringFormatFlagsNoWrap|StringFormatFlagsMeasureTrailingSpaces);
+        RectF m;g.MeasureString(s.c_str(),-1,&f,PointF(0,0),&tf,&m);
+        if(m.Width<=r.Width) {
+            const float lh=f.GetHeight(&g),y=v==StringAlignmentCenter?r.Y+(r.Height-lh)/2:v==StringAlignmentFar?r.Y+r.Height-lh:r.Y;
+            g.DrawString(s.c_str(),-1,&f,PointF(r.X+r.Width-m.Width,y),&tf,&b);return;
+        }
+    }
     // Letter-spaced small caps: one glyph at a time (the fonts here kern little at these sizes).
-    if(tracking>0&&!wrap&&!rtl&&sq==std::wstring::npos) {
+    if(tracking>=0.5f&&!wrap&&!rtl&&sq==std::wstring::npos) {
         StringFormat tf(StringFormat::GenericTypographic());tf.SetFormatFlags(StringFormatFlagsNoWrap|StringFormatFlagsMeasureTrailingSpaces);
         std::vector<float> adv;float total=0;
         for(wchar_t c:s){RectF m;g.MeasureString(&c,1,&f,PointF(0,0),&tf,&m);adv.push_back(m.Width);total+=m.Width+tracking;}
         total-=tracking;const float lh=f.GetHeight(&g);
         float x=h==StringAlignmentCenter?r.X+(r.Width-total)/2:h==StringAlignmentFar?r.X+r.Width-total:r.X;
         const float y=v==StringAlignmentCenter?r.Y+(r.Height-lh)/2:v==StringAlignmentFar?r.Y+r.Height-lh:r.Y;
+        // Without grid fitting: with it each glyph drawn alone was hinted to a different whole-pixel height, so the letters
+        // of a spaced title sat unevenly. Every glyph shares one top (y), hence one baseline, whatever its accents.
+        const TextRenderingHint hint=g.GetTextRenderingHint();g.SetTextRenderingHint(TextRenderingHintAntiAlias);
         for(size_t i=0;i<s.size();i++){g.DrawString(&s[i],1,&f,PointF(x,y),&tf,&b);x+=adv[i]+tracking;}
+        g.SetTextRenderingHint(hint);
         return;
     }
     // The fonts draw the PlayStation square tiny: draw it as a box between the text around it.
@@ -288,7 +372,7 @@ float text_width(Graphics& g,const std::wstring& s,const Font& f,float tracking)
     RectF m;g.MeasureString(s.c_str(),-1,&f,PointF(0,0),&tf,&m);return m.Width+(s.size()>1?tracking*float(s.size()-1):0);
 }
 void title_gold(Graphics& g,const std::wstring& s,RectF r,int lang,float px,float tracking,StringAlignment h,StringAlignment v) {
-    auto f=font(lang,Role::TITLE,px);const float lh=f->GetHeight(&g);
+    const Font* f=&font_cached(lang,Role::TITLE,px);const float lh=f->GetHeight(&g);
     const float top=v==StringAlignmentCenter?r.Y+(r.Height-lh)/2:v==StringAlignmentFar?r.Y+r.Height-lh:r.Y;
     text(g,s,RectF(r.X,r.Y+2,r.Width,r.Height),*f,Color(178,0,0,0),h,v,false,tracking);   // the 2px dark shadow
     auto grad=lin(RectF(r.X,top,r.Width,lh),180,{{.1f,Color(255,255,243,192)},{.55f,Color(255,224,182,80)},{1,Color(255,156,116,36)}});
@@ -326,7 +410,7 @@ float glyphs_width(const std::vector<Glyph>& list) {
 }
 }
 float footer_width(Graphics& g,int lang,int kind,const std::vector<FooterGroup>& groups) {
-    auto f=font(lang,Role::BODY500,17);float total=0;int n=0;
+    const Font* f=&font_cached(lang,Role::BODY500,17);float total=0;int n=0;
     for(const auto& group:groups) {
         if(n++)total+=SEP_MARGIN*2+SEP;
         const float gw=glyphs_width(glyphs_for(group,kind));
@@ -340,7 +424,7 @@ void draw_footer(Graphics& g,RectF r,int lang,int kind,const std::vector<FooterG
     SolidBrush line(Color(255,58,46,16));g.FillRectangle(&line,r.X,r.Y,r.Width,1.f);
     auto sheen=lin(RectF(r.X,r.Y+1,r.Width,r.Height-1),90,{{0,Color(0,255,255,255)},{.5f,Color(8,255,255,255)},{1,Color(0,255,255,255)}});
     g.FillRectangle(sheen.get(),RectF(r.X,r.Y+1,r.Width,r.Height-1));
-    auto f=font(lang,Role::BODY500,17);
+    const Font* f=&font_cached(lang,Role::BODY500,17);
     const float total=footer_width(g,lang,kind,groups),avail=std::max(1.f,r.Width-24),s=total>avail?avail/total:1.f;
     const float cy=r.Y+1+(r.Height-1)/2;
     if(s<1){g.TranslateTransform(r.X+r.Width/2,cy);g.ScaleTransform(s,s);g.TranslateTransform(-(r.X+r.Width/2),-cy);}

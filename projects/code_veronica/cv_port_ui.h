@@ -26,6 +26,9 @@ const wchar_t* family_name(Role role);     // the family actually registered for
 void register_gdi_fonts();                 // AddFontMemResourceEx for GDI controls (the F7 search box), idempotent
 bool native_fonts(int lang);               // false for JA, AR, ZH, KO, RU: they use cv_srt_i18n::font_face
 std::unique_ptr<Gdiplus::Font> font(int lang,Role role,float px);   // px in design units (UnitPixel)
+// The same font, made once per (language, role, size) and kept for the program: menus that redraw build hundreds a frame.
+const Gdiplus::Font& font_cached(int lang,Role role,float px);
+void release_fonts();                      // frees the fonts and the embedded collection: call before GdiplusShutdown (they reload on the next use)
 
 // ---- Colours (mock.css) -----------------------------------------------------
 namespace col {
@@ -69,6 +72,7 @@ void primary_button_red(Gdiplus::Graphics& g,Gdiplus::RectF r,const std::wstring
 void close_button(Gdiplus::Graphics& g,Gdiplus::RectF r,ButtonState st=ButtonState::NORMAL);   // gold-ring round button with an X
 void button_disabled(Gdiplus::Graphics& g,Gdiplus::RectF r,const std::wstring& label,int lang,float px=19,float tracking=1.4f);
 void warning_box(Gdiplus::Graphics& g,Gdiplus::RectF r,const std::wstring& message,int lang,float px=19);   // amber bar #F0B44C
+void panel_gold(Gdiplus::Graphics& g,Gdiplus::RectF r);                // dark panel with a 2px gold gradient border (the item banner, previews)
 void diamond(Gdiplus::Graphics& g,float cx,float cy,float size);        // the gold separator
 // Gold gradient title (Cinzel 700): #FFF3C0 -> #E0B650 -> #9C7424 with a 2px dark shadow.
 void title_gold(Gdiplus::Graphics& g,const std::wstring& s,Gdiplus::RectF r,int lang,float px,float tracking=2,

@@ -3,6 +3,9 @@
 // write from the game frame, and the menu's navigation. With an output
 // folder (and a game copy for the item art) it also draws the menu to PNGs.
 #include "../cv_items.h"
+#include "../cv_port_ui.h"
+#include "../cv_item_icons_hd.h"
+#include "../cv_srt_icons.h"
 #include "../cv_item_menu.h"
 #include "../cv_items_i18n.h"
 #include "../cv_srt_i18n.h"
@@ -30,8 +33,12 @@ int pad_phys_poll(int,PadPhys*) {return 0;}
 void cv_focus_pause_hold(int) {}
 void perf_overlay_toast(const wchar_t*,int) {}
 int pad_phys_360_layout(int) {return 0;}   // cv_port_ui::menu_pad
+int pad_last_input(void) {return PAD_INPUT_KEYBOARD;}   // the menu window
 }
-std::wstring cv_key_cap_label(int) {return L"";}   // button_icons.cpp: the keycaps the footer draws
+std::wstring cv_key_cap_label(int vk) {   // button_icons.cpp: the keycaps the footer draws
+    if(vk==0x0D)return L"Enter";if(vk==0x1B)return L"Esc";if(vk>=0x70&&vk<=0x87)return L"F"+std::to_wstring(vk-0x6F);
+    return vk>0?std::wstring(1,wchar_t(vk)):std::wstring();
+}
 using namespace cv_items;
 static const uint32_t state=CV_SRT_CHARACTER-0x94;
 static uint32_t entry_address(int character,int entry) {return CV_SRT_INVENTORY+character*0x40+4+entry*4;}
@@ -76,8 +83,25 @@ static void check_catalog() {
         assert(i.counted?(i.quantity>=1&&i.quantity<=i.maximum):i.maximum==i.quantity);
     }
     for(int c=0;c<CATEGORY_COUNT;c++)assert(per[c]>0);
+    // Only items with a real icon on the game pages; the Side Pack and "File" are gone.
+    for(const auto& i:catalog()) {cv_srt_icons::Sprite sp;assert(cv_srt_icons::sprite(i.id,sp));}
+    assert(!info(0x39)&&!info(0x7D)&&!info(0x4A)&&!info(0x26)&&!info(0x6D)&&!info(0x6E)&&!info(0x2F)&&!info(0x3A)&&!info(0x89));
+    assert(items(OTHER)==std::vector<int>({0x91,0x1F,0x6A,0x3F,0x80,0x81}));   // manual, ink ribbon, security file, 3 briefcases
+    assert(cv_srt_i18n::item(0x91,cv_srt_i18n::EN)==L"Playing Manual"&&cv_srt_i18n::item(0x1F,cv_srt_i18n::EN)==L"Ink Ribbon"&&cv_srt_i18n::item(0x6A,cv_srt_i18n::EN)==L"Security File");
+    for(int id:{0x3F,0x80,0x81})assert(cv_srt_i18n::item(id,cv_srt_i18n::EN).find(L"Case:")==0);
+    {   // the weapons, in the names of the translation
+        const wchar_t* pt[]={L"Pistola",L"Pistola aprimorada",L"Pistola personalizada",L"Glock 17",L"Lugers douradas",L"Espingarda",L"Magnum",L"Lança-granadas",
+            L"Besta",L"Rifle de precisão",L"Fuzil de assalto",L"Submetralhadoras",L"M1P",L"Lança-foguetes",L"Canhão linear",L"Faca de combate"};
+        const wchar_t* en[]={L"Handgun",L"Enhanced handgun",L"Custom handgun",L"Glock 17",L"Gold Lugers",L"Shotgun",L"Magnum",L"Grenade launcher",
+            L"Bow gun",L"Sniper rifle",L"Assault rifle",L"Submachine guns",L"M1P",L"Rocket launcher",L"Linear launcher",L"Combat knife"};
+        const auto weapons=items(WEAPONS);assert(weapons.size()==16);
+        for(size_t i=0;i<16;i++) {
+            assert(cv_srt_i18n::item(weapons[i],cv_srt_i18n::PT)==pt[i]);assert(cv_srt_i18n::item(weapons[i],cv_srt_i18n::EN)==en[i]);
+        }
+    }
     assert(info(9)->category==WEAPONS&&info(0x0C)->category==AMMO&&info(0x15)->category==HEALING);
     assert(info(0x43)->category==KEY_ITEMS&&info(0x1F)->category==OTHER&&!info(0x8D));
+    assert(items(AMMO).size()==14&&items(HEALING).size()==10);
     for(int l=0;l<13;l++)for(int s=0;s<cv_items_i18n::COUNT;s++)assert(cv_items_i18n::k_text[l][s]&&*cv_items_i18n::k_text[l][s]);
 }
 static void check_encoding() {
@@ -89,7 +113,7 @@ static void check_encoding() {
     assert(encode(2,150)==0x00020064u);          // assault rifle: 100 %
     assert(encode(6,99)==0x00060032u);           // grenade launcher: type bits stay clear
     assert(encode(0x0C,0)==0x000C0001u&&encode(0x0C,9999)==0x000C00FAu);
-    assert(encode(0x98,4)==0x00980004u);         // the crest keys are counted
+    assert(encode(0x78,4)==0x00780004u);         // the wing objects are counted
 }
 static void check_read() {
     for(int c=0;c<4;c++) {
@@ -140,6 +164,145 @@ static void check_place() {
     begin(0);vm_write32(state+0x74,2);assert(place(read(),0x15,0,why)==1&&why==R_NONE);           // a fade: still placed
     begin(0);vm_write32(state+0x70,0x08000000);assert(place(read(),0x15,0,why)<0&&why==R_NOT_PLAYING);   // the save screen
 }
+static void check_wide() {
+    for(int id:{1,2,3,0x21,0x22,0x8E})assert(wide(id)&&info(id)->category==WEAPONS);
+    for(int id:{9,0x83,0x0A,5,4,0x20,6,7,8,0x0B,0x15,0x0C})assert(!wide(id));
+    Result why;
+    // 8 spaces: handgun, shotgun, rifle (2), lugers (2), magnum: 7 used, one free, entry 6 is empty.
+    const uint32_t full7[]={0x00370001,0x0009000F,0x00040007,0x00030007,0x00210014,0x00200006};
+    begin(0);fill(0,{full7[0],full7[1],full7[2],full7[3],full7[4],full7[5]},2);
+    auto inv=read();
+    assert(inv.used()==5&&inv.spaces_used()==7&&inv.free_spaces()==1&&inv.first_empty()==6);
+    assert(place(inv,3,0,why)<0&&why==R_NO_ROOM_WIDE);                 // the rifle needs two
+    assert(place(inv,0x8E,0,why)<0&&why==R_NO_ROOM_WIDE);
+    assert(place(inv,0x20,0,why)==6&&why==R_NONE);                      // a single one fits
+    assert(place(inv,3,2,why)==2);                                      // replacing the shotgun (1 free + 1 back = 2)
+    assert(place(inv,3,3,why)==3);                                      // replacing the rifle itself
+    assert(place(inv,3,1,why)<0&&why==R_EQUIPPED);
+    assert(place(inv,0x15,2,why)==2);                                   // normal for wide: always fits
+    {   // change() on the game thread refuses it too: nothing is written
+        assert(request(0,3,7,6,inv.entry[6])==R_QUEUED);
+        const auto before=memory;frame();assert(memory==before&&last().result==R_NO_ROOM_WIDE);
+        assert(request(0,3,7,2,inv.entry[2])==R_QUEUED);frame();      // replacing a normal item: fits
+        assert(last().result==R_DONE&&vm_read32(entry_address(0,2))==0x00030007u);
+        // That made it 8 of 8: the empty entry 6 takes no one.
+        const auto now=read();assert(now.free_spaces()==0&&now.first_empty()==6);
+        assert(place(now,0x15,0,why)<0&&why==R_FULL);
+        assert(request(0,0x15,1,6,0)==R_QUEUED);const auto b2=memory;frame();assert(memory==b2&&last().result==R_FULL);
+    }
+    // Two free spaces: a wide weapon goes in.
+    begin(0);fill(0,{full7[0],full7[1],full7[2],full7[3],full7[4]},2);inv=read();
+    assert(inv.spaces_used()==6&&inv.free_spaces()==2);
+    assert(place(inv,2,0,why)==5&&run(0,2,100,0)==R_DONE&&vm_read32(entry_address(0,5))==0x00020064u);
+    assert(read().free_spaces()==0);
+    // Side Pack: 10 spaces.
+    begin(0,true);fill(0,{full7[0],full7[1],full7[2],full7[3],full7[4],0x00220064,0x00010004},2);inv=read();
+    assert(inv.capacity==10&&inv.used()==6&&inv.spaces_used()==10&&inv.free_spaces()==0&&inv.first_empty()==7);   // 4 wide entries
+    assert(place(inv,0x15,0,why)<0&&why==R_FULL&&place(inv,3,0,why)<0&&why==R_NO_ROOM_WIDE);
+    begin(0,true);fill(0,{full7[0],full7[1],full7[2],full7[3],full7[4]},2);inv=read();
+    assert(inv.spaces_used()==6&&inv.free_spaces()==4&&place(inv,3,0,why)==5);
+    // Replacing a wide by a normal item frees a space.
+    begin(0);fill(0,{full7[0],full7[1],full7[2],full7[3],full7[4],full7[5]},2);
+    assert(run(0,0x15,1,3)==R_DONE&&read().free_spaces()==2);
+    while(pending())frame();
+    // The menu: with one free space the rifle's default is out; only the entries that give enough room are offered.
+    begin(0);fill(0,{full7[0],full7[1],full7[2],full7[3],full7[4],full7[5]},2);
+    cv_item_menu::View v;refresh(v,read());v.category=WEAPONS;v.selected=9;   // the rifle
+    assert(v.item()==3);
+    cv_item_menu::apply(v,cv_item_menu::CONFIRM);
+    assert(v.focus==1&&v.target==2&&cv_item_menu::targets(v)==std::vector<int>({2,3,4,5}));
+    v.target=0;assert(cv_item_menu::submit(v)==R_NO_ROOM_WIDE&&v.tone==cv_item_menu::BAD&&pending()==0);
+    assert(v.status==cv_items_i18n::k_text[v.language][cv_items_i18n::NO_TWO_SLOTS]);
+    v.category=WEAPONS;v.selected=13;v.focus=0;    // the rocket launcher: same
+    assert(v.item()==1);cv_item_menu::apply(v,cv_item_menu::CONFIRM);assert(!cv_item_menu::targets(v).empty()&&cv_item_menu::targets(v).front()!=0);
+    v.selected=6;v.focus=0;assert(v.item()==0x20);cv_item_menu::apply(v,cv_item_menu::CONFIRM);assert(cv_item_menu::targets(v).front()==0);   // the magnum fits
+}
+static void check_layout() {
+    auto count=[](const std::vector<Cell>& l,Cell::Kind k){int n=0;for(const auto& c:l)n+=c.kind==k;return n;};
+    auto at=[](const std::vector<Cell>& l,int entry)->const Cell*{for(const auto& c:l)if(c.kind==Cell::ITEM&&c.entry==entry)return &c;return nullptr;};
+    auto cells=[](const std::vector<Cell>& l){int n=0;for(const auto& c:l)if(c.kind!=Cell::LOCKED)n+=c.span;return n;};
+    // The preview inventory: two ordinary, two wide: rows [1 2] [rifle] [lugers] [empty empty] [locked locked].
+    begin(0);fill(0,{0x00370001,0x0009000F,0x00040007,0x00030007,0x00210014},2);
+    auto l=layout(read());
+    assert(count(l,Cell::ITEM)==4&&count(l,Cell::EMPTY)==2&&count(l,Cell::LOCKED)==2&&cells(l)==8);
+    assert(at(l,1)->row==0&&at(l,1)->col==0&&at(l,1)->span==1&&at(l,2)->row==0&&at(l,2)->col==1);
+    assert(at(l,3)->row==1&&at(l,3)->col==0&&at(l,3)->span==2&&at(l,4)->row==2&&at(l,4)->span==2);
+    for(const auto& c:l)if(c.kind==Cell::EMPTY)assert(c.row==3);else if(c.kind==Cell::LOCKED)assert(c.row==4);
+    // A wide that would start in the right column moves down and leaves that cell open.
+    begin(0);fill(0,{0x00370001,0x0009000F,0x00030007},2);l=layout(read());
+    assert(at(l,1)->row==0&&at(l,1)->col==0&&at(l,2)->row==1&&at(l,2)->span==2);
+    {int holes=0;for(const auto& c:l)if(c.kind==Cell::EMPTY&&c.row==0&&c.col==1)holes++;assert(holes==1);}
+    assert(cells(l)==8&&count(l,Cell::EMPTY)==5);
+    // ... which the next ordinary item takes.
+    begin(0);fill(0,{0x00370001,0x0009000F,0x00030007,0x00200006},2);l=layout(read());
+    assert(at(l,3)->row==0&&at(l,3)->col==1&&at(l,2)->row==1&&cells(l)==8&&count(l,Cell::EMPTY)==4);
+    // Wide after a wide: no hole.
+    begin(0);fill(0,{0x00370001,0x00030007,0x00210014,0x0009000F},2);l=layout(read());
+    assert(at(l,1)->row==0&&at(l,2)->row==1&&at(l,3)->row==2&&at(l,3)->col==0&&cells(l)==8);
+    // Side Pack: ten cells, no locked ones. Nothing: eight empty and two locked.
+    begin(0,true);fill(0,{0x00370001,0x00090001,0x00090001,0x00090001});l=layout(read());
+    assert(count(l,Cell::LOCKED)==0&&cells(l)==10&&count(l,Cell::ITEM)==3&&count(l,Cell::EMPTY)==7);
+    {Inventory none;l=layout(none);assert(count(l,Cell::EMPTY)==8&&count(l,Cell::LOCKED)==2);}
+    // Every row is at most two cells wide, no cell is used twice.
+    begin(0,true);fill(0,{0x00370001,0x00030007,0x00090001,0x00210014,0x00090001,0x00090001,0x00220064,0x00090001},2);l=layout(read());
+    {int grid[16][2]={};for(const auto& c:l){assert(c.row<16&&c.col+c.span<=2);for(int k=0;k<c.span;k++)assert(++grid[c.row][c.col+k]==1);}}
+}
+#ifdef _WIN32
+static uint64_t region_hash(Gdiplus::Bitmap& b,int x,int y,int w,int h) {
+    Gdiplus::BitmapData d{};Gdiplus::Rect r(x,y,w,h);const auto ok=b.LockBits(&r,Gdiplus::ImageLockModeRead,PixelFormat32bppARGB,&d);assert(ok==Gdiplus::Ok);(void)ok;
+    uint64_t hash=1469598103934665603ull;
+    for(int j=0;j<h;j++){const uint8_t* row=static_cast<const uint8_t*>(d.Scan0)+j*d.Stride;for(int i=0;i<w*4;i++){hash^=row[i];hash*=1099511628211ull;}}
+    b.UnlockBits(&d);return hash;
+}
+static const cv_item_menu::Hit* find_hit(const cv_item_menu::View& v,int kind,int value) {
+    for(const auto& h:v.hits)if(h.kind==kind&&h.value==value)return &h;
+    return nullptr;
+}
+// Hover and pressed feedback on every kind of clickable control; HD icons with the atlas as fallback; every language draws.
+static void check_drawing() {
+    using namespace cv_item_menu;
+    for(const auto& i:catalog())assert(cv_item_icons_hd::get(i.id));            // every offered item has its HD icon
+    assert(cv_item_icons_hd::get(0x26)==nullptr&&cv_item_icons_hd::get(0x39)==nullptr);   // none for an id without a file: the atlas, else the name
+    begin(0);fill(0,{0x00370001,0x0009000F,0x00040007,0x00030007,0x00210014,0x00200006},2);
+    View v;v.language=0;refresh(v,read());v.selected=6;
+    Gdiplus::Bitmap bmp(W,H,PixelFormat32bppARGB);
+    auto render=[&](){Gdiplus::Graphics g(&bmp);draw(g,v,L"");};
+    render();
+    // Every kind of control: normal, hover and pressed look different.
+    const struct {int kind,value;} controls[]={{HIT_CLOSE,0},{HIT_TAB,2},{HIT_ITEM,1},{HIT_SLOT,2},{HIT_QTY_PLUS,0},{HIT_TARGET_PREV,0}};
+    for(const auto& ctl:controls) {
+        v.mouse.leave();render();const auto* hit=find_hit(v,ctl.kind,ctl.value);assert(hit);
+        const int x=int(hit->rect.X),y=int(hit->rect.Y),w=int(hit->rect.Width),h=int(hit->rect.Height);
+        const auto normal=region_hash(bmp,x,y,w,h);
+        v.mouse.move(hit_id(ctl.kind,ctl.value));render();const auto hover=region_hash(bmp,x,y,w,h);
+        v.mouse.down(hit_id(ctl.kind,ctl.value));render();const auto pressed=region_hash(bmp,x,y,w,h);
+        assert(normal!=hover&&hover!=pressed&&normal!=pressed);
+        v.mouse.leave();
+    }
+    {   // the main button, enabled: three looks
+        v.mouse.leave();render();const auto* b=find_hit(v,HIT_PLACE,0);assert(b);
+        const int x=int(b->rect.X),y=int(b->rect.Y),w=int(b->rect.Width),h=int(b->rect.Height);
+        const auto normal=region_hash(bmp,x,y,w,h);v.mouse.move(hit_id(HIT_PLACE,0));render();const auto hover=region_hash(bmp,x,y,w,h);
+        v.mouse.down(hit_id(HIT_PLACE,0));render();assert(normal!=hover&&hover!=region_hash(bmp,x,y,w,h));v.mouse.leave();
+    }
+    {   // the footer follows the input device
+        v.input=PAD_INPUT_KEYBOARD;render();const auto kb=region_hash(bmp,24,776,1352,40);
+        v.input=PAD_KIND_DS4;render();const auto ps=region_hash(bmp,24,776,1352,40);
+        v.input=PAD_KIND_XINPUT;render();const auto xb=region_hash(bmp,24,776,1352,40);
+        v.input=PAD_KIND_SWITCH;render();const auto sw=region_hash(bmp,24,776,1352,40);
+        assert(kb!=ps&&ps!=xb&&xb!=sw&&kb!=xb&&ps!=sw);v.input=PAD_INPUT_KEYBOARD;
+    }
+    {   // the hits hold the geometry of the design: close, tabs, 16 cells, button
+        render();const auto* close=find_hit(v,HIT_CLOSE,0);assert(close&&close->rect.X==1334&&close->rect.Y==14&&close->rect.Width==40&&close->rect.Height==40);
+        for(int i=0;i<5;i++)assert(find_hit(v,HIT_TAB,i));
+        for(int i=0;i<16;i++)assert(find_hit(v,HIT_ITEM,i));
+        const auto* cell0=find_hit(v,HIT_ITEM,0);assert(cell0&&cell0->rect.Width==220&&cell0->rect.Height==104&&cell0->rect.X==37&&cell0->rect.Y==143);
+        const auto* place=find_hit(v,HIT_PLACE,0);assert(place&&place->rect.X==976&&place->rect.Y==700&&place->rect.Width==400&&place->rect.Height==42);
+        assert(hit_at(v,close->rect.X+5,close->rect.Y+5)==close&&!hit_at(v,2,2));
+    }
+    for(int l=0;l<13;l++)for(int c=0;c<CATEGORY_COUNT;c++){v.language=l;v.category=c;v.selected=0;v.mouse.leave();render();}
+}
+#endif
 static void check_writes() {
     seen_serial=outcome_serial();
     for(int c=0;c<4;c++) {   // Claire, Chris, Steve, Wesker: each their own entries
@@ -282,65 +445,82 @@ static void check_navigation() {
 }
 #ifdef _WIN32
 #pragma comment(lib,"gdiplus.lib")
-static void export_png(const std::string& file,cv_item_menu::View& v,const std::wstring& game,int w,int h) {
+// Draws the window to a PNG: `backdrop` centres it on a dark game-like canvas (1920x1080 as the approved previews), else the
+// window fills the image.
+static void export_png(const std::string& file,cv_item_menu::View& v,const std::wstring& game,int w,int h,bool backdrop=false) {
     using namespace Gdiplus;
     Bitmap image(w,h,PixelFormat32bppARGB);
-    {Graphics g(&image);g.ScaleTransform(float(w)/cv_item_menu::W,float(h)/cv_item_menu::H);cv_item_menu::draw(g,v,game);}
+    {Graphics g(&image);
+     if(backdrop) {
+         LinearGradientBrush bg(Point(0,0),Point(w,h),Color(255,40,18,14),Color(255,8,8,12));g.FillRectangle(&bg,0,0,w,h);
+         const float s=std::min(w/1920.f,h/1080.f);
+         g.TranslateTransform((w-cv_item_menu::W*s)/2,(h-cv_item_menu::H*s)/2+5*s);g.ScaleTransform(s,s);
+     } else g.ScaleTransform(float(w)/cv_item_menu::W,float(h)/cv_item_menu::H);
+     cv_item_menu::draw(g,v,game);}
     UINT n=0,size=0;GetImageEncodersSize(&n,&size);std::vector<uint8_t> buffer(size);
     auto* codecs=reinterpret_cast<ImageCodecInfo*>(buffer.data());GetImageEncoders(n,size,codecs);
     CLSID png{};for(UINT i=0;i<n;i++)if(!wcscmp(codecs[i].MimeType,L"image/png"))png=codecs[i].Clsid;
     const std::wstring name(file.begin(),file.end());
-    assert(image.Save(name.c_str(),&png)==Ok);
+    const auto saved=image.Save(name.c_str(),&png);assert(saved==Ok);(void)saved;
 }
 static void previews(const char* folder,const char* game_path) {
     using namespace cv_item_menu;
     const std::string dir=folder;std::wstring game;if(game_path)for(const char* c=game_path;*c;c++)game+=wchar_t(*c);
     auto file=[&](const char* tag){return dir+"/items-"+CV_TITLE_ID+"-"+tag+".png";};
-    // Claire mid-game: her lighter, a few weapons and herbs.
-    begin(0);fill(0,{0x00370001,0x00090010,0x00080000,0x000C001E,0x00150001,0x001F0002,0x00430001},2);
-    View v;v.language=0;refresh(v,read());apply(v,DOWN);
-    export_png(file("pt-grid"),v,game,1120,700);
-    const auto close=std::find_if(v.hits.begin(),v.hits.end(),[](const Hit& hit){return hit.kind==HIT_CLOSE;});
-    assert(close!=v.hits.end());
-    assert(close->rect.X==float(W-32-24)&&close->rect.Y==31&&close->rect.Width==24&&close->rect.Height==24);
-    apply(v,CONFIRM);apply(v,RIGHT);apply(v,RIGHT);apply(v,RIGHT);
-    export_png(file("pt-panel"),v,game,1680,1050);
-    apply(v,DOWN);apply(v,RIGHT);apply(v,RIGHT);
-    export_png(file("pt-replace"),v,game,1120,700);
-    submit(v);   // queued: shown in place at once, written when the menu closes
-    export_png(file("pt-queued"),v,game,1120,700);
-    set_enabled(false);set_enabled(true);
-    set_enabled(false);set_enabled(true);refresh(v,read());
-    v.focus=0;apply(v,REMOVE);apply(v,DOWN);
-    export_png(file("pt-remove"),v,game,1120,700);
-    v.focus=0;v.category=KEY_ITEMS;v.selected=9;v.status.clear();
-    export_png(file("pt-key-item"),v,game,1120,700);
-    // Chris, Side Pack, full; Japanese and English texts.
+    // The approved previews: Claire with the pistol equipped, the shotgun, the rifle and the gold Lugers.
+    const uint32_t base[]={0x00370001,0x0009000F,0x00040007,0x00030007,0x00210014};
+    begin(0);fill(0,{base[0],base[1],base[2],base[3],base[4]},2);
+    View a;a.language=0;a.selected=6;a.input=PAD_INPUT_KEYBOARD;refresh(a,read());     // inventario-a: PT, keyboard, Magnum
+    export_png(file("pt-kb"),a,game,1920,1080,true);
+    begin(0);fill(0,{base[0],base[1],base[2],base[3],base[4],0x00200006},2);
+    View b;b.language=0;b.selected=9;b.input=PAD_KIND_DS4;refresh(b,read());           // inventario-b: PT, PlayStation, the rifle refused
+    export_png(file("pt-ps"),b,game,1920,1080,true);
+    begin(0);fill(0,{base[0],base[1],base[2],base[3],base[4]},2);
+    View c;c.language=1;c.selected=6;c.input=PAD_KIND_XINPUT;refresh(c,read());       // inventario-c: EN, Xbox
+    export_png(file("en-xbox"),c,game,1920,1080,true);
+    // Switch glyphs, the panel open with the quantity chosen, and the mouse over / on controls.
+    View sw=c;sw.input=PAD_KIND_SWITCH;sw.mouse.leave();export_png(file("en-switch"),sw,game,1400,820);
+    View panel=a;panel.input=PAD_INPUT_KEYBOARD;apply(panel,CONFIRM);apply(panel,RIGHT);apply(panel,RIGHT);apply(panel,DOWN);
+    export_png(file("pt-panel"),panel,game,1400,820);
+    // A wide weapon with the panel open: its two spaces are shown where it would go.
+    begin(0);fill(0,{base[0],base[1],base[2]},2);
+    View wide_panel;wide_panel.language=0;wide_panel.selected=13;refresh(wide_panel,read());apply(wide_panel,CONFIRM);
+    export_png(file("pt-wide-panel"),wide_panel,game,1400,820);
+    View hover=a;hover.mouse.move(hit_id(HIT_ITEM,2));export_png(file("pt-hover-cell"),hover,game,1400,820);
+    View tab=a;tab.mouse.move(hit_id(HIT_TAB,3));export_png(file("pt-hover-tab"),tab,game,1400,820);
+    View close=a;close.mouse.down(hit_id(HIT_CLOSE,0));export_png(file("pt-pressed-close"),close,game,1400,820);
+    View button=a;button.mouse.down(hit_id(HIT_PLACE,0));export_png(file("pt-pressed-button"),button,game,1400,820);
+    // Removing, a key item, a full inventory with the Side Pack, a screen open in the game.
+    begin(0);fill(0,{base[0],base[1],base[2],base[3],base[4],0x00200006},2);
+    View remove;remove.language=0;refresh(remove,read());apply(remove,REMOVE);apply(remove,DOWN);
+    export_png(file("pt-remove"),remove,game,1400,820);
+    View key;key.language=0;refresh(key,read());key.category=KEY_ITEMS;key.selected=9;apply(key,DOWN);apply(key,DOWN);
+    export_png(file("pt-key-item"),key,game,1400,820);
     begin(1,true);fill(1,{0,0x00080000,0x0005000F,0x000C001E,0x00140001,0x00150001,0x00160001,0x00170001,0x00430001,0x00210014,0x000F0006},3);
     View full;full.language=3;refresh(full,read());full.category=HEALING;full.selected=1;apply(full,CONFIRM);
-    export_png(file("ja-full"),full,game,1920,1080);
-    full.language=1;full.status.clear();export_png(file("en-full"),full,game,1280,720);
-    // A screen open in the game: the button greys out.
-    begin(0);fill(0,{0x00370001,0x00090010},2);vm_write32(state+0x64,0x8080);
+    export_png(file("ja-full"),full,game,1400,820);
+    full.language=1;full.status.clear();export_png(file("en-full"),full,game,1400,820);
+    begin(0);fill(0,{base[0],base[1]},2);vm_write32(state+0x64,0x8080);
     View busy;busy.language=0;refresh(busy,read());busy.category=AMMO;apply(busy,CONFIRM);
-    export_png(file("pt-not-playing"),busy,game,1120,700);
-    for(int l=0;l<13;l++) {   // every language's longest texts in place
-        begin(0);fill(0,{0x00370001,0x00090010,0x000C001E},2);
-        View each;each.language=l;refresh(each,read());each.category=KEY_ITEMS;apply(each,CONFIRM);
-        each.status=cv_items_i18n::k_text[l][cv_items_i18n::NOT_PLAYING];each.tone=cv_item_menu::WARN;
-        char tag[32];std::snprintf(tag,sizeof tag,"lang-%02d",l);export_png(file(tag),each,game,1120,700);
+    export_png(file("pt-not-playing"),busy,game,1400,820);
+    for(int l=0;l<13;l++) {   // every language's texts in place
+        begin(0);fill(0,{base[0],base[1],base[2],base[3],base[4]},2);
+        View each;each.language=l;refresh(each,read());each.category=KEY_ITEMS;each.selected=0;apply(each,CONFIRM);
+        each.status=cv_items_i18n::k_text[l][cv_items_i18n::NO_TWO_SLOTS];each.tone=cv_item_menu::BAD;each.input=PAD_KIND_XINPUT;
+        char tag[32];std::snprintf(tag,sizeof tag,"lang-%02d",l);export_png(file(tag),each,game,1400,820);
     }
 }
 #endif
 int main(int argc,char** argv) {
-    check_catalog();check_encoding();check_read();check_place();check_writes();check_navigation();
+    check_catalog();check_encoding();check_read();check_place();check_wide();check_layout();check_writes();check_navigation();
 #ifdef _WIN32
-    if(argc>1) {
-        Gdiplus::GdiplusStartupInput input;ULONG_PTR token=0;Gdiplus::GdiplusStartup(&token,&input,nullptr);
-        previews(argv[1],argc>2?argv[2]:nullptr);
-        cv_item_menu::release();
-        Gdiplus::GdiplusShutdown(token);
-    }
+    Gdiplus::GdiplusStartupInput input;ULONG_PTR token=0;Gdiplus::GdiplusStartup(&token,&input,nullptr);
+    cv_port_ui::fonts_available();   // loaded before any Graphics exists, as the menu window does when it opens
+    check_drawing();
+    if(argc>1)previews(argv[1],argc>2?argv[2]:nullptr);
+    cv_item_menu::release();cv_item_icons_hd::release();
+    // No GdiplusShutdown: the keycap cache (cv_keycap::draw) holds GDI+ images in a function-static map that is destroyed at exit.
+    (void)token;
 #endif
     std::printf("cv_items tests passed (%s, %zu items)\n",CV_TITLE_ID,catalog().size());
     return 0;

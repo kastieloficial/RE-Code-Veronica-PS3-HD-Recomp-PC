@@ -8,9 +8,11 @@ enum Id {
     QUANTITY, SLOT, FIRST_FREE, REPLACE_FMT, PLACE,
     WARN_KEY, NOTE_SAVE, FULL, NO_EQUIPPED, NOT_PLAYING, DONE_FMT, CHANGED, WAITING,
     HELP_KEYS, HELP_PAD, QUEUED_FMT, QUEUE_FULL, PAUSED, ADDED_N_FMT,
-    REMOVE, REMOVE_PICK, REMOVE_QUEUED_FMT, REMOVED_FMT, NO_REMOVE_EQUIPPED, CHANGES_N_FMT, COUNT
+    REMOVE, REMOVE_PICK, REMOVE_QUEUED_FMT, REMOVED_FMT, NO_REMOVE_EQUIPPED, CHANGES_N_FMT,
+    TWO_SLOTS, NO_TWO_SLOTS, KIND_WEAPON, KIND_AMMO, KIND_HEALING, KIND_KEY, KIND_OTHER, TAKES_1, TAKES_2, FREE_1, FREE_N_FMT, TAB_AMMO, TAB_OTHER, EQUIPPED_BADGE,
+    QTY_LABEL_WEAPON, QTY_LABEL_CHARGE, QTY_LABEL_AMMO, QTY_LABEL_SINGLE, QTY_HINT_AMMO, COUNT
 };
-inline const wchar_t* const k_text[13][COUNT] = {
+inline constexpr const wchar_t* const k_text[13][COUNT] = {
 { // Português (Brasil)
 L"INVENTÁRIO",L"Menu de itens",L"Armas",L"Munição",L"Cura",L"Itens-chave",L"Arquivos e outros",
 L"INVENTÁRIO ATUAL",L"%d de %d espaços",L"Fixo",L"Equipado",L"Vazio",L"Bolsa lateral",
@@ -24,7 +26,7 @@ L"Colocado no espaço %d: %ls",L"O inventário mudou. Confira e tente de novo.",
 L"Setas escolher · Q/E categoria · Enter confirmar · R remover · Esc voltar · F6 fechar",
 L"Controle: ✕/A confirmar · ○/B voltar · □/X remover · L1/R1 (LB/RB) categoria",
 L"Espaço %d: %ls. Entra assim que você fechar o menu.",L"A fila está cheia: feche o menu para colocar os itens escolhidos.",L"Jogo pausado",L"%d itens colocados no inventário",
-L"REMOVER DO INVENTÁRIO",L"Escolha no inventário o item a remover e confirme.",L"Espaço %d: %ls sai assim que você fechar o menu.",L"Removido do espaço %d: %ls",L"A arma equipada não pode ser removida.",L"%d mudanças feitas no inventário"},
+L"REMOVER DO INVENTÁRIO",L"Escolha no inventário o item a remover e confirme.",L"Espaço %d: %ls sai assim que você fechar o menu.",L"Removido do espaço %d: %ls",L"A arma equipada não pode ser removida.",L"%d mudanças feitas no inventário",L"2 espaços",L"Não há 2 espaços livres lado a lado.",L"Arma",L"Munição",L"Cura",L"Item-chave",L"Arquivo e outros",L"Ocupa 1 espaço",L"Ocupa 2 espaços",L"1 espaço livre no inventário.",L"%d espaços livres no inventário.",L"Munição",L"Arquivos",L"EQUIPADA",L"Munição",L"Carga",L"Qtd. de munição",L"Qtd.",L"Quantidade de munição que será colocada."},
 { // English
 L"INVENTORY",L"Item menu",L"Weapons",L"Ammunition",L"Recovery",L"Key items",L"Files and other",
 L"CURRENT INVENTORY",L"%d of %d spaces",L"Fixed",L"Equipped",L"Empty",L"Side Pack",
@@ -38,7 +40,7 @@ L"Put in space %d: %ls",L"The inventory changed. Check it and try again.",L"Wait
 L"Arrows choose · Q/E category · Enter confirm · R remove · Esc back · F6 close",
 L"Controller: ✕/A confirm · ○/B back · □/X remove · L1/R1 (LB/RB) category",
 L"Space %d: %ls. It goes in as soon as you close the menu.",L"The queue is full: close the menu to put the chosen items in.",L"Game paused",L"%d items put in the inventory",
-L"REMOVE FROM INVENTORY",L"Choose the item to remove in the inventory and confirm.",L"Space %d: %ls leaves as soon as you close the menu.",L"Removed from space %d: %ls",L"The equipped weapon cannot be removed.",L"%d changes made to the inventory"},
+L"REMOVE FROM INVENTORY",L"Choose the item to remove in the inventory and confirm.",L"Space %d: %ls leaves as soon as you close the menu.",L"Removed from space %d: %ls",L"The equipped weapon cannot be removed.",L"%d changes made to the inventory",L"2 slots",L"There are no 2 free slots side by side.",L"Weapon",L"Ammunition",L"Recovery",L"Key item",L"File & other",L"Takes 1 slot",L"Takes 2 slots",L"1 free slot in the inventory.",L"%d free slots in the inventory.",L"Ammo",L"Files",L"EQUIPPED",L"Ammo",L"Charge",L"Ammo qty",L"Qty",L"Amount of ammo that will be placed."},
 { // Español
 L"INVENTARIO",L"Menú de objetos",L"Armas",L"Munición",L"Curación",L"Objetos clave",L"Archivos y otros",
 L"INVENTARIO ACTUAL",L"%d de %d espacios",L"Fijo",L"Equipada",L"Vacío",L"Bolsa lateral",
@@ -52,7 +54,7 @@ L"Puesto en el espacio %d: %ls",L"El inventario cambió. Revísalo e inténtalo 
 L"Flechas elegir · Q/E categoría · Enter confirmar · R quitar · Esc volver · F6 cerrar",
 L"Mando: ✕/A confirmar · ○/B volver · □/X quitar · L1/R1 (LB/RB) categoría",
 L"Espacio %d: %ls. Entra en cuanto cierres el menú.",L"La cola está llena: cierra el menú para poner los objetos elegidos.",L"Juego en pausa",L"%d objetos puestos en el inventario",
-L"QUITAR DEL INVENTARIO",L"Elige en el inventario el objeto que quitar y confirma.",L"Espacio %d: %ls sale en cuanto cierres el menú.",L"Quitado del espacio %d: %ls",L"El arma equipada no se puede quitar.",L"%d cambios hechos en el inventario"},
+L"QUITAR DEL INVENTARIO",L"Elige en el inventario el objeto que quitar y confirma.",L"Espacio %d: %ls sale en cuanto cierres el menú.",L"Quitado del espacio %d: %ls",L"El arma equipada no se puede quitar.",L"%d cambios hechos en el inventario",L"2 espacios",L"No hay 2 espacios libres juntos.",L"Arma",L"Munición",L"Curación",L"Objeto clave",L"Archivo y otros",L"Ocupa 1 espacio",L"Ocupa 2 espacios",L"1 espacio libre en el inventario.",L"%d espacios libres en el inventario.",L"Munición",L"Archivos",L"EQUIPADA",L"Munición",L"Carga",L"Cant. de munición",L"Cant.",L"Cantidad de munición que se pondrá."},
 { // 日本語
 L"インベントリ",L"アイテムメニュー",L"武器",L"弾薬",L"回復",L"キーアイテム",L"ファイル・その他",
 L"現在の所持品",L"%d / %d 枠",L"固定",L"装備中",L"空き",L"サイドパック",
@@ -66,7 +68,7 @@ L"%d 番の枠に追加: %ls",L"所持品が変わりました。確認しても
 L"矢印 選択 · Q/E カテゴリー · Enter 決定 · R 外す · Esc 戻る · F6 閉じる",
 L"コントローラー: ✕/A 決定 · ○/B 戻る · □/X 外す · L1/R1 (LB/RB) カテゴリー",
 L"%d 番の枠: %ls。メニューを閉じるとすぐに入ります。",L"待機リストがいっぱいです。メニューを閉じると選んだアイテムが入ります。",L"ゲーム一時停止中",L"%d 個のアイテムを所持品に追加しました",
-L"所持品から外す",L"所持品から外すアイテムを選んで決定してください。",L"%d 番の枠: %ls はメニューを閉じるとすぐに外れます。",L"%d 番の枠から外しました: %ls",L"装備中の武器は外せません。",L"所持品を %d か所変更しました"},
+L"所持品から外す",L"所持品から外すアイテムを選んで決定してください。",L"%d 番の枠: %ls はメニューを閉じるとすぐに外れます。",L"%d 番の枠から外しました: %ls",L"装備中の武器は外せません。",L"所持品を %d か所変更しました",L"2枠",L"隣り合う空き枠が2つありません。",L"武器",L"弾薬",L"回復",L"キーアイテム",L"ファイル・その他",L"1枠を使用",L"2枠を使用",L"所持品に空き枠が1つあります。",L"所持品に空き枠が%d個あります。",L"弾薬",L"ファイル",L"装備中",L"弾数",L"残量",L"弾の数",L"数量",L"入れる弾薬の数です。"},
 { // Français
 L"INVENTAIRE",L"Menu des objets",L"Armes",L"Munitions",L"Soins",L"Objets clés",L"Dossiers et autres",
 L"INVENTAIRE ACTUEL",L"%d sur %d emplacements",L"Fixe",L"Équipée",L"Vide",L"Sacoche",
@@ -80,7 +82,7 @@ L"Placé à l’emplacement %d : %ls",L"L’inventaire a changé. Vérifiez et r
 L"Flèches choisir · Q/E catégorie · Entrée valider · R retirer · Échap retour · F6 fermer",
 L"Manette : ✕/A valider · ○/B retour · □/X retirer · L1/R1 (LB/RB) catégorie",
 L"Emplacement %d : %ls. Il arrive dès que vous fermez le menu.",L"La file est pleine : fermez le menu pour placer les objets choisis.",L"Jeu en pause",L"%d objets placés dans l’inventaire",
-L"RETIRER DE L’INVENTAIRE",L"Choisissez dans l’inventaire l’objet à retirer et validez.",L"Emplacement %d : %ls part dès que vous fermez le menu.",L"Retiré de l’emplacement %d : %ls",L"L’arme équipée ne peut pas être retirée.",L"%d changements dans l’inventaire"},
+L"RETIRER DE L’INVENTAIRE",L"Choisissez dans l’inventaire l’objet à retirer et validez.",L"Emplacement %d : %ls part dès que vous fermez le menu.",L"Retiré de l’emplacement %d : %ls",L"L’arme équipée ne peut pas être retirée.",L"%d changements dans l’inventaire",L"2 emplacements",L"Il n’y a pas 2 emplacements libres côte à côte.",L"Arme",L"Munitions",L"Soins",L"Objet clé",L"Dossier et autres",L"Occupe 1 emplacement",L"Occupe 2 emplacements",L"1 emplacement libre dans l’inventaire.",L"%d emplacements libres dans l’inventaire.",L"Munitions",L"Dossiers",L"ÉQUIPÉE",L"Munitions",L"Charge",L"Qté de munitions",L"Qté",L"Quantité de munitions qui sera placée."},
 { // Deutsch
 L"INVENTAR",L"Gegenstandsmenü",L"Waffen",L"Munition",L"Heilung",L"Schlüsselgegenstände",L"Akten und Sonstiges",
 L"AKTUELLES INVENTAR",L"%d von %d Plätzen",L"Fest",L"Ausgerüstet",L"Leer",L"Gürteltasche",
@@ -94,7 +96,7 @@ L"In Platz %d gelegt: %ls",L"Das Inventar hat sich geändert. Prüfe es und vers
 L"Pfeile wählen · Q/E Kategorie · Enter bestätigen · R entfernen · Esc zurück · F6 schließen",
 L"Controller: ✕/A bestätigen · ○/B zurück · □/X entfernen · L1/R1 (LB/RB) Kategorie",
 L"Platz %d: %ls. Kommt hinein, sobald du das Menü schließt.",L"Die Warteschlange ist voll: Schließe das Menü, um die gewählten Gegenstände abzulegen.",L"Spiel pausiert",L"%d Gegenstände ins Inventar gelegt",
-L"AUS DEM INVENTAR NEHMEN",L"Wähle im Inventar den Gegenstand zum Entfernen und bestätige.",L"Platz %d: %ls verschwindet, sobald du das Menü schließt.",L"Aus Platz %d entfernt: %ls",L"Die ausgerüstete Waffe kann nicht entfernt werden.",L"%d Änderungen am Inventar"},
+L"AUS DEM INVENTAR NEHMEN",L"Wähle im Inventar den Gegenstand zum Entfernen und bestätige.",L"Platz %d: %ls verschwindet, sobald du das Menü schließt.",L"Aus Platz %d entfernt: %ls",L"Die ausgerüstete Waffe kann nicht entfernt werden.",L"%d Änderungen am Inventar",L"2 Plätze",L"Es gibt keine 2 freien Plätze nebeneinander.",L"Waffe",L"Munition",L"Heilung",L"Schlüsselgegenstand",L"Akte und Sonstiges",L"Belegt 1 Platz",L"Belegt 2 Plätze",L"1 freier Platz im Inventar.",L"%d freie Plätze im Inventar.",L"Munition",L"Akten",L"AUSGERÜSTET",L"Munition",L"Ladung",L"Munitionsmenge",L"Menge",L"Menge der Munition, die abgelegt wird."},
 { // Italiano
 L"INVENTARIO",L"Menu oggetti",L"Armi",L"Munizioni",L"Cure",L"Oggetti chiave",L"Documenti e altro",
 L"INVENTARIO ATTUALE",L"%d di %d spazi",L"Fisso",L"Equipaggiata",L"Vuoto",L"Borsa laterale",
@@ -108,7 +110,7 @@ L"Messo nello spazio %d: %ls",L"L’inventario è cambiato. Controlla e riprova.
 L"Frecce scegli · Q/E categoria · Invio conferma · R togli · Esc indietro · F6 chiudi",
 L"Controller: ✕/A conferma · ○/B indietro · □/X togli · L1/R1 (LB/RB) categoria",
 L"Spazio %d: %ls. Entra appena chiudi il menu.",L"La coda è piena: chiudi il menu per mettere gli oggetti scelti.",L"Gioco in pausa",L"%d oggetti messi nell’inventario",
-L"TOGLI DALL’INVENTARIO",L"Scegli nell’inventario l’oggetto da togliere e conferma.",L"Spazio %d: %ls esce appena chiudi il menu.",L"Tolto dallo spazio %d: %ls",L"L’arma equipaggiata non può essere tolta.",L"%d modifiche all’inventario"},
+L"TOGLI DALL’INVENTARIO",L"Scegli nell’inventario l’oggetto da togliere e conferma.",L"Spazio %d: %ls esce appena chiudi il menu.",L"Tolto dallo spazio %d: %ls",L"L’arma equipaggiata non può essere tolta.",L"%d modifiche all’inventario",L"2 spazi",L"Non ci sono 2 spazi liberi affiancati.",L"Arma",L"Munizioni",L"Cura",L"Oggetto chiave",L"Documento e altro",L"Occupa 1 spazio",L"Occupa 2 spazi",L"1 spazio libero nell’inventario.",L"%d spazi liberi nell’inventario.",L"Munizioni",L"Documenti",L"EQUIPAGGIATA",L"Munizioni",L"Carica",L"Qtà munizioni",L"Qtà",L"Quantità di munizioni che verrà messa."},
 { // Polski
 L"EKWIPUNEK",L"Menu przedmiotów",L"Broń",L"Amunicja",L"Leczenie",L"Przedmioty kluczowe",L"Akta i inne",
 L"OBECNY EKWIPUNEK",L"%d z %d miejsc",L"Stałe",L"W użyciu",L"Puste",L"Torba boczna",
@@ -122,7 +124,7 @@ L"Dodano w miejscu %d: %ls",L"Ekwipunek się zmienił. Sprawdź i spróbuj ponow
 L"Strzałki wybór · Q/E kategoria · Enter zatwierdź · R usuń · Esc wróć · F6 zamknij",
 L"Pad: ✕/A zatwierdź · ○/B wróć · □/X usuń · L1/R1 (LB/RB) kategoria",
 L"Miejsce %d: %ls. Trafi tam, gdy tylko zamkniesz menu.",L"Kolejka jest pełna: zamknij menu, aby dodać wybrane przedmioty.",L"Gra wstrzymana",L"Dodano %d przedmiotów do ekwipunku",
-L"USUŃ Z EKWIPUNKU",L"Wybierz w ekwipunku przedmiot do usunięcia i zatwierdź.",L"Miejsce %d: %ls zniknie, gdy tylko zamkniesz menu.",L"Usunięto z miejsca %d: %ls",L"Broni w użyciu nie można usunąć.",L"Zmiany w ekwipunku: %d"},
+L"USUŃ Z EKWIPUNKU",L"Wybierz w ekwipunku przedmiot do usunięcia i zatwierdź.",L"Miejsce %d: %ls zniknie, gdy tylko zamkniesz menu.",L"Usunięto z miejsca %d: %ls",L"Broni w użyciu nie można usunąć.",L"Zmiany w ekwipunku: %d",L"2 miejsca",L"Brak 2 wolnych miejsc obok siebie.",L"Broń",L"Amunicja",L"Leczenie",L"Przedmiot kluczowy",L"Akta i inne",L"Zajmuje 1 miejsce",L"Zajmuje 2 miejsca",L"1 wolne miejsce w ekwipunku.",L"Wolnych miejsc w ekwipunku: %d.",L"Amunicja",L"Akta",L"W UŻYCIU",L"Amunicja",L"Ładunek",L"Ilość amunicji",L"Ilość",L"Ilość amunicji, która zostanie dodana."},
 { // Türkçe
 L"ENVANTER",L"Eşya menüsü",L"Silahlar",L"Mühimmat",L"İyileştirme",L"Anahtar eşyalar",L"Dosyalar ve diğer",
 L"MEVCUT ENVANTER",L"%d / %d yuva",L"Sabit",L"Kuşanılmış",L"Boş",L"Yan çanta",
@@ -136,7 +138,7 @@ L"%d. yuvaya kondu: %ls",L"Envanter değişti. Kontrol edip yeniden dene.",L"Bir
 L"Oklar seç · Q/E kategori · Enter onayla · R çıkar · Esc geri · F6 kapat",
 L"Kumanda: ✕/A onayla · ○/B geri · □/X çıkar · L1/R1 (LB/RB) kategori",
 L"%d. yuva: %ls. Menüyü kapatır kapatmaz konur.",L"Sıra dolu: seçilen eşyaları koymak için menüyü kapat.",L"Oyun duraklatıldı",L"Envantere %d eşya kondu",
-L"ENVANTERDEN ÇIKAR",L"Envanterden çıkarılacak eşyayı seç ve onayla.",L"%d. yuva: %ls menüyü kapatır kapatmaz çıkar.",L"%d. yuvadan çıkarıldı: %ls",L"Kuşanılmış silah çıkarılamaz.",L"Envanterde %d değişiklik yapıldı"},
+L"ENVANTERDEN ÇIKAR",L"Envanterden çıkarılacak eşyayı seç ve onayla.",L"%d. yuva: %ls menüyü kapatır kapatmaz çıkar.",L"%d. yuvadan çıkarıldı: %ls",L"Kuşanılmış silah çıkarılamaz.",L"Envanterde %d değişiklik yapıldı",L"2 yuva",L"Yan yana 2 boş yuva yok.",L"Silah",L"Mühimmat",L"İyileştirme",L"Anahtar eşya",L"Dosya ve diğer",L"1 yuva kaplar",L"2 yuva kaplar",L"Envanterde 1 boş yuva var.",L"Envanterde %d boş yuva var.",L"Mühimmat",L"Dosyalar",L"KUŞANILMIŞ",L"Mühimmat",L"Şarj",L"Mühimmat miktarı",L"Adet",L"Yerleştirilecek mühimmat miktarı."},
 { // العربية
 L"المخزون",L"قائمة الأغراض",L"الأسلحة",L"الذخيرة",L"العلاج",L"الأغراض الرئيسية",L"الملفات وغيرها",
 L"المخزون الحالي",L"%d من %d خانات",L"ثابتة",L"مُجهَّز",L"فارغة",L"الحقيبة الجانبية",
@@ -150,7 +152,7 @@ L"وُضع في الخانة %d: %ls",L"تغيّر المخزون. تحقّق و
 L"الأسهم اختيار · Q/E الفئة · Enter تأكيد · R إزالة · Esc رجوع · F6 إغلاق",
 L"ذراع التحكم: ✕/A تأكيد · ○/B رجوع · □/X إزالة · L1/R1 (LB/RB) الفئة",
 L"الخانة %d: %ls. يُوضع بمجرد إغلاق القائمة.",L"قائمة الانتظار ممتلئة: أغلق القائمة لوضع الأغراض المختارة.",L"اللعبة متوقفة مؤقتًا",L"وُضع %d أغراض في المخزون",
-L"إزالة من المخزون",L"اختر من المخزون الغرض المراد إزالته ثم أكّد.",L"الخانة %d: %ls يُزال بمجرد إغلاق القائمة.",L"أُزيل من الخانة %d: %ls",L"لا يمكن إزالة السلاح المُجهَّز.",L"%d تغييرات في المخزون"},
+L"إزالة من المخزون",L"اختر من المخزون الغرض المراد إزالته ثم أكّد.",L"الخانة %d: %ls يُزال بمجرد إغلاق القائمة.",L"أُزيل من الخانة %d: %ls",L"لا يمكن إزالة السلاح المُجهَّز.",L"%d تغييرات في المخزون",L"خانتان",L"لا توجد خانتان فارغتان متجاورتان.",L"سلاح",L"ذخيرة",L"علاج",L"غرض رئيسي",L"ملف وغيره",L"يشغل خانة واحدة",L"يشغل خانتين",L"خانة واحدة فارغة في المخزون.",L"%d خانات فارغة في المخزون.",L"ذخيرة",L"الملفات",L"مُجهَّز",L"الذخيرة",L"الشحنة",L"كمية الذخيرة",L"الكمية",L"كمية الذخيرة التي سيتم وضعها."},
 { // 简体中文
 L"物品栏",L"物品菜单",L"武器",L"弹药",L"恢复",L"关键物品",L"文件与其他",
 L"当前物品栏",L"%d / %d 格",L"固定",L"已装备",L"空",L"侧包",
@@ -164,7 +166,7 @@ L"已放入第 %d 格：%ls",L"物品栏已变化。请检查后重试。",L"等
 L"方向键 选择 · Q/E 分类 · Enter 确认 · R 移除 · Esc 返回 · F6 关闭",
 L"手柄：✕/A 确认 · ○/B 返回 · □/X 移除 · L1/R1 (LB/RB) 分类",
 L"第 %d 格：%ls。关闭菜单后立即放入。",L"队列已满：请关闭菜单以放入所选物品。",L"游戏已暂停",L"已将 %d 件物品放入物品栏",
-L"从物品栏移除",L"请在物品栏中选择要移除的物品并确认。",L"第 %d 格：%ls 将在关闭菜单后立即移除。",L"已从第 %d 格移除：%ls",L"已装备的武器不能移除。",L"物品栏已更改 %d 处"},
+L"从物品栏移除",L"请在物品栏中选择要移除的物品并确认。",L"第 %d 格：%ls 将在关闭菜单后立即移除。",L"已从第 %d 格移除：%ls",L"已装备的武器不能移除。",L"物品栏已更改 %d 处",L"2 格",L"没有相邻的 2 个空格。",L"武器",L"弹药",L"恢复",L"关键物品",L"文件与其他",L"占用 1 格",L"占用 2 格",L"物品栏有 1 个空格。",L"物品栏有 %d 个空格。",L"弹药",L"文件",L"已装备",L"弹药",L"充能",L"弹药数量",L"数量",L"将放入的弹药数量。"},
 { // 한국어
 L"인벤토리",L"아이템 메뉴",L"무기",L"탄약",L"회복",L"키 아이템",L"파일 및 기타",
 L"현재 인벤토리",L"%d / %d 칸",L"고정",L"장비 중",L"비어 있음",L"사이드 팩",
@@ -178,7 +180,7 @@ L"%d번 칸에 넣음: %ls",L"인벤토리가 바뀌었습니다. 확인 후 다
 L"화살표 선택 · Q/E 분류 · Enter 확인 · R 빼기 · Esc 뒤로 · F6 닫기",
 L"컨트롤러: ✕/A 확인 · ○/B 뒤로 · □/X 빼기 · L1/R1 (LB/RB) 분류",
 L"%d번 칸: %ls. 메뉴를 닫는 즉시 들어갑니다.",L"대기열이 가득 찼습니다. 메뉴를 닫으면 고른 아이템이 들어갑니다.",L"게임 일시 정지됨",L"아이템 %d개를 인벤토리에 넣었습니다",
-L"인벤토리에서 빼기",L"인벤토리에서 뺄 아이템을 고르고 확인하세요.",L"%d번 칸: %ls은(는) 메뉴를 닫는 즉시 빠집니다.",L"%d번 칸에서 뺌: %ls",L"장비 중인 무기는 뺄 수 없습니다.",L"인벤토리 변경 %d건"},
+L"인벤토리에서 빼기",L"인벤토리에서 뺄 아이템을 고르고 확인하세요.",L"%d번 칸: %ls은(는) 메뉴를 닫는 즉시 빠집니다.",L"%d번 칸에서 뺌: %ls",L"장비 중인 무기는 뺄 수 없습니다.",L"인벤토리 변경 %d건",L"2칸",L"나란히 있는 빈칸 2개가 없습니다.",L"무기",L"탄약",L"회복",L"키 아이템",L"파일 및 기타",L"1칸 차지",L"2칸 차지",L"인벤토리에 빈칸이 1개 있습니다.",L"인벤토리에 빈칸이 %d개 있습니다.",L"탄약",L"파일",L"장비 중",L"탄약",L"충전량",L"탄약 수량",L"수량",L"넣을 탄약의 수량입니다."},
 { // Русский
 L"ИНВЕНТАРЬ",L"Меню предметов",L"Оружие",L"Боеприпасы",L"Лечение",L"Ключевые предметы",L"Файлы и прочее",
 L"ТЕКУЩИЙ ИНВЕНТАРЬ",L"%d из %d ячеек",L"Постоянная",L"В руках",L"Пусто",L"Поясная сумка",
@@ -192,6 +194,9 @@ L"Положено в ячейку %d: %ls",L"Инвентарь изменил�
 L"Стрелки выбор · Q/E категория · Enter подтвердить · R убрать · Esc назад · F6 закрыть",
 L"Геймпад: ✕/A подтвердить · ○/B назад · □/X убрать · L1/R1 (LB/RB) категория",
 L"Ячейка %d: %ls. Попадёт туда, как только вы закроете меню.",L"Очередь заполнена: закройте меню, чтобы положить выбранные предметы.",L"Игра на паузе",L"Положено предметов в инвентарь: %d",
-L"УБРАТЬ ИЗ ИНВЕНТАРЯ",L"Выберите в инвентаре предмет, который нужно убрать, и подтвердите.",L"Ячейка %d: %ls исчезнет, как только вы закроете меню.",L"Убрано из ячейки %d: %ls",L"Оружие в руках нельзя убрать.",L"Изменений в инвентаре: %d"},
+L"УБРАТЬ ИЗ ИНВЕНТАРЯ",L"Выберите в инвентаре предмет, который нужно убрать, и подтвердите.",L"Ячейка %d: %ls исчезнет, как только вы закроете меню.",L"Убрано из ячейки %d: %ls",L"Оружие в руках нельзя убрать.",L"Изменений в инвентаре: %d",L"2 ячейки",L"Нет двух свободных ячеек рядом.",L"Оружие",L"Боеприпасы",L"Лечение",L"Ключевой предмет",L"Файл и прочее",L"Занимает 1 ячейку",L"Занимает 2 ячейки",L"В инвентаре 1 свободная ячейка.",L"Свободных ячеек в инвентаре: %d.",L"Боеприпасы",L"Файлы",L"В РУКАХ",L"Патроны",L"Заряд",L"Кол-во патронов",L"Кол-во",L"Количество патронов, которое будет положено."},
 };
+static_assert(sizeof(k_text)/sizeof(k_text[0])==13,"13 launcher languages");
+constexpr bool complete() {for(const auto& row:k_text)for(const auto* value:row)if(!value||!*value)return false;return true;}
+static_assert(complete(),"Every item menu text must be translated in all launcher languages");
 }  // namespace cv_items_i18n

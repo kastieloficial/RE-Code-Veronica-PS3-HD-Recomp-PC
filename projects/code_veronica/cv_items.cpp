@@ -1,5 +1,6 @@
 #include "cv_items.h"
 #include "cv_version.h"
+#include "cv_srt_icons.h"
 #include <algorithm>
 #include <cstdio>
 #include <mutex>
@@ -28,24 +29,28 @@ const std::vector<Info> k_catalog = {
     {0x0C,AMMO,true,30,250},{0x0D,AMMO,true,6,250},{0x1E,AMMO,true,6,250},{0x0E,AMMO,true,7,250},
     {0x0F,AMMO,true,6,250},{0x10,AMMO,true,6,250},{0x11,AMMO,true,6,250},{0x25,AMMO,true,6,250},
     {0x12,AMMO,true,30,250},{0x24,AMMO,true,10,250},{0x23,AMMO,true,1,250},{0x82,AMMO,true,1,250},
-    {0x26,AMMO,true,100,250},{0x28,AMMO,true,10,250},{0x2A,AMMO,true,100,250},{0x8F,AMMO,true,100,250},
+    {0x28,AMMO,true,10,250},{0x2A,AMMO,true,100,250},{0x8F,AMMO,true,100,250},
     {0x14,HEALING,false,1,1},{0x15,HEALING,false,1,1},{0x16,HEALING,false,1,1},{0x17,HEALING,false,1,1},
     {0x18,HEALING,false,1,1},{0x19,HEALING,false,1,1},{0x1A,HEALING,false,1,1},{0x1B,HEALING,false,1,1},
     {0x1C,HEALING,false,1,1},{0x1D,HEALING,false,1,1},
-    {0x1F,OTHER,true,3,99},{0x39,OTHER,false,1,1},{0x4A,OTHER,false,1,1},{0x3A,OTHER,false,1,1},
-    {0x2F,OTHER,false,1,1},{0x30,OTHER,false,1,1},{0x31,OTHER,false,1,1},{0x66,OTHER,false,1,1},
-    {0x6A,OTHER,false,1,1},{0x7D,OTHER,false,1,1},{0x84,OTHER,false,1,1},{0x85,OTHER,false,1,1},
-    {0x86,OTHER,false,1,1},{0x87,OTHER,false,1,1},{0x8B,OTHER,false,1,1},{0x91,OTHER,false,1,1},
+    // "Files and other": only these (Playing Manual, Ink Ribbon, Security File and the three briefcases); the
+    // documents, maps and photographs have no real icon, and the Side Pack and "File" are not offered.
+    {0x91,OTHER,false,1,1},{0x1F,OTHER,true,3,99},{0x6A,OTHER,false,1,1},
     {0x3F,OTHER,false,1,1},{0x80,OTHER,false,1,1},{0x81,OTHER,false,1,1},
 };
+// An item is offered only with a real icon on the game's item pages (cv_srt_icons::sprite): the cells that hold
+// a test number (0x26, 0x6D, 0x6E, 0x8D) or nothing are left out.
+bool has_icon(int id) {cv_srt_icons::Sprite s;return cv_srt_icons::sprite(id,s);}
 std::vector<Info> build() {
-    std::vector<Info> all=k_catalog;
-    // Every other named object is a key item: the story's keys, emblems,
-    // jewels and parts. 0x8D/0x92/0x93/0x94/0x97 are unknown and left out.
+    std::vector<Info> all;
+    for(const auto& i:k_catalog)if(has_icon(i.id))all.push_back(i);
+    // Every other item with an icon is a key item: the story's keys, emblems,
+    // jewels and parts. The Side Pack (0x39), "File" (0x7D) and the unknown IDs stay out.
     for(int id=0x13;id<=0x99;id++) {
         if(id>0x13&&id<0x27)continue;
-        if(id==0x8D||id==0x92||id==0x93||id==0x94||id==0x97)continue;
-        if(std::any_of(all.begin(),all.end(),[&](const Info& i){return i.id==id;}))continue;
+        if(id==0x39||id==0x7D||id==0x8D||id==0x92||id==0x93||id==0x94||id==0x97)continue;
+        if(!has_icon(id))continue;
+        if(std::any_of(k_catalog.begin(),k_catalog.end(),[&](const Info& i){return i.id==id;}))continue;
         const bool counted=id==0x78||id==0x98||id==0x99;
         all.push_back({id,KEY_ITEMS,counted,1,counted?9:1});
     }
@@ -88,6 +93,36 @@ int Inventory::first_empty() const {
 int Inventory::used() const {
     int n=0;for(int i=1;i<=capacity;i++)n+=!empty(i);
     return n;
+}
+bool wide(int id) {return id==1||id==2||id==3||id==0x21||id==0x22||id==0x8E;}
+int Inventory::spaces_used() const {
+    int n=0;for(int i=1;i<=capacity;i++)if(!empty(i))n+=wide(id(i))?2:1;
+    return n;
+}
+int Inventory::free_spaces() const {return std::max(0,capacity-spaces_used());}
+std::vector<Cell> layout(const Inventory& inv) {
+    std::vector<Cell> out;int row=0,col=0,cells=0;
+    std::vector<size_t> holes;   // open right-hand cells left behind by a wide weapon
+    const int capacity=std::max(1,inv.capacity);
+    for(int e=1;e<=inv.capacity&&e<kEntries;e++) {
+        if(inv.empty(e))continue;
+        if(wide(inv.id(e))) {
+            if(col==1){out.push_back({Cell::EMPTY,0,row,1,1});holes.push_back(out.size()-1);cells++;row++;col=0;}
+            out.push_back({Cell::ITEM,e,row,0,2});cells+=2;row++;col=0;
+        } else if(!holes.empty()) {
+            out[holes.front()].kind=Cell::ITEM;out[holes.front()].entry=e;holes.erase(holes.begin());
+        } else {
+            out.push_back({Cell::ITEM,e,row,col,1});cells++;
+            if(++col==2){col=0;row++;}
+        }
+    }
+    for(;cells<capacity;cells++) {
+        out.push_back({Cell::EMPTY,0,row,col,1});
+        if(++col==2){col=0;row++;}
+    }
+    if(col!=0){col=0;row++;}
+    for(int i=capacity;i<10;i++){out.push_back({Cell::LOCKED,0,row,col,1});if(++col==2){col=0;row++;}}
+    return out;
 }
 uint32_t state_base() {return CV_SRT_CHARACTER-0x94;}
 Inventory read() {
@@ -141,12 +176,16 @@ int place(const Inventory& inventory,int id,int target,Result& why) {
     if(!inventory.valid||!inventory.writable) {why=R_NOT_PLAYING;return -1;}
     // An empty entry chosen past the list's end still goes to its end: the
     // list stays packed, as the game's own removal keeps it.
+    const int need=wide(id)?2:1;
     if(target>0&&!inventory.empty(target)) {
         if(inventory.is_equipped(target)) {why=R_EQUIPPED;return -1;}
+        // The replaced item gives its own spaces back.
+        if(inventory.free_spaces()+(wide(inventory.id(target))?2:1)<need) {why=R_NO_ROOM_WIDE;return -1;}
         return target;
     }
     const int free=inventory.first_empty();
-    if(free<0)why=R_FULL;
+    if(free<0) {why=R_FULL;return -1;}
+    if(inventory.free_spaces()<need) {why=need==2?R_NO_ROOM_WIDE:R_FULL;return -1;}
     return free;
 }
 void set_enabled(bool on) {
@@ -182,7 +221,12 @@ Result change(Inventory& inv,const Request& r) {
     // The entry still holds what the menu saw (an empty one is still the
     // list's first empty), or the game changed it: change nothing unseen.
     if(inv.entry[r.entry]!=r.expected||(inv.empty(r.entry)&&inv.first_empty()!=r.entry))return R_CHANGED;
-    if(!r.remove) {inv.entry[r.entry]=encode(r.id,r.quantity);return R_DONE;}
+    if(!r.remove) {
+        // The same room rule as place(): two free spaces for a wide weapon.
+        const int need=wide(r.id)?2:1,given=inv.empty(r.entry)?0:wide(inv.id(r.entry))?2:1;
+        if(inv.free_spaces()+given<need)return need==2?R_NO_ROOM_WIDE:R_FULL;
+        inv.entry[r.entry]=encode(r.id,r.quantity);return R_DONE;
+    }
     if(inv.empty(r.entry))return R_CHANGED;
     // As the game takes a used-up item out (EU func_0012C224): the entries
     // below move up one, and an equipped entry below follows its weapon.
