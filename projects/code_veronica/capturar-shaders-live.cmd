@@ -30,6 +30,10 @@ rem Juncao de draws consecutivos iguais na gravacao (liga por padrao). Teste A/B
 rem set "CV_DRAW_MERGE=0"
 rem Verificacao (so dev): CV_DRAW_MERGE_VERIFY=1 reconfere cada corrida juntada campo a campo; mande de volta as linhas [DRAW-MERGE-VIOLATION] (esperado: nenhuma) e "merge(actual...)" do log.
 rem set "CV_DRAW_MERGE_VERIFY=1"
+rem Prepass e gravacao por grupo (liga por padrao): decide o grupo de draws iguais uma vez e anda grupo a grupo. Teste A/B: rode uma vez com a linha abaixo ativa (CV_DRAW_RUNS=0 volta ao prepass por draw + juncao anterior) e uma vez sem; mesma sala e mesma rajada; compare "ms: total/prepass/record" e as linhas "runs:" no draw-spike-log.txt.
+rem set "CV_DRAW_RUNS=0"
+rem Verificacao (so dev, lento): CV_DRAW_RUNS_VERIFY=1 recalcula cada draw coberto pelo caminho antigo e compara; mande de volta as linhas [DRAW-RUNS-MISMATCH] (esperado: nenhuma) e "runs(actual" do log.
+rem set "CV_DRAW_RUNS_VERIFY=1"
 set "base="
 set "EXE=%~dp0build-release\bin\CodeVeronicaPort.exe"
 if not exist "%EXE%" (

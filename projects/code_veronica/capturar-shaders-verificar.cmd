@@ -27,6 +27,7 @@ rem set "CV_PREP_REUSE2=0"
 rem Verificacao (so dev): CV_PREP_VERIFY=1 recalcula cada reaproveitamento e compara; mande de volta as linhas [PREP-REUSE-MISMATCH] e "prepass reuse:" do log.
 set "CV_PREP_VERIFY=1"
 set "CV_DRAW_MERGE_VERIFY=1"
+set "CV_DRAW_RUNS_VERIFY=1"
 set "base="
 set "EXE=%~dp0build-release\bin\CodeVeronicaPort.exe"
 if not exist "%EXE%" (

@@ -10570,7 +10570,10 @@ static int dm_vs_ok(const D3D12DrawRecord* d)
 /* May draw b (index bi) join the run whose last draw is a (index ai) and that already holds run_verts vertices?
  * Returns DM_OK or the first reason it may not (order: the state checks first, so DM_CONTIG / DM_PHASE / DM_CAP count
  * pairs that were otherwise identical). cur_rt = the colour target index bound for the run (feedback check). */
-static int dm_pair(const D3D12DrawRecord* a, u32 ai, const D3D12DrawRecord* b, u32 bi, u32 run_verts, int cur_rt)
+/* derived=0: only what the draw RECORDS hold (the prepass decides run-level coverage before b's own prepass results
+ * exist; they are equal to a's by construction when every input is): skips the checks on s_srv_win, tex_rt, the vertex
+ * window index, the feedback flag/target and the b1 gamma words. derived=1: everything (record loop, spike analysis). */
+static int dm_pair_x(const D3D12DrawRecord* a, u32 ai, const D3D12DrawRecord* b, u32 bi, u32 run_verts, int cur_rt, int derived)
 {
     if (!a->is_vp || !b->is_vp || a->is_clear || b->is_clear || a->is_copy || b->is_copy) return DM_BARRIER;
     if (ai >= MAX_DRAWS || bi >= MAX_DRAWS || a->cb_slot >= MAX_DRAWS || b->cb_slot >= MAX_DRAWS ||
@@ -10586,17 +10589,19 @@ static int dm_pair(const D3D12DrawRecord* a, u32 ai, const D3D12DrawRecord* b, u
     if (a->rt_off != b->rt_off || memcmp(a->rt_mrt, b->rt_mrt, sizeof a->rt_mrt) || a->rt_w != b->rt_w || a->rt_h != b->rt_h ||
         a->rt_fmt != b->rt_fmt || a->zeta_off != b->zeta_off || a->s_pitch != b->s_pitch || a->vp_x != b->vp_x ||
         a->vp_y != b->vp_y || a->vp_w != b->vp_w || a->vp_h != b->vp_h) return DM_RT;
-    if (s_srv_win[ai] != s_srv_win[bi] || memcmp(a->tex_rt, b->tex_rt, sizeof a->tex_rt)) return DM_SRV;
+    if (derived && (s_srv_win[ai] != s_srv_win[bi] || memcmp(a->tex_rt, b->tex_rt, sizeof a->tex_rt))) return DM_SRV;
     if (a->vtex_mask != b->vtex_mask) return DM_VTEX;
     if (a->vtex_mask) {
-        if (s_vtex_win[ai] != s_vtex_win[bi]) return DM_VTEX;
+        if (derived && s_vtex_win[ai] != s_vtex_win[bi]) return DM_VTEX;
         for (int m = 0; m < 4; m++)
             if (a->vtx[m].hash != b->vtx[m].hash || a->vtx[m].fmt != b->vtx[m].fmt || a->vtx[m].w != b->vtx[m].w ||
                 a->vtx[m].h != b->vtx[m].h || a->vtx[m].row_bytes != b->vtx[m].row_bytes) return DM_VTEX;
     }
-    if (s_dm_info[ai].fb || s_dm_info[bi].fb) return DM_FB;
-    for (int u = 0; u < FP_TEX_UNITS; u++) if (b->tex_rt[u] >= 0 && b->tex_rt[u] == cur_rt) return DM_FB;
-    if (s_dm_info[ai].mask != s_dm_info[bi].mask || memcmp(s_dm_info[ai].g, s_dm_info[bi].g, sizeof s_dm_info[ai].g)) return DM_CB2;
+    if (derived) {
+        if (s_dm_info[ai].fb || s_dm_info[bi].fb) return DM_FB;
+        for (int u = 0; u < FP_TEX_UNITS; u++) if (b->tex_rt[u] >= 0 && b->tex_rt[u] == cur_rt) return DM_FB;
+        if (s_dm_info[ai].mask != s_dm_info[bi].mask || memcmp(s_dm_info[ai].g, s_dm_info[bi].g, sizeof s_dm_info[ai].g)) return DM_CB2;
+    }
     if (s_lighter_probe && a->rt_off == 0x01C30000u) return DM_OTHER;   /* vp_record_cb writes a live flag into b1 for this target */
     if (!dm_vs_ok(a)) return DM_OTHER;
     if (a->topology != RSX_TOPOLOGY_TRIANGLES && a->topology != RSX_TOPOLOGY_LINES) return DM_TOPO;
@@ -10606,9 +10611,30 @@ static int dm_pair(const D3D12DrawRecord* a, u32 ai, const D3D12DrawRecord* b, u
     if ((u64)run_verts + (u64)b->vertex_count > DM_CAP_VERTS) return DM_CAP;
     return DM_OK;
 }
+static int dm_pair(const D3D12DrawRecord* a, u32 ai, const D3D12DrawRecord* b, u32 bi, u32 run_verts, int cur_rt)
+{
+    return dm_pair_x(a, ai, b, bi, run_verts, cur_rt, 1);
+}
+
+/* ---------------------------------------------------------------------------
+ * Run-level prepass and record (CV_DRAW_RUNS, default on; CV_DRAW_RUNS=0 = the per-draw prepass + draw-run merging).
+ * The prepass decides the GROUP once: a draw that the dm_pair record-field rules join to the previous draw of the group
+ * (and whose prepass inputs are therefore byte-identical to the leader's) is "covered": it copies the leader's results
+ * (SRV window index, sampled-target indices, feedback flag, gamma words incl. its own b1 cells, prepared pipeline, DmInfo)
+ * instead of resolving textures/SRV/pipeline again. The group {leader, last member, vertex total} is stored on the
+ * leader; the record loop then walks groups instead of comparing every draw with the next one (see the loop).
+ * Never in a group: vertex-texture draws, feedback-risk draws, draws without a frozen program/ready pipeline. */
+static u32 s_run_last[MAX_DRAWS];    /* leader d: index of the last member of its group, 0 = not a leader of a group */
+static u32 s_run_verts[MAX_DRAWS];   /* leader d: vertices of the whole group */
+static int s_runs_frame_ok;          /* this frame may form groups (set before the first prepass call) */
+static int draw_runs_on(void) { static int on = -1; if (on < 0) { const char* e = getenv("CV_DRAW_RUNS"); on = !(e && e[0] == '0' && !e[1]); } return on; }
 
 #ifndef CV_DISTRIBUTION
 static u64 s_dm_tot_runs, s_dm_tot_saved, s_dm_viol; static u32 s_dm_fr_runs, s_dm_fr_saved;
+/* Run-level prepass/record counters (dev). fr_* are this frame (reset with the spike prepass counters). */
+static u64 s_runs_mis_tot, s_runs_rec_tot; static u32 s_runs_fr_cov, s_runs_fr_grp, s_runs_fr_led, s_runs_fr_rec, s_runs_fr_recdraws;
+static u32 s_runs_broke[DM_NR], s_runs_inel[4];   /* group-join failures by dm_pair reason; leader refusals: vtex, feedback, no pipeline/texture memo, other */
+static int runs_verify_on(void) { static int on = -1; if (on < 0) { const char* e = getenv("CV_DRAW_RUNS_VERIFY"); on = e && e[0] == '1' && !e[1]; } return on; }
 static int dm_verify_on(void) { static int on = -1; if (on < 0) { const char* e = getenv("CV_DRAW_MERGE_VERIFY"); on = e && e[0] == '1' && !e[1]; } return on; }
 /* CV_DRAW_MERGE_VERIFY=1: separate, field-by-field re-check of "b may follow a in the run" (does not call dm_pair).
  * Returns NULL when every precondition holds, else the name of the first field that does not. */
@@ -10684,7 +10710,8 @@ static double s_spike_prepass;                               /* prepass_range se
 /* Prepass reuse (CV_PREP_REUSE2) and per-step prepass time, this frame. Steps: 0 head (debug probes, bookkeeping),
  * 1 vtex window, 2 texture views, 3 srv_commit, 4 pipeline lookup; ticks are TSC, scaled to the measured prepass ms. */
 static u64 s_prx_gate[5];   /* prepass_range calls by gate state: 0 open, 1 CV_PREP_REUSE2=0, 2 debug env, 3 prep_reuse_on off, 4 explicit CV30 package */
-static u64 s_prx_t[5],s_prx_tot,s_prx_hit[2],s_prx_miss[2],s_prx_mis[2];   /* [0]=tex step, [1]=pso step */
+static u64 s_prx_t[6],s_prx_tot,s_prx_hit[2],s_prx_miss[2],s_prx_mis[2];   /* [0]=tex step, [1]=pso step; steps[5] = run cover */
+static u64 s_prx_p[4],s_prx_lk;   /* pso sub-steps (TSC): 0 key/snapshot, 1 reuse match + ready check, 2 full lookup (vp_get_fp_pso), 3 bookkeeping; s_prx_lk = full lookups */
 static int prep_verify_on(void){static int on=-1;if(on<0){const char*e=getenv("CV_PREP_VERIFY");on=e&&e[0]=='1'&&!e[1];}return on;}
 #define SPK_NK 7
 #define SPK_FNV0 14695981039346656037ull
@@ -10822,10 +10849,23 @@ static void spk_full(const SpkT* t)
     if(spk.perfon)spk_out("perf(PERF=1, this frame): prepass=%.2f tex=%.2f (%d uploads) srv=%.2f pso=%.2f gpu=%.2f%c",
             t->pre,t->tex,t->ntex,t->srv,t->pso,t->gpu,10);
     { const u64 th=s_prx_hit[0]+s_prx_hit[1],tm=s_prx_miss[0]+s_prx_miss[1],tx=s_prx_mis[0]+s_prx_mis[1];
-      const double tk=s_prx_tot?(double)s_prx_tot:1.0,pm=t->prepass;u64 acc=0;for(int k=0;k<5;k++)acc+=s_prx_t[k];
-      spk_out("prepass steps (ms, est. from TSC share of prepass=%.2f): head=%.2f vtex=%.2f tex=%.2f srv=%.2f pso=%.2f other=%.2f%c",pm,
+      const double tk=s_prx_tot?(double)s_prx_tot:1.0,pm=t->prepass;u64 acc=0;for(int k=0;k<6;k++)acc+=s_prx_t[k];
+      spk_out("prepass steps (ms, est. from TSC share of prepass=%.2f): head=%.2f vtex=%.2f tex=%.2f srv=%.2f pso=%.2f cover=%.2f other=%.2f%c",pm,
               pm*(double)s_prx_t[0]/tk,pm*(double)s_prx_t[1]/tk,pm*(double)s_prx_t[2]/tk,pm*(double)s_prx_t[3]/tk,pm*(double)s_prx_t[4]/tk,
-              pm*(double)(s_prx_tot>acc?s_prx_tot-acc:0)/tk,10);
+              pm*(double)s_prx_t[5]/tk,pm*(double)(s_prx_tot>acc?s_prx_tot-acc:0)/tk,10);
+      { const double pt=(double)(s_prx_p[0]+s_prx_p[1]+s_prx_p[2]+s_prx_p[3]);const double ps=pm*(double)s_prx_t[4]/tk;const double pk=pt>0?pt:1.0;
+        spk_out("pso sub-steps (ms, est.: pso step %.2f split by TSC share): key+snapshot=%.2f reuse-match+ready=%.2f full-lookup(vp_get_fp_pso)=%.2f bookkeeping=%.2f | full lookups=%llu%c",ps,
+                ps*(double)s_prx_p[0]/pk,ps*(double)s_prx_p[1]/pk,ps*(double)s_prx_p[2]/pk,ps*(double)s_prx_p[3]/pk,(unsigned long long)s_prx_lk,10); }
+      { const double cvr=pm*(double)s_prx_t[5]/tk;const u32 full=s_runs_fr_led?s_runs_fr_led:1;
+        const double per=(pm-cvr)>0?(pm-cvr)/full:0.0;const double saved=per*s_runs_fr_cov-cvr;
+        spk_out("runs: groups=%u led=%u covered_draws=%u prepass_ms_saved_est=%.2f (covered x mean cost of a fully prepared draw %.1f us, minus %.2f ms cover compares) | broke[",
+                s_runs_fr_grp,s_runs_fr_led,s_runs_fr_cov,saved>0?saved:0.0,per*1000.0,cvr);
+        for(int k=1;k<DM_NR;k++)spk_out("%s%s=%u",k>1?" ":"",dm_name[k],s_runs_broke[k]);
+        spk_out(" | no-leader: vtex=%u feedback=%u no-pipeline-or-memo=%u other=%u] (prepass join failures by dm_pair reason; groups = leaders with >=1 covered draw, led = draws prepared the full way)%c",
+                s_runs_inel[0],s_runs_inel[1],s_runs_inel[2],s_runs_inel[3],10); }
+      spk_out("runs(actual): enabled=%s verify=%s mismatches=%llu | this frame: prepass_covered=%u record_groups=%u record_draws_in_groups=%u | since start: record_groups=%llu%c",
+              draw_runs_on()?(s_runs_frame_ok?"on":"on(frame gated off: capture/probe/CV_DRAW_MERGE=0/native 60 only)"):"OFF[CV_DRAW_RUNS=0]",runs_verify_on()?"ON":"off",
+              (unsigned long long)s_runs_mis_tot,s_runs_fr_cov,s_runs_fr_rec,s_runs_fr_recdraws,(unsigned long long)s_runs_rec_tot,10);
       spk_out("prepass reuse: hits=%llu misses=%llu mismatches=%llu (tex: hits=%llu misses=%llu mismatches=%llu | pso: hits=%llu misses=%llu mismatches=%llu) reuse2=%s verify=%s gate(calls): open=%llu off[CV_PREP_REUSE2=0]=%llu off[debug env]=%llu off[prep_reuse_on false]=%llu off[CV30 package]=%llu%c",
               (unsigned long long)th,(unsigned long long)tm,(unsigned long long)tx,(unsigned long long)s_prx_hit[0],(unsigned long long)s_prx_miss[0],(unsigned long long)s_prx_mis[0],
               (unsigned long long)s_prx_hit[1],(unsigned long long)s_prx_miss[1],(unsigned long long)s_prx_mis[1],
@@ -11157,10 +11197,15 @@ static int prep_tex_memo_match(const PrepTexMemo* m,const D3D12DrawRecord* dr){
 #ifndef CV_DISTRIBUTION
 #define PRX_T(i) do{ if(_prx_on){ u64 _n=__rdtsc(); s_prx_t[i]+=_n-_prx_last; _prx_last=_n; } }while(0)
 #define PRX_VERIFY (_prx_on&&prep_verify_on())
+#define PRXP(i) do{ if(_prx_on){ u64 _n=__rdtsc(); s_prx_p[i]+=_n-_prxp_last; _prxp_last=_n; } }while(0)
 #else
 #define PRX_T(i) ((void)0)
 #define PRX_VERIFY 0
+#define PRXP(i) ((void)0)
 #endif
+/* What the record reads from a draw's prepass results, captured to compare a covered draw with a fresh computation
+ * (CV_DRAW_RUNS_VERIFY, dev). */
+typedef struct { u32 srv_win; PreparedFp pf; DmInfo info; int tex_rt[FP_TEX_UNITS]; float cell[FP_TEX_UNITS]; } RunSnap;
 
 static void prepass_range(u32 from, u32 to)
 {
@@ -11182,13 +11227,21 @@ static void prepass_range(u32 from, u32 to)
     if(_prx_on)s_prx_gate[gate]++;
 #endif
     PrepTexMemo tm;tm.valid=0;
+    /* Run-level coverage (see "Run-level prepass and record" above dm_pair): the current group's leader and its last
+     * member, the group's vertex total, and whether the draws of this call may form groups at all. */
+    const int runs_on=gate==0&&s_runs_frame_ok&&repeat_on&&!texpack_dump_on();
+    int lead=-1;u32 lead_last=0,run_v=0;
+#ifndef CV_DISTRIBUTION
+    const int runs_verify=runs_on&&runs_verify_on();
+    u64 _prxp_last=0;
+#endif
     double _pd_t = s_pp_t; const D3D12DrawRecord* _pd_prev = s_pp_prev;
     for (u32 _d = from; _d < to && _d < s_rb.count && _d < MAX_DRAWS; _d++) {
         D3D12DrawRecord* dr = &s_rb.draws[_d];
 #ifndef CV_DISTRIBUTION
         if(_prx_on)_prx_last=__rdtsc();
 #endif
-        s_srv_win[_d] = _d;s_prepared_fp[_d].valid=0;
+        s_srv_win[_d] = _d;s_prepared_fp[_d].valid=0;s_run_last[_d]=0;
         /* PERF: one draw's prepass over 3 ms (time to the next draw) names it. */
         if (perf_on()) {
             double now = perf_now();
@@ -11204,7 +11257,48 @@ static void prepass_range(u32 from, u32 to)
             }
             _pd_t = now; _pd_prev = dr;
         }
-        if (!dr->is_vp || dr->is_clear || dr->is_copy) { previous_draw=-1;tm.valid=0;continue; }
+        if (!dr->is_vp || dr->is_clear || dr->is_copy) { previous_draw=-1;tm.valid=0;lead=-1;continue; }
+        /* Run-level coverage: this draw joins the group of the previous draw (record fields identical, contiguous
+         * vertices, same cap) -> it takes the leader's prepass results and does no texture/SRV/pipeline work. */
+#ifndef CV_DISTRIBUTION
+        int cov_ver=0;RunSnap rsn;float rorig[FP_TEX_UNITS];
+#endif
+        if (lead>=0&&lead_last+1==_d&&!dr->vtex_mask) {
+            const int why=dm_pair_x(&s_rb.draws[_d-1],_d-1,dr,_d,run_v,-1,0);
+            if (why==DM_OK) {
+                const D3D12DrawRecord* ld=&s_rb.draws[lead];
+                float* _tc=prep_tsg_cells(dr);
+                const DmInfo* li=&s_dm_info[lead];
+#ifndef CV_DISTRIBUTION
+                if (runs_verify) for (int u=0;u<FP_TEX_UNITS;u++) rorig[u]=_tc?_tc[u*4+2]:0.0f;
+#endif
+                s_srv_win[_d]=s_srv_win[lead];s_prepared_fp[_d]=s_prepared_fp[lead];s_dm_info[_d]=*li;
+                memcpy(dr->tex_rt,ld->tex_rt,sizeof dr->tex_rt);
+                if (_tc) for (int u=0;u<FP_TEX_UNITS;u++) if ((li->mask>>u)&1u) _tc[u*4+2]=li->g[u];
+#ifndef CV_DISTRIBUTION
+                if (runs_verify) {
+                    /* keep what the cover produced, restore the cells to what the record wrote, and run the normal path */
+                    rsn.srv_win=s_srv_win[_d];rsn.pf=s_prepared_fp[_d];rsn.info=s_dm_info[_d];memcpy(rsn.tex_rt,dr->tex_rt,sizeof rsn.tex_rt);
+                    for (int u=0;u<FP_TEX_UNITS;u++) rsn.cell[u]=_tc?_tc[u*4+2]:0.0f;
+                    if (_tc) for (int u=0;u<FP_TEX_UNITS;u++) _tc[u*4+2]=rorig[u];
+                    s_srv_win[_d]=_d;s_prepared_fp[_d].valid=0;tm.valid=0;previous_draw=-1;cov_ver=1;
+                } else
+#endif
+                {
+#ifndef CV_DISTRIBUTION
+                    if(_prx_on&&!s_run_last[lead])s_runs_fr_grp++;
+#endif
+                    s_run_last[lead]=_d;lead_last=_d;run_v+=dr->vertex_count;s_run_verts[lead]=run_v;
+#ifndef CV_DISTRIBUTION
+                    if(_prx_on){s_runs_fr_cov++;PRX_T(5);}
+#endif
+                    continue;
+                }
+            }
+#ifndef CV_DISTRIBUTION
+            else if(_prx_on)s_runs_broke[why]++;
+#endif
+        }
         /* Debug: RTT_VIEWRT=<hex raw offset> makes display draws sample that
          * offscreen RT at t0 (the composite blit then shows it fullscreen). */
         { static const char* vr = (const char*)1;     /* hoisted: this runs per DRAW */
@@ -11345,6 +11439,9 @@ static void prepass_range(u32 from, u32 to)
         PRX_T(3);
         if (perf_on()) s_perf_srv += perf_now() - _sv0;
         double _ps0 = perf_on() ? perf_now() : 0.0;
+#ifndef CV_DISTRIBUTION
+        if(_prx_on)_prxp_last=__rdtsc();
+#endif
         if (dr->fp_addr) {
             const u8* snap=fp_snap_ptr(dr);
             RsxPreparedRepeatKey key={(u32)dr->vs_idx,dr->blend_key,(u32)dr_num_rts(dr),
@@ -11353,6 +11450,7 @@ static void prepass_range(u32 from, u32 to)
                 dr_cube_mask(dr),dr->fp_bytes};
             const int frozen=dr->fp_snap&&s_rb.fp_arena&&snap;
             ID3D12PipelineState* prepared=NULL;
+            PRXP(0);
             /* Same program snapshot (same arena offset = same bytes, deduplicated when recorded) needs no byte compare. */
             if(repeat_on&&frozen&&previous_draw>=0&&
                (pso_reuse2&&previous_code==snap?previous_key.bytes&&previous_key.bytes<=4096&&!memcmp(&previous_key,&key,sizeof key)
@@ -11379,17 +11477,72 @@ static void prepass_range(u32 from, u32 to)
 #ifndef CV_DISTRIBUTION
             if(!prepared&&_prx_on&&repeat_on&&frozen)s_prx_miss[1]++;
 #endif
-            if(!prepared)prepared=vp_get_fp_pso(dr->vs_idx,dr->fp_addr,dr->blend_key,
+            PRXP(1);
+            if(!prepared){prepared=vp_get_fp_pso(dr->vs_idx,dr->fp_addr,dr->blend_key,
                 (int)key.nrt,key.rtfmt,dr->fp_exp32,dr->cmask,key.cull,key.cube_mask,snap,dr_fp_urgent(dr));
+#ifndef CV_DISTRIBUTION
+                if(_prx_on)s_prx_lk++;
+#endif
+            }
+            PRXP(2);
             if(prep_reuse_on()&&snap&&prepared&&!s_fp_skip_draw&&s_fp_result_index>=0) {
                 PreparedFp* p=&s_prepared_fp[_d];p->index=s_fp_result_index;
                 p->key=s_d3d.vp_fp[p->index];p->valid=1;
             }
             if(repeat_on&&frozen&&s_prepared_fp[_d].valid){previous_draw=(int)_d;previous_key=key;previous_code=snap;}
             else previous_draw=-1;
+            PRXP(3);
         } else previous_draw=-1;
         if (perf_on()) s_perf_pso += perf_now() - _ps0;
         PRX_T(4);
+#ifndef CV_DISTRIBUTION
+        if (cov_ver) {   /* CV_DRAW_RUNS_VERIFY: the fresh computation vs what the cover copied from the leader */
+            const char* bad=NULL;static char nmv[48];
+            const PreparedFp* fp0=&rsn.pf;const PreparedFp* fp1=&s_prepared_fp[_d];
+            float* _tc2=prep_tsg_cells(dr);
+            if (rsn.srv_win!=s_srv_win[_d]) bad="srv_window";
+            else if (memcmp(rsn.tex_rt,dr->tex_rt,sizeof rsn.tex_rt)) bad="tex_rt";
+            else if (rsn.info.fb!=s_dm_info[_d].fb) bad="feedback_flag";
+            else if (rsn.info.mask!=s_dm_info[_d].mask) bad="gamma_mask";
+            else if (fp0->valid!=fp1->valid) bad="pso.valid";
+            else if (fp0->valid&&(fp0->index!=fp1->index||fp0->key.gen!=fp1->key.gen||fp0->key.pso!=fp1->key.pso)) bad="pso.index_or_ptr";
+            else for (int u=0;u<FP_TEX_UNITS&&!bad;u++) {
+                if (((rsn.info.mask>>u)&1u)&&memcmp(&rsn.info.g[u],&s_dm_info[_d].g[u],sizeof(float))) { snprintf(nmv,sizeof nmv,"gamma[%d]",u); bad=nmv; }
+                else if (_tc2&&memcmp(&rsn.cell[u],&_tc2[u*4+2],sizeof(float))&&!(rsn.cell[u]!=rsn.cell[u]&&_tc2[u*4+2]!=_tc2[u*4+2])) { snprintf(nmv,sizeof nmv,"b1.cell[%d]",u); bad=nmv; }
+            }
+            if (bad) {
+                s_runs_mis_tot++;
+                static int _nm=0;if(_nm++<200)fprintf(stderr,"[DRAW-RUNS-MISMATCH] draw=%u run=%d field=%s (cover result discarded, fresh one used, group closed here)%c",_d,lead,bad,10);
+                lead=-1;   /* the fresh values are in place; this draw starts over as a candidate leader below */
+            } else {
+                if(_prx_on&&!s_run_last[lead])s_runs_fr_grp++;
+                s_run_last[lead]=_d;lead_last=_d;run_v+=dr->vertex_count;s_run_verts[lead]=run_v;
+                if(_prx_on)s_runs_fr_cov++;
+                continue;
+            }
+        }
+        if (_prx_on) s_runs_fr_led++;
+#endif
+        /* Candidate leader of a new group: only a draw whose texture result is memoisable (the same condition under
+         * which the next draw may copy it), without feedback risk or vertex textures, with a ready frozen pipeline. */
+        if (runs_on) {
+            int cand=0;
+            if (dr->vtex_mask) {
+#ifndef CV_DISTRIBUTION
+                if(_prx_on)s_runs_inel[0]++;
+#endif
+            } else if (_fb_risk) {
+#ifndef CV_DISTRIBUTION
+                if(_prx_on)s_runs_inel[1]++;
+#endif
+            } else if (!tm.valid||!dr->fp_snap||!s_prepared_fp[_d].valid) {
+#ifndef CV_DISTRIBUTION
+                if(_prx_on)s_runs_inel[2]++;
+#endif
+            } else cand=1;
+            if (cand) { lead=(int)_d;lead_last=_d;run_v=dr->vertex_count;s_run_verts[_d]=run_v; }
+            else lead=-1;
+        }
     }
     s_pp_t = _pd_t; s_pp_prev = _pd_prev;
 #ifndef CV_DISTRIBUTION
@@ -11459,7 +11612,9 @@ static void render_frame_impl(void)
     double cv_wait = 0.0, cv_present_start = 0.0, cv_present_ms = 0.0, cv_fence_start = 0.0;
 #ifndef CV_DISTRIBUTION
     const int sp_on = draw_spike_on(); double sp_t0 = 0.0, sp_wait = 0.0, sp_tb = 0.0, sp_tp0 = 0.0, sp_tp1 = 0.0;
-    if (sp_on) { sp_t0 = perf_now(); s_spike_prepass = 0.0; memset(s_prx_t,0,sizeof s_prx_t);memset(s_prx_gate,0,sizeof s_prx_gate);s_prx_tot=0;memset(s_prx_hit,0,sizeof s_prx_hit);memset(s_prx_miss,0,sizeof s_prx_miss);memset(s_prx_mis,0,sizeof s_prx_mis); }
+    if (sp_on) { sp_t0 = perf_now(); s_spike_prepass = 0.0; memset(s_prx_t,0,sizeof s_prx_t);memset(s_prx_gate,0,sizeof s_prx_gate);s_prx_tot=0;memset(s_prx_hit,0,sizeof s_prx_hit);memset(s_prx_miss,0,sizeof s_prx_miss);memset(s_prx_mis,0,sizeof s_prx_mis);
+        memset(s_prx_p,0,sizeof s_prx_p);s_prx_lk=0;memset(s_prx_t,0,sizeof s_prx_t);
+        s_runs_fr_cov=s_runs_fr_grp=s_runs_fr_led=s_runs_fr_rec=s_runs_fr_recdraws=0;memset(s_runs_broke,0,sizeof s_runs_broke);memset(s_runs_inel,0,sizeof s_runs_inel); }
 #endif
 
     double _rf0 = perf_on() ? perf_now() : 0.0;
@@ -11838,6 +11993,10 @@ static void render_frame_impl(void)
      * loop, part by part; otherwise all of it now, as before. */
     const u32 pp_part = (s_cv_query_active || s_cap_steps_on) ? 0u : (u32)submit_split_every();
     u32 pp_done = pp_part ? pp_part : MAX_DRAWS;
+    /* Run-level prepass/record: same frame-wide off switches as draw-run merging (per-draw captures/probes act on every
+     * single draw), plus CV_DRAW_RUNS=0. */
+    s_runs_frame_ok = draw_runs_on() && draw_merge_on() && !dm_dbg_env() && !s_cap_steps_on && !s_cv_query_active &&
+                      !s_frame_detail.active && !cv_diag;
     prepass_range(0, pp_done);
 
     /* Transition render target to RENDER_TARGET state */
@@ -12080,6 +12239,9 @@ static void render_frame_impl(void)
                 const char* value=getenv("CV_DEPTH_OF_FIELD");
                 cv_depth_of_field_enabled=!(value&&strcmp(value,"0")==0);
             }
+            /* The per-draw drop filters (shadow map neutralising, depth-of-field, letterbox): while one is on, the
+             * record walks the draws to see which a group member would lose (the old merge scan). */
+            const int cv_filters_on=!cv_shadows_enabled||!cv_depth_of_field_enabled||cv_no_letterbox();
             unsigned char cv_shadow_neutralized[MAX_OFF_RTS]={0};
             const int _pt_on = perf_on(); unsigned long long _pt_last = 0;
             for (u32 d = 0; d < s_rb.count && d < MAX_DRAWS; d++) {
@@ -12590,6 +12752,32 @@ static void render_frame_impl(void)
                 if(dm_on&&batch_count==1&&dpso&&dr->vertex_count) {
                     /* Draw-run merging (see dm_pair): the draws that follow d and could only differ in vertex data. */
                     u32 run_v=dr->vertex_count,last_i=d;
+                    int by_group=0;
+                    /* Run-level record: the prepass already decided the group that starts here (every member joined by the
+                     * dm_pair record-field rules, same pipeline, window and b1 words). What is left to check is what only
+                     * the record knows: the leader's pipeline is live, the bound target is not sampled, the group fits the
+                     * command-list split, the depth-conversion/FSR boundaries and pp_done, and no per-draw filter is on. */
+                    if(s_run_last[d]>d&&!cv_filters_on&&fp_prepared_ready(d,dr)==dpso) {
+                        int fb=0;
+                        for(int u=0;u<FP_TEX_UNITS;u++)if(dr->tex_rt[u]>=0&&dr->tex_rt[u]==cur_rt)fb=1;
+                        if(!fb) {
+                            u32 end=s_run_last[d];
+                            if(end>=pp_done)end=pp_done-1;
+                            if(split_n){const u32 lim=split_last+(u32)split_n-1;if(end>lim)end=lim>d?lim:d;}
+                            if(s_fsr_ready&&s_fsr_depth_at>d&&s_fsr_depth_at<=end)end=s_fsr_depth_at-1;
+                            if(s_zconv_at>d&&s_zconv_at<=end)end=s_zconv_at-1;
+                            for(int k=0;k<s_zconv_nmore;k++)if(s_zconv_more[k]>d&&s_zconv_more[k]<=end)end=s_zconv_more[k]-1;
+                            if(end>d) {
+                                if(end==s_run_last[d])run_v=s_run_verts[d];
+                                else{run_v=0;for(u32 i=d;i<=end;i++)run_v+=s_rb.draws[i].vertex_count;}
+                                last_i=end;batch_count=end-d+1;by_group=1;
+#ifndef CV_DISTRIBUTION
+                                s_runs_fr_rec++;s_runs_fr_recdraws+=batch_count;s_runs_rec_tot++;
+#endif
+                            }
+                        }
+                    }
+                    if(!by_group)
                     for(u32 next=d+1;next<s_rb.count&&next<MAX_DRAWS&&next<pp_done;next++) {
                         if(split_n&&next-split_last>=(u32)split_n)break;
                         int boundary=next==s_zconv_at||(s_fsr_ready&&next==s_fsr_depth_at);
@@ -12610,7 +12798,7 @@ static void render_frame_impl(void)
                         run_v+=nd->vertex_count;last_i=next;batch_count++;
                     }
 #ifndef CV_DISTRIBUTION
-                    if(batch_count>1&&dm_verify_on()) {
+                    if(batch_count>1&&(dm_verify_on()||runs_verify_on())) {
                         u32 v=dr->vertex_count;
                         for(u32 i=d+1;i<=last_i;i++) {
                             const char* bad=dm_verify_pair(&s_rb.draws[i-1],i-1,&s_rb.draws[i],i,v,cur_rt,dpso);
