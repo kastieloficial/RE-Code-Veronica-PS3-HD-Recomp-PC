@@ -44,6 +44,8 @@ void cv_original_007846D0(ppu_context* ctx); /* MtFile::read (sync/async) */
 void cv_original_0078575C(ppu_context* ctx); /* MtFile::readAsync */
 void cv_original_00538AEC(ppu_context* ctx); /* decodeProc zlib stream ctor */
 void cv_original_00539B0C(ppu_context* ctx); /* decodeProc zlib stream dtor */
+void cv_original_001CF5D4(ppu_context* ctx); /* njCalcPoint4 (mat4 * vec3) */
+void cv_original_00287750(ppu_context* ctx); /* K-way draw-call merge sort */
 void func_007858F4(ppu_context* ctx);        /* MtFile::seek(obj, off, origin) */
 void CV_FN_STOP_BANK(ppu_context* ctx);      /* (sound_mgr, bank_id) */
 
@@ -153,6 +155,44 @@ bool native_zlib_enabled()
     static int cached = -1;
     if (cached < 0) cached = env_flag("CV_NATIVE_ZLIB", true) ? 1 : 0;
     return cached != 0;
+}
+
+bool native_hot_enabled()
+{
+    static int cached = -1;
+    if (cached < 0) cached = env_flag("CV_NATIVE_HOT", true) ? 1 : 0;
+    return cached != 0;
+}
+
+static inline uint32_t read_be32_fast(const uint8_t* p)
+{
+    uint32_t v;
+    std::memcpy(&v, p, 4);
+#ifdef _MSC_VER
+    return _byteswap_ulong(v);
+#else
+    return __builtin_bswap32(v);
+#endif
+}
+
+static inline float read_bef32_fast(const uint8_t* p)
+{
+    uint32_t u = read_be32_fast(p);
+    float f;
+    std::memcpy(&f, &u, 4);
+    return f;
+}
+
+static inline void write_bef32_fast(uint8_t* p, float f)
+{
+    uint32_t u;
+    std::memcpy(&u, &f, 4);
+#ifdef _MSC_VER
+    u = _byteswap_ulong(u);
+#else
+    u = __builtin_bswap32(u);
+#endif
+    std::memcpy(p, &u, 4);
 }
 
 bool fast_log_enabled()
@@ -610,6 +650,98 @@ extern "C" int cv_native_spu_inflate(ppu_context* ctx)
     g_door_inflate_calls.fetch_add(1, std::memory_order_relaxed);
     g_door_inflate_us.fetch_add(dt, std::memory_order_relaxed);
     return 1;
+}
+
+/* Hook 6: njCalcPoint4 (EU 0x001CF5D4) -- hot leaf mat4x4 * vec3 -> vec4 */
+void func_001CF5D4(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        cv_original_001CF5D4(ctx);
+        return;
+    }
+
+    uint32_t mat = (uint32_t)ctx->gpr[3];
+    const uint32_t src = (uint32_t)ctx->gpr[4];
+    const uint32_t dst = (uint32_t)ctx->gpr[5];
+    if (!mat) {
+        mat = read_be32_fast(vm_base + 0x00ABED90u); /* (0xAC << 16) - 0x1270 */
+    }
+
+    const uint8_t* s = vm_base + src;
+    const uint8_t* m = vm_base + mat;
+    uint8_t* d = vm_base + dst;
+
+    const float x = read_bef32_fast(s + 0x0);
+    const float y = read_bef32_fast(s + 0x4);
+    const float z = read_bef32_fast(s + 0x8);
+
+    const float ox = read_bef32_fast(m + 0x00) * x + read_bef32_fast(m + 0x10) * y + read_bef32_fast(m + 0x20) * z + read_bef32_fast(m + 0x30);
+    const float oy = read_bef32_fast(m + 0x04) * x + read_bef32_fast(m + 0x14) * y + read_bef32_fast(m + 0x24) * z + read_bef32_fast(m + 0x34);
+    const float oz = read_bef32_fast(m + 0x08) * x + read_bef32_fast(m + 0x18) * y + read_bef32_fast(m + 0x28) * z + read_bef32_fast(m + 0x38);
+    const float ow = read_bef32_fast(m + 0x0C) * x + read_bef32_fast(m + 0x1C) * y + read_bef32_fast(m + 0x2C) * z + read_bef32_fast(m + 0x3C);
+
+    write_bef32_fast(d + 0x0, ox);
+    write_bef32_fast(d + 0x4, oy);
+    write_bef32_fast(d + 0x8, oz);
+    write_bef32_fast(d + 0xC, ow);
+}
+
+/* Hook 7: K-way draw-call merge sort (EU 0x00287750) -- hot leaf on 1000+ draw rooms */
+void func_00287750(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        cv_original_00287750(ctx);
+        return;
+    }
+
+    const uint32_t desc = (uint32_t)ctx->gpr[4];
+    const uint32_t lists_addr = read_be32_fast(vm_base + desc + 0x0);
+    const uint32_t count      = read_be32_fast(vm_base + desc + 0x4);
+    const uint32_t out_addr   = read_be32_fast(vm_base + desc + 0x8);
+
+    if (count == 0) return;
+    if (count > 32) {
+        cv_original_00287750(ctx);
+        return;
+    }
+
+    const uint8_t* ptrs[32];
+    uint32_t lens[32];
+    uint32_t idxs[32];
+    uint32_t total = 0;
+
+    for (uint32_t i = 0; i < count; ++i) {
+        const uint8_t* entry = vm_base + lists_addr + i * 12u;
+        lens[i] = read_be32_fast(entry + 0x4);
+        ptrs[i] = vm_base + read_be32_fast(entry + 0x8);
+        idxs[i] = 0;
+        total += lens[i];
+    }
+
+    if (total == 0) return;
+
+    uint8_t* out = vm_base + out_addr;
+
+    if (count == 1) {
+        std::memcpy(out, ptrs[0], (size_t)total * 8u);
+        return;
+    }
+
+    for (uint32_t k = 0; k < total; ++k) {
+        uint32_t best_key = 0xFFFFFFFFu;
+        uint32_t best_i = 0;
+        for (uint32_t i = 0; i < count; ++i) {
+            if (idxs[i] < lens[i]) {
+                const uint32_t key = read_be32_fast(ptrs[i] + (size_t)idxs[i] * 8u);
+                if (best_key > key) {
+                    best_key = key;
+                    best_i = i;
+                }
+            }
+        }
+        std::memcpy(out + (size_t)k * 8u, ptrs[best_i] + (size_t)idxs[best_i] * 8u, 8u);
+        idxs[best_i]++;
+    }
 }
 
 #endif /* EU */
