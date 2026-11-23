@@ -46,6 +46,9 @@ void cv_original_00538AEC(ppu_context* ctx); /* decodeProc zlib stream ctor */
 void cv_original_00539B0C(ppu_context* ctx); /* decodeProc zlib stream dtor */
 void cv_original_001CF5D4(ppu_context* ctx); /* njCalcPoint4 (mat4 * vec3) */
 void cv_original_00287750(ppu_context* ctx); /* K-way draw-call merge sort */
+void cv_original_001D32F0(ppu_context* ctx); /* vertex + normal + bbox transform */
+void cv_original_001CE930(ppu_context* ctx); /* njMultiMatrix (affine 3x4) */
+void func_000124F4(ppu_context* ctx);        /* scratch buffer allocator */
 void func_007858F4(ppu_context* ctx);        /* MtFile::seek(obj, off, origin) */
 void CV_FN_STOP_BANK(ppu_context* ctx);      /* (sound_mgr, bank_id) */
 
@@ -107,6 +110,12 @@ struct GuestCall {
             g_trampoline_fn = nullptr;
             next(&c);
         }
+    }
+
+    uint32_t run_u32(void (*fn)(ppu_context*), uint32_t a, uint32_t b)
+    {
+        run(fn, a, b, 0);
+        return (uint32_t)c.gpr[3];
     }
 };
 
@@ -742,6 +751,168 @@ void func_00287750(ppu_context* ctx)
         std::memcpy(out + (size_t)k * 8u, ptrs[best_i] + (size_t)idxs[best_i] * 8u, 8u);
         idxs[best_i]++;
     }
+}
+
+/* Hook 8: njMultiMatrix affine 3x4 (EU 0x001CE930) -- 3.8% of guest CPU */
+void func_001CE930(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        cv_original_001CE930(ctx);
+        return;
+    }
+
+    uint32_t dst_addr = (uint32_t)ctx->gpr[3];
+    const uint32_t src_addr = (uint32_t)ctx->gpr[4];
+    if (!dst_addr) {
+        dst_addr = read_be32_fast(vm_base + 0x00ABED90u);
+    }
+
+    uint8_t* a = vm_base + dst_addr;
+    const uint8_t* b = vm_base + src_addr;
+
+    const float a00 = read_bef32_fast(a + 0x00), a01 = read_bef32_fast(a + 0x04), a02 = read_bef32_fast(a + 0x08);
+    const float a10 = read_bef32_fast(a + 0x10), a11 = read_bef32_fast(a + 0x14), a12 = read_bef32_fast(a + 0x18);
+    const float a20 = read_bef32_fast(a + 0x20), a21 = read_bef32_fast(a + 0x24), a22 = read_bef32_fast(a + 0x28);
+    const float a30 = read_bef32_fast(a + 0x30), a31 = read_bef32_fast(a + 0x34), a32 = read_bef32_fast(a + 0x38);
+
+    const float b00 = read_bef32_fast(b + 0x00), b01 = read_bef32_fast(b + 0x04), b02 = read_bef32_fast(b + 0x08);
+    const float b10 = read_bef32_fast(b + 0x10), b11 = read_bef32_fast(b + 0x14), b12 = read_bef32_fast(b + 0x18);
+    const float b20 = read_bef32_fast(b + 0x20), b21 = read_bef32_fast(b + 0x24), b22 = read_bef32_fast(b + 0x28);
+    const float b30 = read_bef32_fast(b + 0x30), b31 = read_bef32_fast(b + 0x34), b32 = read_bef32_fast(b + 0x38);
+
+    write_bef32_fast(a + 0x30, a00 * b30 + a10 * b31 + a20 * b32 + a30);
+    write_bef32_fast(a + 0x34, a01 * b30 + a11 * b31 + a21 * b32 + a31);
+    write_bef32_fast(a + 0x38, a02 * b30 + a12 * b31 + a22 * b32 + a32);
+
+    write_bef32_fast(a + 0x00, a00 * b00 + a10 * b01 + a20 * b02);
+    write_bef32_fast(a + 0x04, a01 * b00 + a11 * b01 + a21 * b02);
+    write_bef32_fast(a + 0x08, a02 * b00 + a12 * b01 + a22 * b02);
+
+    write_bef32_fast(a + 0x10, a00 * b10 + a10 * b11 + a20 * b12);
+    write_bef32_fast(a + 0x14, a01 * b10 + a11 * b11 + a21 * b12);
+    write_bef32_fast(a + 0x18, a02 * b10 + a12 * b11 + a22 * b12);
+
+    write_bef32_fast(a + 0x20, a00 * b20 + a10 * b21 + a20 * b22);
+    write_bef32_fast(a + 0x24, a01 * b20 + a11 * b21 + a21 * b22);
+    write_bef32_fast(a + 0x28, a02 * b20 + a12 * b21 + a22 * b22);
+}
+
+/* Hook 9: vertex + normal + bbox transform loop (EU 0x001D32F0) -- 6.6% of guest CPU */
+void func_001D32F0(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        cv_original_001D32F0(ctx);
+        return;
+    }
+
+    const uint32_t mesh = (uint32_t)ctx->gpr[3];
+    const uint32_t count = vm_read16(mesh + 0x6);
+    const uint32_t ctx_obj = read_be32_fast(vm_base + 0x00ABEDFCu); /* (0xAC << 16) - 0x1204 */
+    if (!ctx_obj) {
+        ctx->gpr[3] = mesh + 0x40u + (count << 5);
+        return;
+    }
+
+    uint32_t pos_buf = 0, col_buf = 0, norm_buf = 0;
+    {
+        GuestCall alloc(ctx);
+        pos_buf = alloc.run_u32(func_000124F4, 0u, count << 4);
+        vm_write32(ctx_obj + 0x04, pos_buf);
+        col_buf = alloc.run_u32(func_000124F4, 0u, count << 2);
+        vm_write32(ctx_obj + 0x08, col_buf);
+        vm_write32(ctx_obj + 0x10, count);
+        if (count != 0) {
+            norm_buf = alloc.run_u32(func_000124F4, 0u, count << 4);
+            vm_write32(ctx_obj + 0x0C, norm_buf);
+            vm_write32(ctx_obj + 0x14, count);
+        }
+    }
+
+    if (count != 0) {
+        uint8_t def_col_be[4];
+        std::memcpy(def_col_be, vm_base + 0x00BB13ECu, 4);
+        uint8_t* col_p = vm_base + col_buf;
+        for (uint32_t i = 0; i < count; ++i) {
+            std::memcpy(col_p + i * 4u, def_col_be, 4);
+        }
+    }
+
+    vm_write8(ctx_obj + 0x18, 0u);
+
+    if (count != 0) {
+        const uint32_t mat_addr = read_be32_fast(vm_base + 0x00ABED90u);
+        const uint8_t* m = vm_base + mat_addr;
+        const float m00 = read_bef32_fast(m + 0x00), m01 = read_bef32_fast(m + 0x04), m02 = read_bef32_fast(m + 0x08);
+        const float m10 = read_bef32_fast(m + 0x10), m11 = read_bef32_fast(m + 0x14), m12 = read_bef32_fast(m + 0x18);
+        const float m20 = read_bef32_fast(m + 0x20), m21 = read_bef32_fast(m + 0x24), m22 = read_bef32_fast(m + 0x28);
+        const float m30 = read_bef32_fast(m + 0x30), m31 = read_bef32_fast(m + 0x34), m32 = read_bef32_fast(m + 0x38);
+
+        const bool track_bbox = (read_be32_fast(vm_base + 0x00AECEA0u) == 1u);
+        float bmin[4] = {}, bmax[4] = {};
+        uint32_t bcnt = 0;
+        if (track_bbox) {
+            for (int k = 0; k < 4; ++k) {
+                bmin[k] = read_bef32_fast(vm_base + 0x00AECEB0u + k * 4u);
+                bmax[k] = read_bef32_fast(vm_base + 0x00AECEC0u + k * 4u);
+            }
+            bcnt = read_be32_fast(vm_base + 0x00AECEA4u);
+        }
+
+        const uint8_t* vsrc = vm_base + mesh + 0x40u;
+        uint8_t* pdst = vm_base + pos_buf;
+        uint8_t* ndst = vm_base + norm_buf;
+
+        for (uint32_t i = 0; i < count; ++i) {
+            const uint8_t* v = vsrc + i * 0x20u;
+            const float x = read_bef32_fast(v + 0x00);
+            const float y = read_bef32_fast(v + 0x04);
+            const float z = read_bef32_fast(v + 0x08);
+
+            const float px = m00 * x + m10 * y + m20 * z + m30;
+            const float py = m01 * x + m11 * y + m21 * z + m31;
+            const float pz = m02 * x + m12 * y + m22 * z + m32;
+
+            uint8_t* po = pdst + i * 0x10u;
+            write_bef32_fast(po + 0x0, px);
+            write_bef32_fast(po + 0x4, py);
+            write_bef32_fast(po + 0x8, pz);
+
+            if (track_bbox) {
+                if (px < bmin[0]) bmin[0] = px;
+                if (py < bmin[1]) bmin[1] = py;
+                if (pz < bmin[2]) bmin[2] = pz;
+                if (0.0f < bmin[3]) bmin[3] = 0.0f;
+                if (px > bmax[0]) bmax[0] = px;
+                if (py > bmax[1]) bmax[1] = py;
+                if (pz > bmax[2]) bmax[2] = pz;
+                if (0.0f > bmax[3]) bmax[3] = 0.0f;
+                bcnt++;
+            }
+
+            const float nx = read_bef32_fast(v + 0x10);
+            const float ny = read_bef32_fast(v + 0x14);
+            const float nz = read_bef32_fast(v + 0x18);
+
+            const float tnx = m00 * nx + m10 * ny + m20 * nz;
+            const float tny = m01 * nx + m11 * ny + m21 * nz;
+            const float tnz = m02 * nx + m12 * ny + m22 * nz;
+
+            uint8_t* no = ndst + i * 0x10u;
+            write_bef32_fast(no + 0x0, tnx);
+            write_bef32_fast(no + 0x4, tny);
+            write_bef32_fast(no + 0x8, tnz);
+        }
+
+        if (track_bbox) {
+            for (int k = 0; k < 4; ++k) {
+                write_bef32_fast(vm_base + 0x00AECEB0u + k * 4u, bmin[k]);
+                write_bef32_fast(vm_base + 0x00AECEC0u + k * 4u, bmax[k]);
+            }
+            vm_write32(0x00AECEA4u, bcnt);
+        }
+    }
+
+    ctx->gpr[3] = mesh + 0x40u + (count << 5);
 }
 
 #endif /* EU */
