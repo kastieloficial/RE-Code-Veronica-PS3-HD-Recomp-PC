@@ -211,6 +211,25 @@ if(PORT_ENABLE_SPU)
         # page a few thousand iterations in.
         list(APPEND SPU_SOURCES ${SPU_LIFTED}
              "${PS3RECOMP_DIR}/runtime/spu/spu_dispatch_mt.c")
+        # Build-local SPU trampoline elimination + superblock stitching for spu_0009 (spu_execute2_task)
+        set(SPU_0009_ORIG "${SPU_DIR}/spu_0009_at_00940C00/spu_recomp.c")
+        if(EXISTS "${SPU_0009_ORIG}")
+            find_package(Python3 COMPONENTS Interpreter REQUIRED)
+            set(SPU_0009_OPT "${CMAKE_CURRENT_BINARY_DIR}/spu_opt/spu_0009_at_00940C00/spu_recomp.c")
+            add_custom_command(
+                OUTPUT "${SPU_0009_OPT}"
+                COMMAND "${Python3_EXECUTABLE}" -I
+                        "${CMAKE_CURRENT_SOURCE_DIR}/tools/cv_spu_fast.py"
+                        --input "${SPU_0009_ORIG}"
+                        --output "${SPU_0009_OPT}"
+                        --prefix "spu_0009_at_00940C00"
+                DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tools/cv_spu_fast.py"
+                        "${SPU_0009_ORIG}"
+                COMMENT "Optimizing SPU spu_0009_at_00940C00 (superblock + musttail)"
+                VERBATIM)
+            list(REMOVE_ITEM SPU_SOURCES "${SPU_0009_ORIG}")
+            list(APPEND SPU_SOURCES "${SPU_0009_OPT}")
+        endif()
         # Generated beside the lift; each is present only once its generator
         # has been run, so each is included only if it is actually here.
         foreach(gen IN ITEMS spu_workloads.c jobmods_register.c taskset_policy_bytes.c)
