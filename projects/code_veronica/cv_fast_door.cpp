@@ -52,8 +52,9 @@ void cv_original_004BAAC0(ppu_context* ctx); /* vertex attribute packer (14 form
 void cv_original_0001D5D0(ppu_context* ctx); /* vertex buffer builder (strips/lists) */
 void cv_original_00286E74(ppu_context* ctx); /* 2-way bottom-up merge sort (8B pairs) */
 void cv_original_0027EF90(ppu_context* ctx); /* vertex buffer + draw desc allocator */
+void cv_original_000124F4(ppu_context* ctx); /* atomic scratch bump allocator */
+void cv_original_00549F7C(ppu_context* ctx); /* recursive tree traversal */
 void cv_ui_original_enqueue(ppu_context* ctx); /* UI/draw command vector push_back */
-void func_000124F4(ppu_context* ctx);        /* scratch buffer allocator */
 void func_007858F4(ppu_context* ctx);        /* MtFile::seek(obj, off, origin) */
 void CV_FN_STOP_BANK(ppu_context* ctx);      /* (sound_mgr, bank_id) */
 
@@ -194,15 +195,31 @@ bool native_hot_enabled()
     return cached != 0;
 }
 
-static inline uint32_t read_be32_fast(const uint8_t* p)
+static inline uint32_t bswap32_fast(uint32_t v)
 {
-    uint32_t v;
-    std::memcpy(&v, p, 4);
 #ifdef _MSC_VER
     return _byteswap_ulong(v);
 #else
     return __builtin_bswap32(v);
 #endif
+}
+
+static inline uint16_t read_be16_fast(const uint8_t* p)
+{
+    uint16_t v;
+    std::memcpy(&v, p, 2);
+#ifdef _MSC_VER
+    return _byteswap_ushort(v);
+#else
+    return __builtin_bswap16(v);
+#endif
+}
+
+static inline uint32_t read_be32_fast(const uint8_t* p)
+{
+    uint32_t v;
+    std::memcpy(&v, p, 4);
+    return bswap32_fast(v);
 }
 
 static inline float read_bef32_fast(const uint8_t* p)
@@ -838,6 +855,46 @@ void func_001CE930(ppu_context* ctx)
     write_bef32_fast(a + 0x28, a02 * b20 + a12 * b21 + a22 * b22);
 }
 
+/* Hook 15 helper: atomic scratch bump allocator (EU 0x000124F4) -- 3.3% of guest CPU */
+static inline uint32_t cv_alloc_scratch_000124F4(uint32_t pool_idx, uint32_t size)
+{
+    const uint32_t mgr = read_be32_fast(vm_base + 0x00A83C68u); /* (0xA8<<16) + 0x3C68 */
+    if (!mgr) return 0u;
+
+    const uint32_t pool    = mgr + pool_idx * 24u;
+    const uint32_t aligned = (size + 0xFu) & ~0xFu;
+    const uint32_t cap     = read_be32_fast(vm_base + pool + 0x2Cu);
+    const uint32_t cur0    = read_be32_fast(vm_base + pool + 0x30u);
+    if (cur0 + aligned >= cap) return 0u;
+
+    std::atomic_ref<uint32_t> cur_atom(*reinterpret_cast<uint32_t*>(vm_base + pool + 0x30u));
+    uint32_t cur_be = cur_atom.load(std::memory_order_relaxed);
+    uint32_t old_cur;
+    for (;;) {
+        old_cur = bswap32_fast(cur_be);
+        const uint32_t next_be = bswap32_fast(old_cur + aligned);
+        if (cur_atom.compare_exchange_weak(cur_be, next_be,
+                                           std::memory_order_acq_rel,
+                                           std::memory_order_relaxed)) {
+            break;
+        }
+    }
+
+    const uint32_t cnt = read_be32_fast(vm_base + pool + 0x34u);
+    write_be32_fast(vm_base + pool + 0x34u, cnt + 1u);
+    const uint32_t base = read_be32_fast(vm_base + pool + 0x38u);
+    return base + old_cur;
+}
+
+void func_000124F4(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        cv_original_000124F4(ctx);
+        return;
+    }
+    ctx->gpr[3] = cv_alloc_scratch_000124F4((uint32_t)ctx->gpr[3], (uint32_t)ctx->gpr[4]);
+}
+
 /* Hook 9: vertex + normal + bbox transform loop (EU 0x001D32F0) -- 6.6% of guest CPU */
 void func_001D32F0(ppu_context* ctx)
 {
@@ -854,19 +911,16 @@ void func_001D32F0(ppu_context* ctx)
         return;
     }
 
-    uint32_t pos_buf = 0, col_buf = 0, norm_buf = 0;
-    {
-        GuestCall alloc(ctx);
-        pos_buf = alloc.run_u32(func_000124F4, 0u, count << 4);
-        vm_write32(ctx_obj + 0x04, pos_buf);
-        col_buf = alloc.run_u32(func_000124F4, 0u, count << 2);
-        vm_write32(ctx_obj + 0x08, col_buf);
-        vm_write32(ctx_obj + 0x10, count);
-        if (count != 0) {
-            norm_buf = alloc.run_u32(func_000124F4, 0u, count << 4);
-            vm_write32(ctx_obj + 0x0C, norm_buf);
-            vm_write32(ctx_obj + 0x14, count);
-        }
+    uint32_t pos_buf = cv_alloc_scratch_000124F4(0u, count << 4);
+    write_be32_fast(vm_base + ctx_obj + 0x04u, pos_buf);
+    uint32_t col_buf = cv_alloc_scratch_000124F4(0u, count << 2);
+    write_be32_fast(vm_base + ctx_obj + 0x08u, col_buf);
+    write_be32_fast(vm_base + ctx_obj + 0x10u, count);
+    uint32_t norm_buf = 0u;
+    if (count != 0) {
+        norm_buf = cv_alloc_scratch_000124F4(0u, count << 4);
+        write_be32_fast(vm_base + ctx_obj + 0x0Cu, norm_buf);
+        write_be32_fast(vm_base + ctx_obj + 0x14u, count);
     }
 
     if (count != 0) {
@@ -1567,6 +1621,58 @@ void func_0001D5D0(ppu_context* ctx)
             }
         }
     }
+}
+
+/* Hook 16: Recursive tree traversal (EU 0x00549F7C) -- 4.0% of guest CPU */
+static uint32_t cv_tree_traverse_00549F7C(uint32_t tree_base, uint32_t node_val,
+                                          uint32_t entries, uint32_t out_ptr)
+{
+    const uint32_t hi = node_val & 0xFFFFF000u;
+    if (hi != 0u) {
+        write_be32_fast(vm_base + out_ptr, hi);
+        out_ptr += 4u;
+    }
+
+    const uint32_t node_addr = tree_base + ((node_val & 0x0FFFu) << 3);
+    const uint32_t hdr       = read_be32_fast(vm_base + node_addr + 0x0u);
+    uint32_t       child_ptr = read_be32_fast(vm_base + node_addr + 0x4u);
+    const uint32_t n_branch  = (hdr >> 6) & 0x3Fu;
+    const uint32_t n_leaf    = hdr & 0x3Fu;
+
+    for (uint32_t i = 0; i < n_branch; ++i) {
+        const uint32_t idx  = read_be16_fast(vm_base + child_ptr);
+        child_ptr += 2u;
+        const uint32_t cval = read_be32_fast(vm_base + entries + (idx << 3) + 4u);
+        out_ptr = cv_tree_traverse_00549F7C(tree_base, cval, entries, out_ptr);
+    }
+
+    for (uint32_t i = 0; i < n_leaf; ++i) {
+        const uint32_t idx  = read_be16_fast(vm_base + child_ptr);
+        child_ptr += 2u;
+        const uint32_t lval = read_be32_fast(vm_base + entries + (idx << 3) + 4u);
+        if (lval != 0u) {
+            write_be32_fast(vm_base + out_ptr, lval);
+            out_ptr += 4u;
+        }
+    }
+
+    return out_ptr;
+}
+
+void func_00549F7C(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        cv_original_00549F7C(ctx);
+        return;
+    }
+
+    const uint32_t obj       = (uint32_t)ctx->gpr[3];
+    const uint32_t node_val  = (uint32_t)ctx->gpr[4];
+    const uint32_t entries   = (uint32_t)ctx->gpr[5];
+    const uint32_t out_ptr   = (uint32_t)ctx->gpr[6];
+    const uint32_t tree_base = read_be32_fast(vm_base + obj + 0x48u);
+
+    ctx->gpr[3] = cv_tree_traverse_00549F7C(tree_base, node_val, entries, out_ptr);
 }
 
 #endif /* EU */
