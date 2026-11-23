@@ -180,12 +180,51 @@ static void cv_native_spu_0009_0000B630(spu_context* ctx) {
     cv_spu_ls_wr32(ctx, state_ls + 44u, ea_attr);
     SPU_RET(ctx);
 }
+
+static void cv_native_spu_0009_0001C0E0(spu_context* ctx) {
+    uint32_t cur = ctx->gpr[24]._u32[0];
+    const uint32_t cmd  = ctx->gpr[86]._u32[0];
+    const uint32_t mode = ctx->gpr[84]._u32[0] & 0xFFu;
+    const uint32_t cntm = ctx->gpr[89]._u32[0];
+
+    cv_spu_ls_wr32(ctx, cur + 0u,  0x400C1714u);
+    cv_spu_ls_wr32(ctx, cur + 4u,  0u);
+    cv_spu_ls_wr32(ctx, cur + 8u,  0u);
+    cv_spu_ls_wr32(ctx, cur + 12u, 0u);
+    cv_spu_ls_wr32(ctx, cur + 16u, 0x00041808u);
+    cv_spu_ls_wr32(ctx, cur + 20u, mode);
+    cv_spu_ls_wr32(ctx, cur + 24u, 0x00041814u);
+    cv_spu_ls_wr32(ctx, cur + 28u, cntm << 24);
+    cur += 32u;
+    cv_spu_ls_wr32(ctx, cmd + 8u, cur);
+
+    ctx->gpr[24] = (u128){ ._u32 = { cur, cur, cur, cur } };
+    ctx->gpr[90] = (u128){ ._u32 = { cntm + 1u, cntm + 1u, cntm + 1u, cntm + 1u } };
+
+    if (ctx->gpr[88]._u32[0] == 0u) {
+        __attribute__((musttail)) return spu_0009_at_00940C00_spu_func_0001C278(ctx);
+    }
+    ctx->gpr[82] = (u128){ ._u32 = { 0x5FFC1814u, 0x5FFC1814u, 0x5FFC1814u, 0x5FFC1814u } };
+    ctx->gpr[80] = (u128){ ._u32 = { 0u, 0u, 0u, 0u } };
+    ctx->gpr[83] = (u128){ ._u32 = { 0x0007FF00u, 0x0007FF00u, 0x0007FF00u, 0x0007FF00u } };
+    ctx->gpr[81] = (u128){ ._u32 = { 8192u, 8192u, 8192u, 8192u } };
+    __attribute__((musttail)) return spu_0009_at_00940C00_spu_func_0001C1D0(ctx);
+}
 """
 
 NATIVE_SPU_0009_OVERRIDES = {
     "0000B630": "cv_native_spu_0009_0000B630(ctx);",
     "00020D38": "cv_native_spu_0009_00020D38(ctx);",
     "00020DF0": "cv_native_spu_0009_00020D38(ctx);",
+    "0001C0E0": "__attribute__((musttail)) return cv_native_spu_0009_0001C0E0(ctx);",
+}
+
+# Hoist cache-hit early-outs above the 11..41 register stack spill prologues
+NATIVE_SPU_0009_EARLY_OUTS = {
+    "0000E7D0": "if (cv_spu_ls_rd32(ctx, ctx->gpr[3]._u32[0] + 0x10u) == ctx->gpr[4]._u32[0]) { SPU_RET(ctx); }",
+    "0000C3D8": "if (cv_spu_ls_rd32(ctx, ctx->gpr[3]._u32[0] + 0x08u) == ctx->gpr[4]._u32[0]) { SPU_RET(ctx); }",
+    "00009510": "if (cv_spu_ls_rd32(ctx, ctx->gpr[3]._u32[0] + 0x14u) == ctx->gpr[4]._u32[0]) { SPU_RET(ctx); }",
+    "0000A170": "if (cv_spu_ls_rd32(ctx, ctx->gpr[3]._u32[0] + 0x0Cu) == ctx->gpr[4]._u32[0]) { SPU_RET(ctx); }",
 }
 
 
@@ -259,9 +298,10 @@ def optimize_spu_source(src: str, prefix: str, max_cluster: int = 80) -> tuple[s
 
     out_parts: list[str] = [header]
     overrides = NATIVE_SPU_0009_OVERRIDES if prefix == "spu_0009_at_00940C00" else {}
+    early_outs = NATIVE_SPU_0009_EARLY_OUTS if prefix == "spu_0009_at_00940C00" else {}
     if overrides:
         out_parts.append(NATIVE_SPU_0009_HELPERS + "\n")
-    stats = {"clusters": 0, "clustered_funcs": 0, "goto_jumps": 0, "musttail_jumps": 0, "native_overrides": 0}
+    stats = {"clusters": 0, "clustered_funcs": 0, "goto_jumps": 0, "musttail_jumps": 0, "native_overrides": 0, "early_outs": 0}
     cluster_id = 0
 
     for comp in wccs:
@@ -293,6 +333,9 @@ def optimize_spu_source(src: str, prefix: str, max_cluster: int = 80) -> tuple[s
 
                 patched = tramp_re.sub(repl_cluster, inner)
                 lines.append(f"bb_{a}: {{")
+                if a in early_outs:
+                    stats["early_outs"] += 1
+                    lines.append(f"    {early_outs[a]}")
                 lines.append(patched)
                 lines.append("    return;")
                 lines.append("}")
@@ -303,6 +346,8 @@ def optimize_spu_source(src: str, prefix: str, max_cluster: int = 80) -> tuple[s
                 if a in overrides:
                     stats["native_overrides"] += 1
                     lines.append(f"void {full_name}(spu_context* ctx) {{ {overrides[a]} }}")
+                elif a in early_outs:
+                    lines.append(f"void {full_name}(spu_context* ctx) {{ {early_outs[a]} {cluster_fn}(ctx, 0x{a}u); }}")
                 else:
                     lines.append(f"void {full_name}(spu_context* ctx) {{ {cluster_fn}(ctx, 0x{a}u); }}")
             lines.append("\n")
@@ -321,7 +366,11 @@ def optimize_spu_source(src: str, prefix: str, max_cluster: int = 80) -> tuple[s
                     return f"{{ __attribute__((musttail)) return {prefix}_spu_func_{tgt}(ctx); }}"
 
                 patched = tramp_re.sub(repl_tail, inner)
-                out_parts.append(f"void {full_name}(spu_context* ctx) {{{patched}}}\n\n")
+                eo = ""
+                if a in early_outs:
+                    stats["early_outs"] += 1
+                    eo = f"\n        {early_outs[a]}"
+                out_parts.append(f"void {full_name}(spu_context* ctx) {{{eo}{patched}}}\n\n")
 
     out_parts.append(footer)
     return "".join(out_parts), stats
