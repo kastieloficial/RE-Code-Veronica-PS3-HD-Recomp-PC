@@ -48,6 +48,11 @@ void cv_original_001CF5D4(ppu_context* ctx); /* njCalcPoint4 (mat4 * vec3) */
 void cv_original_00287750(ppu_context* ctx); /* K-way draw-call merge sort */
 void cv_original_001D32F0(ppu_context* ctx); /* vertex + normal + bbox transform */
 void cv_original_001CE930(ppu_context* ctx); /* njMultiMatrix (affine 3x4) */
+void cv_original_004BAAC0(ppu_context* ctx); /* vertex attribute packer (14 formats) */
+void cv_original_0001D5D0(ppu_context* ctx); /* vertex buffer builder (strips/lists) */
+void cv_original_00286E74(ppu_context* ctx); /* 2-way bottom-up merge sort (8B pairs) */
+void cv_original_0027EF90(ppu_context* ctx); /* vertex buffer + draw desc allocator */
+void cv_ui_original_enqueue(ppu_context* ctx); /* UI/draw command vector push_back */
 void func_000124F4(ppu_context* ctx);        /* scratch buffer allocator */
 void func_007858F4(ppu_context* ctx);        /* MtFile::seek(obj, off, origin) */
 void CV_FN_STOP_BANK(ppu_context* ctx);      /* (sound_mgr, bank_id) */
@@ -55,6 +60,7 @@ void CV_FN_STOP_BANK(ppu_context* ctx);      /* (sound_mgr, bank_id) */
 void func_001B2A48(ppu_context* ctx);
 
 extern "C" uint8_t* vm_base;
+extern "C" void ps3_indirect_call(ppu_context* ctx);
 extern "C" PPU_THREAD_LOCAL ppu_context* g_active_ctx;
 extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 extern "C" volatile unsigned char* ps3_patch_flag(const char* name);
@@ -115,6 +121,21 @@ struct GuestCall {
     uint32_t run_u32(void (*fn)(ppu_context*), uint32_t a, uint32_t b)
     {
         run(fn, a, b, 0);
+        return (uint32_t)c.gpr[3];
+    }
+
+    uint32_t run_indirect_u32(uint32_t fn_addr, uint32_t a, uint32_t b, uint32_t d = 0)
+    {
+        c.gpr[3] = a;
+        c.gpr[4] = b;
+        c.gpr[5] = d;
+        c.ctr = fn_addr;
+        ps3_indirect_call(&c);
+        while (g_trampoline_fn) {
+            auto next = g_trampoline_fn;
+            g_trampoline_fn = nullptr;
+            next(&c);
+        }
         return (uint32_t)c.gpr[3];
     }
 };
@@ -190,6 +211,26 @@ static inline float read_bef32_fast(const uint8_t* p)
     float f;
     std::memcpy(&f, &u, 4);
     return f;
+}
+
+static inline void write_be32_fast(uint8_t* p, uint32_t v)
+{
+#ifdef _MSC_VER
+    v = _byteswap_ulong(v);
+#else
+    v = __builtin_bswap32(v);
+#endif
+    std::memcpy(p, &v, 4);
+}
+
+static inline void write_be16_fast(uint8_t* p, uint16_t v)
+{
+#ifdef _MSC_VER
+    v = _byteswap_ushort(v);
+#else
+    v = __builtin_bswap16(v);
+#endif
+    std::memcpy(p, &v, 2);
 }
 
 static inline void write_bef32_fast(uint8_t* p, float f)
@@ -913,6 +954,619 @@ void func_001D32F0(ppu_context* ctx)
     }
 
     ctx->gpr[3] = mesh + 0x40u + (count << 5);
+}
+
+/* Hook 10: UI/draw command vector push_back fast path (EU 0x00015AFC) -- 4.0%-6.8% of guest CPU */
+void cv_fast_enqueue_00015AFC(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        cv_ui_original_enqueue(ctx);
+        return;
+    }
+
+    const uint32_t obj  = (uint32_t)ctx->gpr[3];
+    const uint32_t item = (uint32_t)ctx->gpr[4];
+    const int32_t mode  = (int32_t)read_be32_fast(vm_base + obj + 0x14Cu);
+
+    uint32_t off_cnt, off_cap, off_arr;
+    if (mode == 3 || mode == 4) {
+        off_cnt = 0xECu;
+        off_cap = 0xF0u;
+        off_arr = 0xF8u;
+    } else if ((read_be32_fast(vm_base + item + 0x10u) & 0x100u) != 0u) {
+        off_cnt = 0xD8u;
+        off_cap = 0xDCu;
+        off_arr = 0xE4u;
+    } else {
+        off_cnt = 0xC4u;
+        off_cap = 0xC8u;
+        off_arr = 0xD0u;
+    }
+
+    const uint32_t cnt = read_be32_fast(vm_base + obj + off_cnt);
+    const uint32_t cap = read_be32_fast(vm_base + obj + off_cap);
+    if (cnt < cap) {
+        const uint32_t arr = read_be32_fast(vm_base + obj + off_arr);
+        write_be32_fast(vm_base + obj + off_cnt, cnt + 1u);
+        write_be32_fast(vm_base + arr + (cnt << 2), item);
+        return;
+    }
+
+    /* Slow path: vector growth / realloc (rare) */
+    cv_ui_original_enqueue(ctx);
+}
+
+/* Hook 11: vertex buffer + draw descriptor fast allocator (EU 0x0027EF90) -- 4.0% of guest CPU */
+void func_0027EF90(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        cv_original_0027EF90(ctx);
+        return;
+    }
+
+    const uint32_t obj       = (uint32_t)ctx->gpr[3];
+    const uint32_t vtx_count = (uint32_t)ctx->gpr[4];
+    const uint32_t stride    = (uint32_t)ctx->gpr[5];
+
+    if ((read_be32_fast(vm_base + obj + 0x4Cu) & 0x50u) != 0u) {
+        ctx->gpr[3] = 0;
+        return;
+    }
+
+    const uint32_t bytes = (uint32_t)((int32_t)stride * (int32_t)vtx_count);
+    const uint32_t vcur  = read_be32_fast(vm_base + obj + 0x1Cu);
+    const uint32_t vend  = read_be32_fast(vm_base + obj + 0x24u);
+    if (vcur + bytes > vend || vcur == 0u) {
+        cv_original_0027EF90(ctx);
+        return;
+    }
+
+    if ((uint32_t)vm_base[obj + 0x74u] != stride) {
+        cv_original_0027EF90(ctx);
+        return;
+    }
+
+    const uint32_t dcur = read_be32_fast(vm_base + obj + 0x14u);
+    const uint32_t dend = read_be32_fast(vm_base + obj + 0x18u);
+    if (dcur + 0x20u > dend) {
+        cv_original_0027EF90(ctx);
+        return;
+    }
+
+    /* Fast path: bump vertex & descriptor cursors, write 32-byte desc + 8-byte sort entry */
+    write_be32_fast(vm_base + obj + 0x1Cu, vcur + bytes);
+    write_be32_fast(vm_base + obj + 0x14u, dcur + 0x20u);
+
+    uint8_t* d = vm_base + dcur;
+    const uint32_t w0 = (read_be32_fast(d + 0x0) & 0xFFFF0000u)
+                      | (read_be32_fast(vm_base + obj + 0x5Cu) & 0x00000FFFu);
+    write_be32_fast(d + 0x00u, w0);
+    write_be32_fast(d + 0x04u, read_be32_fast(vm_base + obj + 0x1CCu));
+    write_be32_fast(d + 0x08u, read_be32_fast(vm_base + obj + 0x1C0u));
+    write_be32_fast(d + 0x0Cu, read_be32_fast(vm_base + obj + 0x1C4u));
+    write_be32_fast(d + 0x10u, read_be32_fast(vm_base + obj + 0xB8u));
+    write_be32_fast(d + 0x14u, vtx_count);
+    const uint32_t vtx_off = read_be32_fast(vm_base + obj + 0xB4u);
+    write_be32_fast(d + 0x18u, vtx_off);
+    write_be32_fast(d + 0x1Cu, 0u);
+    write_be32_fast(vm_base + obj + 0xB4u, vtx_off + vtx_count);
+
+    const uint32_t sort_idx  = read_be32_fast(vm_base + obj + 0x38u);
+    const uint32_t sort_base = read_be32_fast(vm_base + obj + 0x34u);
+    write_be32_fast(vm_base + obj + 0x38u, sort_idx + 1u);
+
+    const uint32_t key_base = read_be32_fast(vm_base + obj + 0x194u);
+    const uint32_t key_add  = read_be32_fast(vm_base + obj + 0x1A8u);
+    const uint32_t sort_key = (key_base & 0xF8000000u)
+                            | (((key_base & 0x07FFFFFFu) + key_add) & 0x07FFFFFFu);
+    uint8_t* s = vm_base + sort_base + (sort_idx << 3);
+    write_be32_fast(s + 0x0u, sort_key);
+    write_be32_fast(s + 0x4u, dcur);
+
+    ctx->gpr[3] = vcur;
+}
+
+/* Hook 12: 2-way bottom-up stable merge sort of 8-byte (u32 key, u32 val) pairs (EU 0x00286E74) -- 4.1% of guest CPU */
+static inline uint32_t be_key_from_pair64(uint64_t entry)
+{
+#ifdef _MSC_VER
+    return _byteswap_ulong((uint32_t)entry);
+#else
+    return __builtin_bswap32((uint32_t)entry);
+#endif
+}
+
+void func_00286E74(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        cv_original_00286E74(ctx);
+        return;
+    }
+
+    const uint32_t arr_in  = (uint32_t)ctx->gpr[4];
+    const int32_t  count   = (int32_t)ctx->gpr[5];
+    const uint32_t arr_tmp = (uint32_t)ctx->gpr[6];
+
+    int32_t pow2 = 1;
+    for (int i = 0; i < 32 && count > pow2; ++i) {
+        pow2 <<= 1;
+    }
+    if (pow2 < 2) {
+        ctx->gpr[3] = arr_in;
+        return;
+    }
+
+    uint64_t* a_in  = reinterpret_cast<uint64_t*>(vm_base + arr_in);
+    uint64_t* a_tmp = reinterpret_cast<uint64_t*>(vm_base + arr_tmp);
+
+    /* Pass 1: sort pairs (run = 2) from arr_in -> arr_tmp */
+    for (int32_t i = 0; i < count; i += 2) {
+        if (i + 1 >= count) {
+            a_tmp[i] = a_in[i];
+        } else {
+            const uint64_t e0 = a_in[i];
+            const uint64_t e1 = a_in[i + 1];
+            if (be_key_from_pair64(e0) > be_key_from_pair64(e1)) {
+                a_tmp[i]     = e1;
+                a_tmp[i + 1] = e0;
+            } else {
+                a_tmp[i]     = e0;
+                a_tmp[i + 1] = e1;
+            }
+        }
+    }
+
+    int parity = 1;
+    for (int32_t run = 4; run <= pow2; run <<= 1) {
+        const uint64_t* src = parity ? a_tmp : a_in;
+        uint64_t*       dst = parity ? a_in  : a_tmp;
+        const int32_t half = run >> 1;
+
+        for (int32_t start = 0; start < count; start += run) {
+            int32_t mid = start + half;
+            if (mid > count) mid = count;
+            int32_t end = mid + half;
+            if (end > count) end = count;
+
+            int32_t l = start, r = mid, o = start;
+            while (l < mid && r < end) {
+                const uint64_t el = src[l];
+                const uint64_t er = src[r];
+                if (be_key_from_pair64(el) > be_key_from_pair64(er)) {
+                    dst[o++] = er;
+                    ++r;
+                } else {
+                    dst[o++] = el;
+                    ++l;
+                }
+            }
+            if (l < mid) {
+                std::memcpy(dst + o, src + l, (size_t)(mid - l) * 8u);
+            } else if (r < end) {
+                std::memcpy(dst + o, src + r, (size_t)(end - r) * 8u);
+            }
+        }
+        parity ^= 1;
+    }
+
+    ctx->gpr[3] = parity ? arr_tmp : arr_in;
+}
+
+/* Hook 13: MT Framework vertex attribute packer (EU 0x004BAAC0) -- 6.9% (#1) of guest CPU */
+static inline float cv_clampf(float v, float lo, float hi)
+{
+    if (v < lo) v = lo;
+    if (v > hi) v = hi;
+    return v;
+}
+
+static inline uint16_t cv_float32_to_half(uint32_t bits)
+{
+    const int32_t  exp  = (int32_t)((bits >> 23) & 0xFFu) - 112;
+    const uint32_t mant = bits & 0x007FFFFFu;
+    uint16_t h = (uint16_t)((bits >> 16) & 0x8000u);
+
+    if (exp <= 0) {
+        if (exp < -10) return 0u;
+        const uint32_t m = (mant | 0x00800000u) >> (1 - exp);
+        return (uint16_t)(h | (m >> 13));
+    }
+    if (exp == 0x8F) {
+        if (mant == 0u) return (uint16_t)(h | 0x7C00u);
+        const uint16_t q = (uint16_t)((bits >> 13) & 0x3FFu);
+        return (uint16_t)(h | 0x7C00u | q | (q == 0u ? 1u : 0u));
+    }
+    if (exp > 0x1E) return (uint16_t)(h | 0x7C00u);
+    return (uint16_t)(h | ((uint32_t)exp << 10) | ((bits >> 13) & 0x3FFu));
+}
+
+template <typename ReadFloatFn>
+static inline uint32_t cv_pack_vertex_attr_impl(uint8_t* dst_base, uint32_t desc, ReadFloatFn read_src_f)
+{
+    const uint32_t dst_off = (desc >> 1) & 0x1FFu;
+    const uint32_t fmt     = (desc >> 21) & 0x1Fu;
+    const uint32_t count   = (desc >> 14) & 0x7Fu;
+    const uint32_t sbase   = (desc >> 10) & 0x0Fu;
+    uint8_t* dst = dst_base + dst_off;
+    const uint8_t* ctab = vm_base + 0x004BAA78u; /* (0x4C << 16) - 21896 */
+
+    switch (fmt) {
+    case 1: /* Float32 */
+        for (uint32_t i = 0; i < count; ++i) {
+            write_bef32_fast(dst + i * 4u, read_src_f(sbase + i));
+        }
+        return count;
+
+    case 2: /* Float16 */
+        for (uint32_t i = 0; i < count; ++i) {
+            const float f = read_src_f(sbase + i);
+            uint32_t bits;
+            std::memcpy(&bits, &f, 4);
+            write_be16_fast(dst + i * 2u, cv_float32_to_half(bits));
+        }
+        return count;
+
+    case 3: { /* Int16 clamped */
+        if (count == 0u) return 0u;
+        const float lo = read_bef32_fast(ctab + 0x00u);
+        const float hi = read_bef32_fast(ctab + 0x04u);
+        for (uint32_t i = 0; i < count; ++i) {
+            const float f = cv_clampf(read_src_f(sbase + i), lo, hi);
+            write_be16_fast(dst + i * 2u, (uint16_t)(int32_t)f);
+        }
+        return count;
+    }
+
+    case 4: { /* Int16 (f - c08) clamped */
+        if (count == 0u) return 0u;
+        const float lo   = read_bef32_fast(ctab + 0x00u);
+        const float hi   = read_bef32_fast(ctab + 0x04u);
+        const float bias = read_bef32_fast(ctab + 0x08u);
+        for (uint32_t i = 0; i < count; ++i) {
+            const float f = cv_clampf(read_src_f(sbase + i) - bias, lo, hi);
+            write_be16_fast(dst + i * 2u, (uint16_t)(int32_t)f);
+        }
+        return count;
+    }
+
+    case 5: { /* Snorm16: clamp(f, c0C, c10) * c04 */
+        if (count == 0u) return 0u;
+        const float lo    = read_bef32_fast(ctab + 0x0Cu);
+        const float hi    = read_bef32_fast(ctab + 0x10u);
+        const float scale = read_bef32_fast(ctab + 0x04u);
+        for (uint32_t i = 0; i < count; ++i) {
+            const float f = cv_clampf(read_src_f(sbase + i), lo, hi) * scale;
+            write_be16_fast(dst + i * 2u, (uint16_t)(int32_t)f);
+        }
+        return count;
+    }
+
+    case 6: { /* Snorm16 biased: clamp((f - c14) * c18, c0C, c10) * c04 */
+        if (count == 0u) return 0u;
+        const float c14   = read_bef32_fast(ctab + 0x14u);
+        const float c18   = read_bef32_fast(ctab + 0x18u);
+        const float lo    = read_bef32_fast(ctab + 0x0Cu);
+        const float hi    = read_bef32_fast(ctab + 0x10u);
+        const float scale = read_bef32_fast(ctab + 0x04u);
+        for (uint32_t i = 0; i < count; ++i) {
+            const float f = cv_clampf((read_src_f(sbase + i) - c14) * c18, lo, hi) * scale;
+            write_be16_fast(dst + i * 2u, (uint16_t)(int32_t)f);
+        }
+        return count;
+    }
+
+    case 7: { /* Uint8: clamp(f + c1C, c20, c24) */
+        if (count == 0u) return 0u;
+        const float bias = read_bef32_fast(ctab + 0x1Cu);
+        const float lo   = read_bef32_fast(ctab + 0x20u);
+        const float hi   = read_bef32_fast(ctab + 0x24u);
+        for (uint32_t i = 0; i < count; ++i) {
+            const float f = cv_clampf(read_src_f(sbase + i) + bias, lo, hi);
+            dst[i] = (uint8_t)(int64_t)f;
+        }
+        return count;
+    }
+
+    case 8: { /* Uint8: clamp(f, c20, c24) */
+        if (count == 0u) return 0u;
+        const float lo = read_bef32_fast(ctab + 0x20u);
+        const float hi = read_bef32_fast(ctab + 0x24u);
+        for (uint32_t i = 0; i < count; ++i) {
+            const float f = cv_clampf(read_src_f(sbase + i), lo, hi);
+            dst[i] = (uint8_t)(int64_t)f;
+        }
+        return count;
+    }
+
+    case 9: { /* Uint8: clamp(f * c40 + c40, c20, c24) */
+        if (count == 0u) return 0u;
+        const float c40 = read_bef32_fast(ctab + 0x40u);
+        const float lo  = read_bef32_fast(ctab + 0x20u);
+        const float hi  = read_bef32_fast(ctab + 0x24u);
+        for (uint32_t i = 0; i < count; ++i) {
+            const float f = cv_clampf(read_src_f(sbase + i) * c40 + c40, lo, hi);
+            dst[i] = (uint8_t)(int64_t)f;
+        }
+        return count;
+    }
+
+    case 10: { /* Unorm8: clamp(f, c20, c10) * c24 */
+        if (count == 0u) return 0u;
+        const float lo    = read_bef32_fast(ctab + 0x20u);
+        const float hi    = read_bef32_fast(ctab + 0x10u);
+        const float scale = read_bef32_fast(ctab + 0x24u);
+        for (uint32_t i = 0; i < count; ++i) {
+            const float f = cv_clampf(read_src_f(sbase + i), lo, hi) * scale;
+            dst[i] = (uint8_t)(int64_t)f;
+        }
+        return count;
+    }
+
+    case 11: { /* Packed 3-comp signed -> RGBA8 (r<<24 | g<<16 | b<<8 | 0xFF) */
+        if (count == 0u) return 0u;
+        const float lo  = read_bef32_fast(ctab + 0x0Cu);
+        const float hi  = read_bef32_fast(ctab + 0x10u);
+        const float c40 = read_bef32_fast(ctab + 0x40u);
+        for (uint32_t i = 0; i < count; ++i) {
+            const uint32_t idx = (sbase + i) * 3u;
+            const uint32_t b0 = (uint32_t)(uint8_t)(int64_t)(cv_clampf(read_src_f(idx + 0u), lo, hi) * c40 + c40);
+            const uint32_t b1 = (uint32_t)(uint8_t)(int64_t)(cv_clampf(read_src_f(idx + 1u), lo, hi) * c40 + c40);
+            const uint32_t b2 = (uint32_t)(uint8_t)(int64_t)(cv_clampf(read_src_f(idx + 2u), lo, hi) * c40 + c40);
+            write_be32_fast(dst + i * 4u, (b0 << 24) | (b1 << 16) | (b2 << 8) | 0xFFu);
+        }
+        return count * 3u;
+    }
+
+    case 12: { /* Packed 3-comp unorm -> 0xFF000000 | (b2<<16) | (b1<<8) | b0 */
+        if (count == 0u) return 0u;
+        const float lo    = read_bef32_fast(ctab + 0x20u);
+        const float hi    = read_bef32_fast(ctab + 0x10u);
+        const float scale = read_bef32_fast(ctab + 0x24u);
+        for (uint32_t i = 0; i < count; ++i) {
+            const uint32_t idx = (sbase + i) * 3u;
+            const uint32_t b0 = (uint32_t)(uint8_t)(int64_t)(cv_clampf(read_src_f(idx + 0u), lo, hi) * scale);
+            const uint32_t b1 = (uint32_t)(uint8_t)(int64_t)(cv_clampf(read_src_f(idx + 1u), lo, hi) * scale);
+            const uint32_t b2 = (uint32_t)(uint8_t)(int64_t)(cv_clampf(read_src_f(idx + 2u), lo, hi) * scale);
+            write_be32_fast(dst + i * 4u, 0xFF000000u | (b2 << 16) | (b1 << 8) | b0);
+        }
+        return count * 3u;
+    }
+
+    case 13: { /* Uint8 Reinhard: clamp(f / (f + c10), c20, c10) * c24 */
+        if (count == 0u) return 0u;
+        const float c10   = read_bef32_fast(ctab + 0x10u);
+        const float lo    = read_bef32_fast(ctab + 0x20u);
+        const float scale = read_bef32_fast(ctab + 0x24u);
+        for (uint32_t i = 0; i < count; ++i) {
+            const float x = read_src_f(sbase + i);
+            const float f = cv_clampf(x / (x + c10), lo, c10) * scale;
+            dst[i] = (uint8_t)(int64_t)f;
+        }
+        return count;
+    }
+
+    case 14: { /* Packed 4-comp unorm -> (b3<<24) | (b2<<16) | (b1<<8) | b0 */
+        if (count == 0u) return 0u;
+        const float lo    = read_bef32_fast(ctab + 0x20u);
+        const float hi    = read_bef32_fast(ctab + 0x10u);
+        const float scale = read_bef32_fast(ctab + 0x24u);
+        for (uint32_t i = 0; i < count; ++i) {
+            const uint32_t idx = (sbase + i) * 4u;
+            const uint32_t b0 = (uint32_t)(uint8_t)(int64_t)(cv_clampf(read_src_f(idx + 0u), lo, hi) * scale);
+            const uint32_t b1 = (uint32_t)(uint8_t)(int64_t)(cv_clampf(read_src_f(idx + 1u), lo, hi) * scale);
+            const uint32_t b2 = (uint32_t)(uint8_t)(int64_t)(cv_clampf(read_src_f(idx + 2u), lo, hi) * scale);
+            const uint32_t b3 = (uint32_t)(uint8_t)(int64_t)(cv_clampf(read_src_f(idx + 3u), lo, hi) * scale);
+            write_be32_fast(dst + i * 4u, (b3 << 24) | (b2 << 16) | (b1 << 8) | b0);
+        }
+        return count * 4u;
+    }
+
+    default:
+        return 0u;
+    }
+}
+
+void func_004BAAC0(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        cv_original_004BAAC0(ctx);
+        return;
+    }
+
+    const uint32_t dst_addr  = (uint32_t)ctx->gpr[3];
+    const uint32_t desc_addr = (uint32_t)ctx->gpr[4];
+    const uint32_t src_addr  = (uint32_t)ctx->gpr[5];
+    const uint32_t desc      = read_be32_fast(vm_base + desc_addr + 0x4u);
+    const uint8_t* src_ptr   = vm_base + src_addr;
+
+    ctx->gpr[3] = cv_pack_vertex_attr_impl(
+        vm_base + dst_addr, desc,
+        [src_ptr](uint32_t idx) -> float { return read_bef32_fast(src_ptr + idx * 4u); });
+}
+
+/* Hook 14: Vertex buffer builder (EU 0x0001D5D0) -- 4.3% of guest CPU, inlines func_004BAAC0 */
+void func_0001D5D0(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        cv_original_0001D5D0(ctx);
+        return;
+    }
+
+    const uint32_t geom_hdr = (uint32_t)ctx->gpr[4] + 4u;
+    const uint32_t mesh     = (uint32_t)ctx->gpr[5];
+
+    /* 1. Free existing vertex buffer if present */
+    const uint32_t old_buf = read_be32_fast(vm_base + mesh + 0x34u);
+    if (old_buf != 0u) {
+        const uint32_t alloc = read_be32_fast(vm_base + 0x00B40FCCu + 0x20u);
+        const uint32_t vt    = read_be32_fast(vm_base + alloc);
+        const uint32_t fn    = read_be32_fast(vm_base + read_be32_fast(vm_base + vt + 0x28u));
+        GuestCall call(ctx);
+        call.run_indirect_u32(fn, alloc, old_buf);
+        write_be32_fast(vm_base + mesh + 0x34u, 0u);
+    }
+
+    /* 2. Compute total vertex buffer size */
+    const uint32_t num_groups  = read_be32_fast(vm_base + mesh + 0x04u);
+    const uint32_t global_obj  = read_be32_fast(vm_base + 0x00AFBDDCu); /* (0xB0<<16) - 0x4224 */
+    const uint32_t vfmt        = read_be32_fast(vm_base + global_obj + 0x208u);
+    const uint32_t vtx_stride  = read_be32_fast(vm_base + vfmt + 0x20u);
+    const bool     has_normals = (read_be32_fast(vm_base + geom_hdr + 0x10u) != 0u);
+    const uint32_t prim_type   = read_be32_fast(vm_base + mesh + 0x3Cu);
+    const uint32_t groups_base = read_be32_fast(vm_base + mesh + 0x28u);
+
+    uint32_t total_bytes = 0u;
+    for (uint32_t g = 0; g < num_groups; ++g) {
+        uint32_t n = read_be32_fast(vm_base + groups_base + g * 0x10u);
+        if (prim_type == 3u) {
+            n = n * 3u - 6u;
+        }
+        total_bytes += n * vtx_stride;
+    }
+
+    /* 3. Allocate new 16-byte-aligned vertex buffer */
+    uint32_t dst_vbuf = 0u;
+    {
+        const uint32_t alloc = read_be32_fast(vm_base + 0x00B40FCCu + 0x20u);
+        const uint32_t vt    = read_be32_fast(vm_base + alloc);
+        const uint32_t fn    = read_be32_fast(vm_base + read_be32_fast(vm_base + vt + 0x1Cu));
+        GuestCall call(ctx);
+        dst_vbuf = call.run_indirect_u32(fn, alloc, total_bytes, 0x10u);
+    }
+    write_be32_fast(vm_base + mesh + 0x34u, dst_vbuf);
+
+    if (num_groups == 0u || !dst_vbuf) return;
+
+    const uint32_t attr_descs = read_be32_fast(vm_base + vfmt + 0x18u);
+    const uint32_t desc_pos   = read_be32_fast(vm_base + attr_descs + 0x04u);
+    const uint32_t desc_nrm   = read_be32_fast(vm_base + attr_descs + 0x0Cu);
+    const uint32_t desc_uv    = read_be32_fast(vm_base + attr_descs + 0x14u);
+
+    const uint32_t pos_base = read_be32_fast(vm_base + geom_hdr + 0x00u);
+    const uint32_t nrm_base = read_be32_fast(vm_base + geom_hdr + 0x08u);
+    const uint8_t* def_nrm_p = vm_base + 0x00BB9850u; /* (0xBC<<16) - 26544 */
+    const float def_nrm[4] = {
+        read_bef32_fast(def_nrm_p + 0x0u), read_bef32_fast(def_nrm_p + 0x4u),
+        read_bef32_fast(def_nrm_p + 0x8u), read_bef32_fast(def_nrm_p + 0xCu)
+    };
+    const uint8_t* def_uv_p = vm_base + 0x00BB96ECu; /* (0xBC<<16) - 26900 */
+    const float def_uv[2] = {
+        read_bef32_fast(def_uv_p + 0x0u), read_bef32_fast(def_uv_p + 0x4u)
+    };
+
+    uint8_t* out_p = vm_base + dst_vbuf;
+
+    if (prim_type == 3u) {
+        /* Triangle strip -> triangle list */
+        for (uint32_t g = 0; g < num_groups; ++g) {
+            const uint32_t grp_addr     = groups_base + g * 0x10u;
+            const uint32_t n_verts      = read_be32_fast(vm_base + grp_addr + 0x0u);
+            const uint8_t  flip_winding = vm_base[grp_addr + 0x4u];
+            const uint8_t  has_uv       = vm_base[grp_addr + 0x5u];
+            const uint32_t idx_arr      = read_be32_fast(vm_base + grp_addr + 0x8u);
+            const uint32_t uv_arr       = read_be32_fast(vm_base + grp_addr + 0xCu);
+            const uint32_t n_tris       = n_verts - 2u;
+
+            for (uint32_t t = 0; t < n_tris; ++t) {
+                const bool rev = ((flip_winding != 0u) ^ ((t & 1u) != 0u));
+                for (uint32_t k = 0; k < 3u; ++k) {
+                    const uint32_t vi   = rev ? (t + 2u - k) : (t + k);
+                    const uint32_t vidx = (vi < n_verts && idx_arr)
+                                        ? read_be32_fast(vm_base + idx_arr + vi * 4u)
+                                        : read_be32_fast(vm_base);
+
+                    const uint8_t* pp = vm_base + ((pos_base + (vidx << 4)) & ~0xFu);
+                    const float pos[4] = {
+                        read_bef32_fast(pp + 0x0u), read_bef32_fast(pp + 0x4u),
+                        read_bef32_fast(pp + 0x8u), read_bef32_fast(pp + 0xCu)
+                    };
+
+                    float nrm[4];
+                    if (has_normals) {
+                        const uint8_t* np = vm_base + ((nrm_base + (vidx << 4)) & ~0xFu);
+                        nrm[0] = read_bef32_fast(np + 0x0u);
+                        nrm[1] = read_bef32_fast(np + 0x4u);
+                        nrm[2] = read_bef32_fast(np + 0x8u);
+                        nrm[3] = read_bef32_fast(np + 0xCu);
+                    } else {
+                        nrm[0] = def_nrm[0]; nrm[1] = def_nrm[1];
+                        nrm[2] = def_nrm[2]; nrm[3] = def_nrm[3];
+                    }
+
+                    float uv[2];
+                    if (has_uv == 1u) {
+                        const uint32_t uv_a = (vi < n_verts && uv_arr) ? (uv_arr + vi * 12u) : 0u;
+                        uv[0] = read_bef32_fast(vm_base + uv_a + 0x0u);
+                        uv[1] = read_bef32_fast(vm_base + uv_a + 0x4u);
+                    } else {
+                        uv[0] = def_uv[0];
+                        uv[1] = def_uv[1];
+                    }
+
+                    cv_pack_vertex_attr_impl(out_p, desc_pos, [&pos](uint32_t i) { return pos[i]; });
+                    cv_pack_vertex_attr_impl(out_p, desc_nrm, [&nrm](uint32_t i) { return nrm[i]; });
+                    cv_pack_vertex_attr_impl(out_p, desc_uv,  [&uv ](uint32_t i) { return uv[i]; });
+                    out_p += vtx_stride;
+                }
+            }
+        }
+    } else {
+        /* Direct vertex list */
+        const float nrm_scale = read_bef32_fast(vm_base + 0x0001D5CCu); /* (0x2<<16) - 10804 */
+        for (uint32_t g = 0; g < num_groups; ++g) {
+            const uint32_t grp_addr = groups_base + g * 0x10u;
+            const uint32_t n_verts  = read_be32_fast(vm_base + grp_addr + 0x0u);
+            const uint8_t  flip_nrm = vm_base[grp_addr + 0x4u];
+            const uint8_t  has_uv   = vm_base[grp_addr + 0x5u];
+            const uint32_t idx_arr  = read_be32_fast(vm_base + grp_addr + 0x8u);
+            const uint32_t uv_arr   = read_be32_fast(vm_base + grp_addr + 0xCu);
+
+            for (uint32_t vi = 0; vi < n_verts; ++vi) {
+                const uint32_t vidx = idx_arr
+                                    ? read_be32_fast(vm_base + idx_arr + vi * 4u)
+                                    : read_be32_fast(vm_base);
+
+                const uint8_t* pp = vm_base + ((pos_base + (vidx << 4)) & ~0xFu);
+                const float pos[4] = {
+                    read_bef32_fast(pp + 0x0u), read_bef32_fast(pp + 0x4u),
+                    read_bef32_fast(pp + 0x8u), read_bef32_fast(pp + 0xCu)
+                };
+
+                float nrm[4];
+                if (has_normals) {
+                    const uint8_t* np = vm_base + ((nrm_base + (vidx << 4)) & ~0xFu);
+                    nrm[0] = read_bef32_fast(np + 0x0u);
+                    nrm[1] = read_bef32_fast(np + 0x4u);
+                    nrm[2] = read_bef32_fast(np + 0x8u);
+                    nrm[3] = read_bef32_fast(np + 0xCu);
+                    if (flip_nrm != 0u) {
+                        nrm[0] *= nrm_scale;
+                        nrm[1] *= nrm_scale;
+                        nrm[2] *= nrm_scale;
+                        nrm[3] *= nrm_scale;
+                    }
+                } else {
+                    nrm[0] = def_nrm[0]; nrm[1] = def_nrm[1];
+                    nrm[2] = def_nrm[2]; nrm[3] = def_nrm[3];
+                }
+
+                float uv[2];
+                if (has_uv == 1u) {
+                    const uint32_t uv_a = uv_arr ? (uv_arr + vi * 12u) : 0u;
+                    uv[0] = read_bef32_fast(vm_base + uv_a + 0x0u);
+                    uv[1] = read_bef32_fast(vm_base + uv_a + 0x4u);
+                } else {
+                    uv[0] = def_uv[0];
+                    uv[1] = def_uv[1];
+                }
+
+                cv_pack_vertex_attr_impl(out_p, desc_pos, [&pos](uint32_t i) { return pos[i]; });
+                cv_pack_vertex_attr_impl(out_p, desc_nrm, [&nrm](uint32_t i) { return nrm[i]; });
+                cv_pack_vertex_attr_impl(out_p, desc_uv,  [&uv ](uint32_t i) { return uv[i]; });
+                out_p += vtx_stride;
+            }
+        }
+    }
 }
 
 #endif /* EU */
