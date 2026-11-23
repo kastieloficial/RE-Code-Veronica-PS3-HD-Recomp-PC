@@ -211,25 +211,32 @@ if(PORT_ENABLE_SPU)
         # page a few thousand iterations in.
         list(APPEND SPU_SOURCES ${SPU_LIFTED}
              "${PS3RECOMP_DIR}/runtime/spu/spu_dispatch_mt.c")
-        # Build-local SPU trampoline elimination + superblock stitching for spu_0009 (spu_execute2_task)
-        set(SPU_0009_ORIG "${SPU_DIR}/spu_0009_at_00940C00/spu_recomp.c")
-        if(EXISTS "${SPU_0009_ORIG}")
-            find_package(Python3 COMPONENTS Interpreter REQUIRED)
-            set(SPU_0009_OPT "${CMAKE_CURRENT_BINARY_DIR}/spu_opt/spu_0009_at_00940C00/spu_recomp.c")
-            add_custom_command(
-                OUTPUT "${SPU_0009_OPT}"
-                COMMAND "${Python3_EXECUTABLE}" -I
-                        "${CMAKE_CURRENT_SOURCE_DIR}/tools/cv_spu_fast.py"
-                        --input "${SPU_0009_ORIG}"
-                        --output "${SPU_0009_OPT}"
-                        --prefix "spu_0009_at_00940C00"
-                DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tools/cv_spu_fast.py"
-                        "${SPU_0009_ORIG}"
-                COMMENT "Optimizing SPU spu_0009_at_00940C00 (superblock + musttail)"
-                VERBATIM)
-            list(REMOVE_ITEM SPU_SOURCES "${SPU_0009_ORIG}")
-            list(APPEND SPU_SOURCES "${SPU_0009_OPT}")
-        endif()
+        # Build-local SPU trampoline elimination + superblock stitching for spu_0009 (graphics) and spu_0022 (audio)
+        foreach(SPU_OPT_IMG IN ITEMS spu_0009_at_00940C00 spu_0022_at_00A2ED80)
+            set(SPU_IMG_ORIG "${SPU_DIR}/${SPU_OPT_IMG}/spu_recomp.c")
+            if(EXISTS "${SPU_IMG_ORIG}")
+                find_package(Python3 COMPONENTS Interpreter REQUIRED)
+                set(SPU_IMG_OPT "${CMAKE_CURRENT_BINARY_DIR}/spu_opt/${SPU_OPT_IMG}/spu_recomp.c")
+                set(SPU_IMG_EXTRA "")
+                if(SPU_OPT_IMG STREQUAL "spu_0022_at_00A2ED80")
+                    set(SPU_IMG_EXTRA "--allow-irq")
+                endif()
+                add_custom_command(
+                    OUTPUT "${SPU_IMG_OPT}"
+                    COMMAND "${Python3_EXECUTABLE}" -I
+                            "${CMAKE_CURRENT_SOURCE_DIR}/tools/cv_spu_fast.py"
+                            --input "${SPU_IMG_ORIG}"
+                            --output "${SPU_IMG_OPT}"
+                            --prefix "${SPU_OPT_IMG}"
+                            ${SPU_IMG_EXTRA}
+                    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tools/cv_spu_fast.py"
+                            "${SPU_IMG_ORIG}"
+                    COMMENT "Optimizing SPU ${SPU_OPT_IMG} (superblock + musttail + inline drain)"
+                    VERBATIM)
+                list(REMOVE_ITEM SPU_SOURCES "${SPU_IMG_ORIG}")
+                list(APPEND SPU_SOURCES "${SPU_IMG_OPT}")
+            endif()
+        endforeach()
         # Generated beside the lift; each is present only once its generator
         # has been run, so each is included only if it is actually here.
         foreach(gen IN ITEMS spu_workloads.c jobmods_register.c taskset_policy_bytes.c)

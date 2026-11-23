@@ -228,9 +228,12 @@ NATIVE_SPU_0009_EARLY_OUTS = {
 }
 
 
-def optimize_spu_source(src: str, prefix: str, max_cluster: int = 80) -> tuple[str, dict]:
-    if "ctx->int_enable" in src or "spu_iret" in src:
-        raise RuntimeError(f"Refusing to bypass trampolines on interrupt-using image {prefix}")
+def optimize_spu_source(src: str, prefix: str, max_cluster: int = 80, allow_irq: bool = False) -> tuple[str, dict]:
+    if "spu_iret" in src:
+        raise RuntimeError(f"Refusing to bypass trampolines on iret-using image {prefix}")
+    has_irq = "ctx->int_enable" in src
+    if has_irq and not allow_irq:
+        raise RuntimeError(f"Refusing to bypass trampolines on interrupt-using image {prefix} without --allow-irq")
 
     fn_re = re.compile(
         rf"^void ({re.escape(prefix)}_spu_func_([0-9A-F]+))\(spu_context\* ctx\) \{{",
@@ -296,6 +299,20 @@ def optimize_spu_source(src: str, prefix: str, max_cluster: int = 80) -> tuple[s
         comp.sort(key=lambda a: int(a, 16))
         wccs.append(comp)
 
+    drain_re = re.compile(r"spu_drain_call\(ctx,\s*(0x[0-9A-Fa-f]+)\);")
+    img_re = re.compile(r"spu_img_restore\(ctx,\s*_si\);")
+
+    def inline_drain_and_img(code: str) -> str:
+        code = drain_re.sub(
+            r"if (__builtin_expect(g_spu_trampoline_fn != 0 || (ctx->pc & SPU_LS_MASK) != (\1u & SPU_LS_MASK), 0)) spu_drain_call(ctx, \1);",
+            code,
+        )
+        code = img_re.sub(
+            r"if (__builtin_expect((int32_t)ctx->image_id != _si, 0)) spu_img_restore(ctx, _si);",
+            code,
+        )
+        return code
+
     out_parts: list[str] = [header]
     overrides = NATIVE_SPU_0009_OVERRIDES if prefix == "spu_0009_at_00940C00" else {}
     early_outs = NATIVE_SPU_0009_EARLY_OUTS if prefix == "spu_0009_at_00940C00" else {}
@@ -327,11 +344,12 @@ def optimize_spu_source(src: str, prefix: str, max_cluster: int = 80) -> tuple[s
                     tgt = m.group(1)
                     if tgt in comp_set:
                         stats["goto_jumps"] += 1
+                        if has_irq:
+                            return f"{{ if (__builtin_expect(ctx->int_enable && (ctx->event_status & ctx->event_mask), 0)) {m.group(0)} goto bb_{tgt}; }}"
                         return f"goto bb_{tgt};"
-                    # Should not occur in a WCC, but safe fallback
                     return m.group(0)
 
-                patched = tramp_re.sub(repl_cluster, inner)
+                patched = inline_drain_and_img(tramp_re.sub(repl_cluster, inner))
                 lines.append(f"bb_{a}: {{")
                 if a in early_outs:
                     stats["early_outs"] += 1
@@ -363,9 +381,11 @@ def optimize_spu_source(src: str, prefix: str, max_cluster: int = 80) -> tuple[s
                 def repl_tail(m: re.Match) -> str:
                     tgt = m.group(1)
                     stats["musttail_jumps"] += 1
+                    if has_irq:
+                        return f"{{ if (__builtin_expect(ctx->int_enable && (ctx->event_status & ctx->event_mask), 0)) {m.group(0)} __attribute__((musttail)) return {prefix}_spu_func_{tgt}(ctx); }}"
                     return f"{{ __attribute__((musttail)) return {prefix}_spu_func_{tgt}(ctx); }}"
 
-                patched = tramp_re.sub(repl_tail, inner)
+                patched = inline_drain_and_img(tramp_re.sub(repl_tail, inner))
                 eo = ""
                 if a in early_outs:
                     stats["early_outs"] += 1
@@ -382,10 +402,11 @@ def main() -> None:
     p.add_argument("--output", required=True, type=Path)
     p.add_argument("--prefix", required=True)
     p.add_argument("--max-cluster", type=int, default=80)
+    p.add_argument("--allow-irq", action="store_true")
     args = p.parse_args()
 
     src = args.input.read_text(encoding="utf-8", errors="surrogateescape")
-    out, stats = optimize_spu_source(src, args.prefix, args.max_cluster)
+    out, stats = optimize_spu_source(src, args.prefix, args.max_cluster, args.allow_irq)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     hdr_in = args.input.with_name("spu_recomp.h")
     if hdr_in.exists():
