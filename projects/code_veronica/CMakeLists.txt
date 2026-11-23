@@ -298,7 +298,7 @@ if(WIN32)
             COMMAND "${Python3_EXECUTABLE}" "${CV_MENU_HOOK_SCRIPT}"
                     --input "${CV_MENU_UNIT}" --output "${CV_MENU_PATCHED}" --region "${CV_REGION_LC}"
             DEPENDS "${CV_MENU_UNIT}" "${CV_MENU_HOOK_SCRIPT}" "${PS3RECOMP_DIR}/tools/cv_native_menu_hooks.py" VERBATIM)
-        list(REMOVE_ITEM RECOMP_SOURCES "${CV_MENU_UNIT}")
+        list(REMOVE_ITEM RECOMP_SOURCES "${CV_MENU_UNIT}" "${RECOMP_DIR}/${CV_MENU_UNIT_NAME}")
         list(APPEND RECOMP_SOURCES "${CV_MENU_PATCHED}")
     endforeach()
 endif()
@@ -378,6 +378,9 @@ if(WIN32)
             "${PS3RECOMP_DIR}/third_party/zlib/compress.c"
             "${PS3RECOMP_DIR}/third_party/zlib/crc32.c"
             "${PS3RECOMP_DIR}/third_party/zlib/deflate.c"
+            "${PS3RECOMP_DIR}/third_party/zlib/inffast.c"
+            "${PS3RECOMP_DIR}/third_party/zlib/inflate.c"
+            "${PS3RECOMP_DIR}/third_party/zlib/inftrees.c"
             "${PS3RECOMP_DIR}/third_party/zlib/trees.c"
             "${PS3RECOMP_DIR}/third_party/zlib/zutil.c")
         target_include_directories(cv_appearance_zlib PUBLIC "${PS3RECOMP_DIR}/third_party/zlib")
@@ -396,7 +399,7 @@ if(WIN32)
             cv_appearance_preview.cpp cv_appearance_menu_preview.cpp cv_appearance_runtime.cpp cv_appearance_prepare.cpp)
         set_source_files_properties(cv_appearance_assets.cpp cv_appearance_prepare.cpp PROPERTIES INCLUDE_DIRECTORIES "${PS3RECOMP_DIR}/libs/codec")
     endif()
-    target_sources(${PROJECT_NAME} PRIVATE ${CV_MENU_SOURCE} boot_skip.cpp cv_test_tools.cpp cv_save_library.cpp cv_archives_ui.cpp cv_fps_experimental.cpp cv_play_time.cpp cv_native_libc.cpp cv_focus_pause.cpp cv_items.cpp cv_item_menu.cpp)
+    target_sources(${PROJECT_NAME} PRIVATE ${CV_MENU_SOURCE} boot_skip.cpp cv_fast_door.cpp cv_test_tools.cpp cv_save_library.cpp cv_archives_ui.cpp cv_fps_experimental.cpp cv_play_time.cpp cv_native_libc.cpp cv_focus_pause.cpp cv_items.cpp cv_item_menu.cpp)
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_CURRENT_SOURCE_DIR}/SAVE-LIBRARY-NOTICES.txt"

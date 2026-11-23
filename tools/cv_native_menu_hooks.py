@@ -9,7 +9,7 @@ from pathlib import Path
 # Japanese EBOOT, in the same order (projects/code_veronica/cv_version.h).
 # The last two: the guest libc memset and memmove (cv_native_libc.cpp).
 HOOKS_BY_REGION = {
-    "eu": ("0002A468", "0002F3D0", "001BD060", "0020140C", "0002B35C", "000333A0", "001D9370", "001D8090", "0050E538", "001D952C", "00033FD0", "007B6C38", "007AE7B0", "001E58FC", "00210914"),
+    "eu": ("0002A468", "0002F3D0", "001BD060", "0020140C", "0002B35C", "000333A0", "001D9370", "001D8090", "0050E538", "001D952C", "00033FD0", "007B6C38", "007AE7B0", "001E58FC", "00210914", "001AFAE8", "001B0CB0", "001B2A48", "007846D0", "0078575C", "00538AEC", "00539B0C"),
     "us": ("0002A038", "0002EF60", "001BB5E0", "001FF46C", "0002AEEC", "00032FA0", "001D7550", "001D6270", "0050C578", "001D770C", "00033BD0", "007B4C78", "007AC7F0", "001E395C", "0020E974"),
     "jp": ("0002A038", "0002EF38", "001BB688", "001FF7C0", "0002AEC4", "00032F80", "001D76D0", "001D63F0", "0050CE68", "001D788C", "00033B78", "007B5568", "007AD0E0", "001E3BBC", "0020F264"),
 }
@@ -148,6 +148,19 @@ def main(finalize=None):
     source = source[:first.start()] + '#include "cv_cheats_lift.h"\n' + source[first.start():]
     if battle_count:source=source.replace('#include "cv_cheats_lift.h"','#include "cv_cheats_lift.h"\n#include "cv_unlock_lift.h"')
     source,_=door_skip(source,args.region)
+    if args.region == "eu" and "loc_00539EB0:\n" in source and "cv_native_spu_inflate(" not in source:
+        hook_code = (
+            "loc_00539EB0:\n"
+            "        if (cv_native_spu_inflate(ctx)) {\n"
+            "            if (vm_read32(ctx->gpr[31] + 0xB8) == 1u) goto loc_00539F80;\n"
+            "            uint32_t _prod = vm_read32(ctx->gpr[30] + 0x14) - vm_read32(ctx->gpr[1] + 0x70);\n"
+            "            vm_write32(ctx->gpr[1] + 0x74, _prod);\n"
+            "            if (_prod >= (uint32_t)ctx->gpr[25]) goto loc_00539F80;\n"
+            "            goto loc_00539CE0;\n"
+            "        }\n"
+        )
+        source = source.replace("loc_00539EB0:\n", hook_code, 1)
+        source = 'struct ppu_context;\nextern "C" int cv_native_spu_inflate(ppu_context*);\n' + source
     source,_=play_time(source,args.region)
     source=modern_controls(source,args.region)
     enqueue="void func_00015AFC(ppu_context* ctx) {"
