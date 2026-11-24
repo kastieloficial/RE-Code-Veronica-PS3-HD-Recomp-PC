@@ -80,10 +80,11 @@ static void cv_native_spu_0009_00020D38(spu_context* ctx) {
     SPU_RET(ctx);
 }
 
-static void cv_native_spu_0009_0000B630(spu_context* ctx) {
-    const uint32_t state_ls    = ctx->gpr[3]._u32[0];
-    const uint32_t base_vertex = ctx->gpr[4]._u32[0];
+static inline u128 cv_spu_splat32(uint32_t v) {
+    return (u128){ ._u32 = { v, v, v, v } };
+}
 
+static void cv_native_spu_0009_0000B630_impl(spu_context* ctx, const uint32_t state_ls, const uint32_t base_vertex) {
     /* 1. Cache vertex attribute table (320 bytes) in Local Store */
     const uint32_t ea_attr = cv_spu_ls_rd32(ctx, state_ls + 44u);
     if (ea_attr != cv_spu_ls_rd32(ctx, 0x22E10u)) {
@@ -178,6 +179,10 @@ static void cv_native_spu_0009_0000B630(spu_context* ctx) {
     /* 4. Restore original main-memory EAs */
     cv_spu_ls_wr32(ctx, state_ls + 20u, ea_vbuf);
     cv_spu_ls_wr32(ctx, state_ls + 44u, ea_attr);
+}
+
+static void cv_native_spu_0009_0000B630(spu_context* ctx) {
+    cv_native_spu_0009_0000B630_impl(ctx, ctx->gpr[3]._u32[0], ctx->gpr[4]._u32[0]);
     SPU_RET(ctx);
 }
 
@@ -198,16 +203,16 @@ static void cv_native_spu_0009_0001C0E0(spu_context* ctx) {
     cur += 32u;
     cv_spu_ls_wr32(ctx, cmd + 8u, cur);
 
-    ctx->gpr[24] = (u128){ ._u32 = { cur, cur, cur, cur } };
-    ctx->gpr[90] = (u128){ ._u32 = { cntm + 1u, cntm + 1u, cntm + 1u, cntm + 1u } };
+    ctx->gpr[24] = cv_spu_splat32(cur);
+    ctx->gpr[90] = cv_spu_splat32(cntm + 1u);
 
     if (ctx->gpr[88]._u32[0] == 0u) {
         __attribute__((musttail)) return spu_0009_at_00940C00_spu_func_0001C278(ctx);
     }
-    ctx->gpr[82] = (u128){ ._u32 = { 0x5FFC1814u, 0x5FFC1814u, 0x5FFC1814u, 0x5FFC1814u } };
-    ctx->gpr[80] = (u128){ ._u32 = { 0u, 0u, 0u, 0u } };
-    ctx->gpr[83] = (u128){ ._u32 = { 0x0007FF00u, 0x0007FF00u, 0x0007FF00u, 0x0007FF00u } };
-    ctx->gpr[81] = (u128){ ._u32 = { 8192u, 8192u, 8192u, 8192u } };
+    ctx->gpr[82] = cv_spu_splat32(0x5FFC1814u);
+    ctx->gpr[80] = cv_spu_splat32(0u);
+    ctx->gpr[83] = cv_spu_splat32(0x0007FF00u);
+    ctx->gpr[81] = cv_spu_splat32(8192u);
     __attribute__((musttail)) return spu_0009_at_00940C00_spu_func_0001C1D0(ctx);
 }
 """
@@ -225,6 +230,7 @@ NATIVE_SPU_0009_EARLY_OUTS = {
     "0000C3D8": "if (cv_spu_ls_rd32(ctx, ctx->gpr[3]._u32[0] + 0x08u) == ctx->gpr[4]._u32[0]) { SPU_RET(ctx); }",
     "00009510": "if (cv_spu_ls_rd32(ctx, ctx->gpr[3]._u32[0] + 0x14u) == ctx->gpr[4]._u32[0]) { SPU_RET(ctx); }",
     "0000A170": "if (cv_spu_ls_rd32(ctx, ctx->gpr[3]._u32[0] + 0x0Cu) == ctx->gpr[4]._u32[0]) { SPU_RET(ctx); }",
+    "00008980": "if (ctx->gpr[7]._u32[0] == 0u || cv_spu_ls_rd32(ctx, ctx->gpr[4]._u32[0] + 36u) == 0u) { SPU_RET(ctx); }",
 }
 
 
