@@ -111,6 +111,8 @@
 #define CV_FD_ORIG_RENDER_STATE  cv_original_00016838
 #define CV_FD_FN_PACK_VTX64      func_007BE738
 #define CV_FD_ORIG_PACK_VTX64    cv_original_007BE738
+#define CV_FD_FN_DRAW_EFFECT     func_00016E10
+#define CV_FD_ORIG_DRAW_EFFECT   cv_original_00016E10
 #define CV_FD_FN_HEAP_COALESCE   func_0084059C
 #define CV_FD_FN_GET_MAT         func_00283E9C
 #define CV_FD_FN_DEPTH_FALLBACK  func_004B7548
@@ -119,6 +121,11 @@
 #define CV_FD_FN_TEX_GET_SUB     func_00246240
 #define CV_FD_FN_VB_FLUSH        func_003E18B8
 #define CV_FD_FN_CONST_FLUSH     func_0027B130
+#define CV_FD_FN_LIGHT_QUERY     func_002148F0
+#define CV_FD_FN_GET_SC          func_005191BC
+#define CV_FD_FN_SET_TEX_DIRECT  func_007BE2C8
+#define CV_FD_FN_PACK_VTX_NOTEX  func_007BEF10
+#define CV_FD_FN_PACK_VTX_ALT    func_007BF590
 #elif defined(CV_REGION_JP)
 #define CV_FD_FN_DOOR_DEMO       func_001AE120
 #define CV_FD_ORIG_DOOR_DEMO     cv_original_001AE120
@@ -193,6 +200,8 @@
 #define CV_FD_ORIG_RENDER_STATE  cv_original_00016838
 #define CV_FD_FN_PACK_VTX64      func_007BF028
 #define CV_FD_ORIG_PACK_VTX64    cv_original_007BF028
+#define CV_FD_FN_DRAW_EFFECT     func_00016E10
+#define CV_FD_ORIG_DRAW_EFFECT   cv_original_00016E10
 #define CV_FD_FN_HEAP_COALESCE   func_00840E8C
 #define CV_FD_FN_GET_MAT         func_0028478C
 #define CV_FD_FN_DEPTH_FALLBACK  func_004B7E38
@@ -201,6 +210,11 @@
 #define CV_FD_FN_TEX_GET_SUB     func_00246B30
 #define CV_FD_FN_VB_FLUSH        func_003E21A8
 #define CV_FD_FN_CONST_FLUSH     func_0027BA20
+#define CV_FD_FN_LIGHT_QUERY     func_002151E0
+#define CV_FD_FN_GET_SC          func_00519AAC
+#define CV_FD_FN_SET_TEX_DIRECT  func_007BEBB8
+#define CV_FD_FN_PACK_VTX_NOTEX  func_007BF800
+#define CV_FD_FN_PACK_VTX_ALT    func_007BFE80
 #else /* EU */
 #define CV_FD_FN_DOOR_DEMO       func_001AFAE8
 #define CV_FD_ORIG_DOOR_DEMO     cv_original_001AFAE8
@@ -275,6 +289,8 @@
 #define CV_FD_ORIG_RENDER_STATE  cv_original_00016838
 #define CV_FD_FN_PACK_VTX64      func_007C06F8
 #define CV_FD_ORIG_PACK_VTX64    cv_original_007C06F8
+#define CV_FD_FN_DRAW_EFFECT     func_00016E10
+#define CV_FD_ORIG_DRAW_EFFECT   cv_original_00016E10
 #define CV_FD_FN_HEAP_COALESCE   func_0084255C
 #define CV_FD_FN_GET_MAT         func_00285E5C
 #define CV_FD_FN_DEPTH_FALLBACK  func_004B9508
@@ -283,6 +299,11 @@
 #define CV_FD_FN_TEX_GET_SUB     func_00248210
 #define CV_FD_FN_VB_FLUSH        func_003E3878
 #define CV_FD_FN_CONST_FLUSH     func_0027D0F0
+#define CV_FD_FN_LIGHT_QUERY     func_002168C0
+#define CV_FD_FN_GET_SC          func_0051B17C
+#define CV_FD_FN_SET_TEX_DIRECT  func_007C0288
+#define CV_FD_FN_PACK_VTX_NOTEX  func_007C0ED0
+#define CV_FD_FN_PACK_VTX_ALT    func_007C1550
 #endif
 
 void CV_FD_ORIG_DOOR_DEMO(ppu_context* ctx);      /* bhSysCallDoordemo */
@@ -321,6 +342,7 @@ void CV_FD_ORIG_DEPTH_KEY(ppu_context* ctx);      /* translucent depth-sort key 
 void CV_FD_ORIG_TEX_LOOKUP(ppu_context* ctx);     /* texture/material descriptor lookup */
 void CV_FD_ORIG_RENDER_STATE(ppu_context* ctx);   /* render-state/blend bitfield builder */
 void CV_FD_ORIG_PACK_VTX64(ppu_context* ctx);     /* 64B->32B vertex packer + draw enqueue */
+void CV_FD_ORIG_DRAW_EFFECT(ppu_context* ctx);    /* effect/particle/translucent mesh drawer */
 void CV_FD_FN_DRAWELEM_DTOR(ppu_context* ctx);
 void CV_FD_FN_HEAP_FREE(ppu_context* ctx);
 void CV_FD_FN_HEAP_ALLOC_INNER(ppu_context* ctx);
@@ -332,6 +354,14 @@ void CV_FD_FN_TEX_GET_BY_IDX(ppu_context* ctx);
 void CV_FD_FN_TEX_GET_SUB(ppu_context* ctx);
 void CV_FD_FN_VB_FLUSH(ppu_context* ctx);
 void CV_FD_FN_CONST_FLUSH(ppu_context* ctx);
+void CV_FD_FN_LIGHT_QUERY(ppu_context* ctx);
+void CV_FD_FN_GET_SC(ppu_context* ctx);
+void CV_FD_FN_SET_TEX_DIRECT(ppu_context* ctx);
+void CV_FD_FN_PACK_VTX_NOTEX(ppu_context* ctx);
+void CV_FD_FN_PACK_VTX_ALT(ppu_context* ctx);
+void CV_FD_FN_BUMP_ALLOC(ppu_context* ctx);
+void CV_FD_FN_XFORM_VEC3(ppu_context* ctx);
+void CV_FD_FN_DESC_LOOKUP(ppu_context* ctx);
 void cv_ui_original_enqueue(ppu_context* ctx);    /* UI/draw command vector push_back */
 void CV_FD_FN_MT_SEEK(ppu_context* ctx);          /* MtFile::seek(obj, off, origin) */
 void CV_FN_STOP_BANK(ppu_context* ctx);           /* (sound_mgr, bank_id) */
@@ -402,6 +432,11 @@ constexpr uint32_t kDepthLo      = 0x008B2064u;
 constexpr uint32_t kTexMgrPtr    = 0x00A73C24u;
 constexpr uint32_t kStateFlagAddr = 0x00AC2E24u;
 constexpr uint32_t kPackConsts   = 0x007BE6F0u;
+constexpr uint32_t k16E10MgrPtr  = 0x00AEBD1Cu;
+constexpr uint32_t k16E10TypeDesc = 0x00AE806Cu;
+constexpr uint32_t k16E10CtxPtr  = 0x00AB782Cu;
+constexpr uint32_t k16E10Mat2    = 0x00BAE540u;
+constexpr uint32_t k16E10BboxMin = 0x00BA9570u;
 #elif defined(CV_REGION_JP)
 constexpr uint32_t kSysPtrAddr   = 0x00A79C34u;
 constexpr uint32_t kScratchMgr   = 0x00A73C68u;
@@ -454,6 +489,11 @@ constexpr uint32_t kDepthLo      = 0x008B290Cu;
 constexpr uint32_t kTexMgrPtr    = 0x00A73C24u;
 constexpr uint32_t kStateFlagAddr = 0x00AC2EA4u;
 constexpr uint32_t kPackConsts   = 0x007BEFE0u;
+constexpr uint32_t k16E10MgrPtr  = 0x00AEBD9Cu;
+constexpr uint32_t k16E10TypeDesc = 0x00AE80ECu;
+constexpr uint32_t k16E10CtxPtr  = 0x00AB78ECu;
+constexpr uint32_t k16E10Mat2    = 0x00BAE5C0u;
+constexpr uint32_t k16E10BboxMin = 0x00BA95F0u;
 #else /* EU */
 constexpr uint32_t kSysPtrAddr   = 0x00A89BD0u;
 constexpr uint32_t kScratchMgr   = 0x00A83C68u;
@@ -506,6 +546,11 @@ constexpr uint32_t kDepthLo      = 0x008B4A14u;
 constexpr uint32_t kTexMgrPtr    = 0x00A83C24u;
 constexpr uint32_t kStateFlagAddr = 0x00AD3124u;
 constexpr uint32_t kPackConsts   = 0x007C06B0u;
+constexpr uint32_t k16E10MgrPtr  = 0x00AFC01Cu;
+constexpr uint32_t k16E10TypeDesc = 0x00AF836Cu;
+constexpr uint32_t k16E10CtxPtr  = 0x00AC7B7Cu;
+constexpr uint32_t k16E10Mat2    = 0x00BBE840u;
+constexpr uint32_t k16E10BboxMin = 0x00BB9870u;
 #endif
 constexpr uint32_t kOffSsFlg     = 0x00050u;    /* bit 0x400000 = attract demo */
 constexpr uint32_t kOffTsFlg     = 0x00068u;    /* bit 0x800 = door ready */
@@ -4105,4 +4150,417 @@ void CV_FD_FN_PACK_VTX64(ppu_context* ctx)
     write_be32_fast(vm_base + bkt_cnt_addr, read_be32_fast(vm_base + bkt_cnt_addr) + 1u);
 
     ctx->gpr[3] = 0u;
+}
+
+static inline int64_t cv_f2i64_trunc(float f)
+{
+    if (f != f || f <= -9223372036854775808.0f) return (int64_t)0x8000000000000000ULL;
+    if (f >= 9223372036854775807.0f) return 0x7FFFFFFFFFFFFFFFLL;
+    return (int64_t)f;
+}
+
+static inline uint32_t cv_call_direct_u32_5(ppu_context* ctx, void (*fn)(ppu_context*),
+                                            uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e)
+{
+    const uint64_t saved_lr = ctx->lr;
+    ctx->gpr[3] = a;
+    ctx->gpr[4] = b;
+    ctx->gpr[5] = c;
+    ctx->gpr[6] = d;
+    ctx->gpr[7] = e;
+    fn(ctx);
+    while (g_trampoline_fn) {
+        auto next = g_trampoline_fn;
+        g_trampoline_fn = nullptr;
+        next(ctx);
+    }
+    ctx->lr = saved_lr;
+    return (uint32_t)ctx->gpr[3];
+}
+
+static inline uint32_t cv_call_direct_u32_8(ppu_context* ctx, void (*fn)(ppu_context*),
+                                            uint32_t a, uint32_t b, uint32_t c, uint32_t d,
+                                            uint32_t e, uint32_t f, uint32_t g, uint32_t h)
+{
+    const uint64_t saved_lr = ctx->lr;
+    ctx->gpr[3] = a;
+    ctx->gpr[4] = b;
+    ctx->gpr[5] = c;
+    ctx->gpr[6] = d;
+    ctx->gpr[7] = e;
+    ctx->gpr[8] = f;
+    ctx->gpr[9] = g;
+    ctx->gpr[10] = h;
+    fn(ctx);
+    while (g_trampoline_fn) {
+        auto next = g_trampoline_fn;
+        g_trampoline_fn = nullptr;
+        next(ctx);
+    }
+    ctx->lr = saved_lr;
+    return (uint32_t)ctx->gpr[3];
+}
+
+/* Hook 35: Effect / particle / translucent mesh drawer (EU/US/JP 0x00016E10 -- #1 hottest PPU function) */
+void CV_FD_FN_DRAW_EFFECT(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        CV_FD_ORIG_DRAW_EFFECT(ctx);
+        return;
+    }
+
+    const uint32_t self    = (uint32_t)ctx->gpr[3];
+    const uint32_t arg4    = (uint32_t)ctx->gpr[4];
+    const uint32_t arg5    = (uint32_t)ctx->gpr[5];
+    const uint32_t mat_ptr = (uint32_t)ctx->gpr[6];
+    const uint32_t obj     = (uint32_t)ctx->gpr[7];
+    const uint32_t flags8  = (uint32_t)ctx->gpr[8];
+
+    struct StackGuard {
+        ppu_context* c;
+        uint64_t     orig_sp;
+        StackGuard(ppu_context* ctx_, uint32_t sz) : c(ctx_), orig_sp(ctx_->gpr[1]) {
+            c->gpr[1] = (orig_sp - sz) & ~0xFULL;
+        }
+        ~StackGuard() { c->gpr[1] = orig_sp; }
+    } sg(ctx, 0xC0u);
+
+    const uint32_t sp_base   = (uint32_t)ctx->gpr[1];
+    const uint32_t sp_tmp    = sp_base + 0x10u; /* 0x30 bytes for light query */
+    const uint32_t sp_mat    = sp_base + 0x40u; /* 0x40 bytes for transposed 4x4 matrix */
+    const uint32_t sp_state  = sp_base + 0x80u; /* 0x10 bytes for 8B render state */
+    const uint32_t sp_center = sp_base + 0x90u; /* 0x10 bytes for 16B bbox center */
+
+    constexpr uint32_t kConsts = 0x00016DD8u;
+    const uint8_t* const kc    = vm_base + kConsts;
+
+    uint32_t r30_mode = 0x10u;
+    int32_t  id24     = -1;
+    uint8_t  has_tint = 0u;
+    float    tint_b   = read_bef32_fast(kc + 0x00u);
+    float    tint_g   = tint_b;
+    float    tint_r   = tint_b;
+
+    if (flags8 == 0x80000000u) {
+        id24 = (int32_t)read_be32_fast(vm_base + obj + 0x48u);
+        if (id24 == 0x6F) {
+            const uint32_t sys = get_sys();
+            if (vm_base[sys + 0x95u] == 7u) r30_mode = 0x15u;
+            write_be32_fast(vm_base + obj + 0x6Cu, (uint32_t)-500);
+        } else if (id24 == 0x7B) {
+            const uint32_t sys = get_sys();
+            if ((int8_t)vm_base[sys + 0x95u] == 3 && vm_base[sys + 0x96u] == 6u) r30_mode = 0xCu;
+        }
+
+        if (id24 != 0x6F) {
+            const uint32_t mgr = read_be32_fast(vm_base + k16E10MgrPtr);
+            uint32_t o29 = read_be32_fast(vm_base + mgr + 0xC0u);
+            if (o29 != 0u) {
+                const uint32_t vt = read_be32_fast(vm_base + o29);
+                const uint32_t fn = read_be32_fast(vm_base + read_be32_fast(vm_base + vt + 0x14u));
+                uint32_t node = fn ? cv_call_indirect_u32(ctx, fn, o29) : 0u;
+                const uint32_t target_type = read_be32_fast(vm_base + k16E10TypeDesc + 4u);
+                while (node != 0u && read_be32_fast(vm_base + node + 4u) != target_type) {
+                    node = read_be32_fast(vm_base + node + 0x10u);
+                }
+                if (node == 0u) o29 = 0u;
+                tint_b = tint_g = tint_r = read_bef32_fast(kc + 0x04u);
+                if (o29 != 0u) {
+                    if (cv_call_direct_u32(ctx, CV_FD_FN_LIGHT_QUERY, o29, sp_tmp) != 0u) {
+                        const uint8_t* const lp = vm_base + ((o29 + 0x14E0u) & ~0xFu);
+                        const float sc_f = read_bef32_fast(kc + 0x08u);
+                        tint_r   = read_bef32_fast(lp + 0u) * sc_f;
+                        tint_g   = read_bef32_fast(lp + 4u) * sc_f;
+                        tint_b   = read_bef32_fast(lp + 8u) * sc_f;
+                        has_tint = 1u;
+                    }
+                }
+            }
+        }
+    }
+
+    const uint32_t sc      = cv_call_direct_u32(ctx, CV_FD_FN_GET_SC,
+                                                read_be32_fast(vm_base + k16E10CtxPtr), arg4, r30_mode, arg5);
+    const uint32_t geom    = obj + 4u;
+    const uint32_t pos_cnt = read_be32_fast(vm_base + geom + 0x0Cu);
+    const uint32_t buf_p1  = cv_call_direct_u32(ctx, CV_FD_FN_BUMP_ALLOC, 1u, pos_cnt * 12u);
+    const uint32_t buf_p2  = cv_call_direct_u32(ctx, CV_FD_FN_BUMP_ALLOC, 1u, pos_cnt * 12u);
+
+    const uint32_t nrm_cnt = read_be32_fast(vm_base + geom + 0x10u);
+    uint32_t buf_nrm = 0u;
+    if (nrm_cnt != 0u) {
+        const uint32_t n1 = cv_call_direct_u32(ctx, CV_FD_FN_BUMP_ALLOC, 1u, nrm_cnt * 12u);
+        buf_nrm           = cv_call_direct_u32(ctx, CV_FD_FN_BUMP_ALLOC, 1u, nrm_cnt * 12u);
+        if (n1 == 0u || buf_nrm == 0u) return;
+    }
+    if (buf_p1 == 0u || buf_p2 == 0u) return;
+
+    /* Transpose 4x4 matrix from mat_ptr (& ~0xF) into sp_mat */
+    {
+        const uint8_t* const ms = vm_base + (mat_ptr & ~0xFu);
+        uint8_t* const md       = vm_base + sp_mat;
+        for (uint32_t c = 0; c < 4u; ++c) {
+            for (uint32_t r = 0; r < 4u; ++r) {
+                std::memcpy(md + (c * 4u + r) * 4u, ms + (r * 4u + c) * 4u, 4u);
+            }
+        }
+    }
+
+    const bool no_negate_yz = (id24 == 0x92 || id24 == 0x163);
+    const uint32_t src_pos  = read_be32_fast(vm_base + geom + 0x00u);
+    const uint32_t src_nrm  = (nrm_cnt != 0u) ? read_be32_fast(vm_base + geom + 0x08u) : 0u;
+
+    if (no_negate_yz) {
+        for (uint32_t i = 0; i < pos_cnt; ++i) {
+            const uint8_t* const sp = vm_base + src_pos + i * 16u;
+            std::memcpy(vm_base + buf_p1 + i * 12u, sp, 12u);
+            std::memcpy(vm_base + buf_p2 + i * 12u, sp, 12u);
+            if (nrm_cnt != 0u) {
+                std::memcpy(vm_base + buf_nrm + i * 12u, vm_base + src_nrm + i * 16u, 12u);
+            }
+        }
+        cv_call_direct_u32(ctx, CV_FD_FN_XFORM_VEC3, k16E10Mat2, buf_p2, buf_p1, pos_cnt);
+        cv_call_direct_u32(ctx, CV_FD_FN_XFORM_VEC3, sp_mat, buf_p1, buf_p2, pos_cnt);
+    } else {
+        for (uint32_t i = 0; i < pos_cnt; ++i) {
+            const uint8_t* const sp = vm_base + src_pos + i * 16u;
+            uint8_t* const d1       = vm_base + buf_p1 + i * 12u;
+            uint8_t* const d2       = vm_base + buf_p2 + i * 12u;
+            const float x  = read_bef32_fast(sp + 0u);
+            const float ny = -read_bef32_fast(sp + 4u);
+            const float nz = -read_bef32_fast(sp + 8u);
+            write_bef32_fast(d1 + 0u, x);  write_bef32_fast(d2 + 0u, x);
+            write_bef32_fast(d1 + 4u, ny); write_bef32_fast(d2 + 4u, ny);
+            write_bef32_fast(d1 + 8u, nz); write_bef32_fast(d2 + 8u, nz);
+            if (nrm_cnt != 0u) {
+                const uint8_t* const sn = vm_base + src_nrm + i * 16u;
+                uint8_t* const dn       = vm_base + buf_nrm + i * 12u;
+                write_bef32_fast(dn + 0u,  read_bef32_fast(sn + 0u));
+                write_bef32_fast(dn + 4u, -read_bef32_fast(sn + 4u));
+                write_bef32_fast(dn + 8u, -read_bef32_fast(sn + 8u));
+            }
+        }
+        cv_call_direct_u32(ctx, CV_FD_FN_XFORM_VEC3, sp_mat, buf_p1, buf_p2, pos_cnt);
+    }
+
+    if (nrm_cnt != 0u) {
+        uint8_t* const md = vm_base + sp_mat;
+        write_be32_fast(md + 0x30u, 0u);
+        write_be32_fast(md + 0x34u, 0u);
+        write_be32_fast(md + 0x38u, 0u);
+        write_be32_fast(md + 0x3Cu, 0x3F800000u);
+        cv_call_direct_u32(ctx, CV_FD_FN_XFORM_VEC3, sp_mat, buf_nrm, buf_nrm, nrm_cnt);
+    }
+
+    const uint32_t mesh_cnt = read_be32_fast(vm_base + obj + 0x20u);
+    if (mesh_cnt == 0u || obj == 0u) return;
+
+    const float f31         = read_bef32_fast(kc + 0x08u);
+    const float f30         = read_bef32_fast(kc + 0x0Cu);
+    const float f_def_alpha = read_bef32_fast(kc + 0x28u);
+    const float f_16c_alpha = read_bef32_fast(kc + 0x2Cu);
+    const float f_half      = read_bef32_fast(kc + 0x30u);
+    const int32_t sentinel  = (int32_t)read_be32_fast(vm_base + kDepthLo + 8u);
+    const uint8_t* const bb_min_init = vm_base + k16E10BboxMin;
+    const uint8_t* const bb_max_init = vm_base + (k16E10BboxMin - 0x10u);
+
+    const uint32_t mesh_arr = read_be32_fast(vm_base + obj + 0x2Cu);
+    for (uint32_t m = 0; m < mesh_cnt; ++m) {
+        const uint32_t mesh    = read_be32_fast(vm_base + mesh_arr + m * 4u);
+        const uint32_t sub_cnt = read_be32_fast(vm_base + mesh + 0x04u);
+        const uint32_t mesh8   = mesh + 8u;
+        const int32_t  mesh24  = (int32_t)read_be32_fast(vm_base + mesh + 0x24u);
+
+        for (uint32_t s = 0; s < sub_cnt; ++s) {
+            const uint32_t sub_arr = read_be32_fast(vm_base + mesh + 0x28u);
+            const uint32_t sub_ent = sub_arr + s * 0x10u;
+            const uint8_t  flag_a0 = vm_base[sub_ent + 4u];
+            uint8_t        flag18  = vm_base[sub_ent + 5u];
+            const uint32_t vtx_cnt = read_be32_fast(vm_base + sub_ent + 0u);
+
+            const uint32_t vtx64_buf = cv_call_direct_u32(ctx, CV_FD_FN_BUMP_ALLOC, 1u, vtx_cnt * 64u);
+            if (vtx64_buf == 0u) continue;
+
+            float bb_min[3] = {
+                read_bef32_fast(bb_min_init + 0u),
+                read_bef32_fast(bb_min_init + 4u),
+                read_bef32_fast(bb_min_init + 8u)
+            };
+            float bb_max[3] = {
+                read_bef32_fast(bb_max_init + 0u),
+                read_bef32_fast(bb_max_init + 4u),
+                read_bef32_fast(bb_max_init + 8u)
+            };
+
+            std::memset(vm_base + sp_state, 0, 8u);
+            cv_call_direct_u32_5(ctx, CV_FD_FN_RENDER_STATE, mesh,
+                                 read_be32_fast(vm_base + obj + 0x44u),
+                                 read_be32_fast(vm_base + obj + 0x48u),
+                                 read_be32_fast(vm_base + obj + 0x4Cu),
+                                 sp_state);
+
+            if (vtx_cnt == 0u) continue;
+
+            uint8_t all_transparent = 1u;
+            if (flag_a0 != 0u) {
+                write_be32_fast(vm_base + obj + 0x44u, read_be32_fast(vm_base + obj + 0x44u) | 2u);
+            }
+
+            const uint32_t idx_arr  = read_be32_fast(vm_base + sub_ent + 8u);
+            const uint32_t uv_arr   = read_be32_fast(vm_base + sub_ent + 0x0Cu);
+            const uint8_t  has_vcol = vm_base[geom + 0x14u];
+            const uint32_t col_arr  = has_vcol ? read_be32_fast(vm_base + geom + 4u) : 0u;
+            const int32_t  obj48    = (int32_t)read_be32_fast(vm_base + obj + 0x48u);
+            const uint32_t blend_md = (read_be32_fast(vm_base + sp_state) >> 16) & 0x7FFu;
+            const bool     do_tint  = (flags8 == 0x80000000u) && (blend_md == 0x12u || blend_md == 1u)
+                                      && (has_tint != 0u)
+                                      && !(obj48 == 0x44 || obj48 == 0x5E || obj48 == 0x5F
+                                           || obj48 == 0xB2 || obj48 == 0x100 || obj48 == 0x18D);
+
+            for (uint32_t k = 0; k < vtx_cnt; ++k) {
+                uint8_t* const dp = vm_base + vtx64_buf + k * 0x40u;
+                const uint32_t v_idx = idx_arr ? read_be32_fast(vm_base + idx_arr + k * 4u)
+                                               : read_be32_fast(vm_base);
+                const uint8_t* const pp = vm_base + buf_p2 + v_idx * 12u;
+                std::memcpy(dp, pp, 12u);
+
+                if (flags8 == 0x80000000u) {
+                    const float px = read_bef32_fast(pp + 0u);
+                    const float py = read_bef32_fast(pp + 4u);
+                    const float pz = read_bef32_fast(pp + 8u);
+                    if (px < bb_min[0]) bb_min[0] = px;
+                    if (py < bb_min[1]) bb_min[1] = py;
+                    if (pz < bb_min[2]) bb_min[2] = pz;
+                    if (px > bb_max[0]) bb_max[0] = px;
+                    if (py > bb_max[1]) bb_max[1] = py;
+                    if (pz > bb_max[2]) bb_max[2] = pz;
+                }
+
+                if (has_vcol != 0u) {
+                    const uint32_t col = read_be32_fast(vm_base + col_arr + v_idx * 4u);
+                    write_be32_fast(dp + 0x0Cu, col);
+                    if (flags8 == 0x80000000u) {
+                        if (obj48 == 0x18E) {
+                            uint32_t a = (col >> 24) & 0xFFu;
+                            if (a > 0x80u) {
+                                a = (a + 0x40u > 0xFFu) ? 0xFFu : (a + 0x40u);
+                                dp[0x0Cu] = (uint8_t)a;
+                            }
+                            float af = (float)cv_f2i64_trunc(((float)(uint8_t)a * f31) / f30);
+                            if (af > f31) af = f31;
+                            dp[0x0Cu] = (uint8_t)cv_f2i64_trunc(af);
+                        } else if (obj48 == 0xDD) {
+                            const uint32_t sys = get_sys();
+                            if (vm_base[sys + 0x95u] == 9u && vm_base[sys + 0x96u] == 0x1Eu) {
+                                dp[0x0Fu] = (uint8_t)(dp[0x0Fu] / 3u);
+                                dp[0x0Eu] = (uint8_t)(dp[0x0Eu] / 3u);
+                                dp[0x0Du] = (uint8_t)(dp[0x0Du] / 3u);
+                            }
+                        }
+                    }
+                } else {
+                    float fa = f_def_alpha;
+                    bool override_col = false;
+                    if (flags8 == 0x80000000u) {
+                        if (obj48 == 0x180 || obj48 == 0x0D || obj48 == 7 || obj48 == 0) {
+                            override_col = true;
+                        } else if (obj48 == 0x16C) {
+                            override_col = true;
+                            fa = f_16c_alpha;
+                        }
+                    } else if (flags8 == 0x40000000u) {
+                        const int32_t o54 = (int32_t)read_be32_fast(vm_base + obj + 0x54u);
+                        if (o54 == -16) {
+                            override_col = true;
+                            fa = f31;
+                        } else if ((o54 > -1 && o54 <= 1) || o54 == 0x8B) {
+                            override_col = true;
+                        }
+                    }
+                    if (override_col) {
+                        vm_base[mesh8 + 0x13u] = 0xCDu;
+                        vm_base[mesh8 + 0x12u] = 0xCDu;
+                        vm_base[mesh8 + 0x11u] = 0xCDu;
+                        vm_base[mesh8 + 0x10u] = (uint8_t)cv_f2i64_trunc(fa);
+                    }
+                    std::memcpy(dp + 0x0Cu, vm_base + mesh8 + 0x10u, 4u);
+                }
+
+                write_be16_fast(dp + 0x14u, 0x0100u);
+
+                if (do_tint) {
+                    float r = ((float)dp[0x0Fu] * tint_r) / f31;
+                    if (r > f31) r = f31;
+                    dp[0x0Fu] = (uint8_t)cv_f2i32_trunc(r);
+
+                    float g = ((float)dp[0x0Eu] * tint_g) / f31;
+                    if (g > f31) g = f31;
+                    dp[0x0Eu] = (uint8_t)cv_f2i32_trunc(g);
+
+                    float b = ((float)dp[0x0Du] * tint_b) / f31;
+                    if (b > f31) b = f31;
+                    dp[0x0Du] = (uint8_t)cv_f2i32_trunc(b);
+                }
+
+                if (mesh24 == 0 && flag18 == 1u) {
+                    const uint32_t uv_ptr = uv_arr ? (uv_arr + k * 0x0Cu) : 0u;
+                    const int32_t  tex_id = (int32_t)read_be32_fast(vm_base + uv_ptr + 8u);
+                    if (tex_id == -1) {
+                        const uint32_t direct_tex = read_be32_fast(vm_base + self + 0x174u);
+                        if (direct_tex != 0u && id24 == 0x6F) {
+                            cv_call_direct_u32_5(ctx, CV_FD_FN_SET_TEX_DIRECT, sc, direct_tex, 0u, 0u, 0u);
+                            std::memcpy(dp + 0x18u, vm_base + uv_ptr, 8u);
+                        } else {
+                            flag18 = 0u;
+                        }
+                    } else {
+                        const uint32_t tflag   = read_be32_fast(vm_base + obj + 0x44u) & 0xFFFF0000u;
+                        const uint32_t tlist   = read_be32_fast(vm_base + obj + 0x30u);
+                        const uint32_t tex_res = cv_call_direct_u32(ctx, CV_FD_FN_TEX_LOOKUP,
+                                                                    self, tflag, tlist, (uint32_t)tex_id);
+                        if (tex_res != 0u) {
+                            cv_call_direct_u32_5(ctx, CV_FD_FN_DESC_LOOKUP, sc, tex_res, 0u, 0u, 0u);
+                            std::memcpy(dp + 0x18u, vm_base + uv_ptr, 8u);
+                        } else {
+                            flag18 = 0u;
+                        }
+                    }
+                }
+
+                if (dp[0x0Cu] > 8u) all_transparent = 0u;
+            }
+
+            if (all_transparent != 0u) continue;
+
+            cv_call_direct_u32_5(ctx, CV_FD_FN_RENDER_STATE, mesh,
+                                 read_be32_fast(vm_base + obj + 0x44u),
+                                 read_be32_fast(vm_base + obj + 0x48u),
+                                 read_be32_fast(vm_base + obj + 0x4Cu),
+                                 sp_state);
+
+            if (mesh24 == 0 || mesh24 == 1 || mesh24 == 2) {
+                int32_t depth = sentinel;
+                if (flags8 == 0x80000000u) {
+                    write_bef32_fast(vm_base + sp_center + 0u, (bb_min[0] + bb_max[0]) * f_half);
+                    write_bef32_fast(vm_base + sp_center + 4u, (bb_min[1] + bb_max[1]) * f_half);
+                    write_bef32_fast(vm_base + sp_center + 8u, (bb_min[2] + bb_max[2]) * f_half);
+                    write_bef32_fast(vm_base + sp_center + 12u, 0.0f);
+                    depth = (int32_t)cv_call_direct_u32(ctx, CV_FD_FN_DEPTH_KEY, self, arg4, sc, sp_center);
+                }
+
+                if (mesh24 == 0) {
+                    if (flag18 != 0u) {
+                        cv_call_direct_u32_8(ctx, CV_FD_FN_PACK_VTX64, sc, vtx64_buf, vtx_cnt, sp_state,
+                                             0u, (uint32_t)depth, 0u, 0u);
+                    } else {
+                        cv_call_direct_u32_8(ctx, CV_FD_FN_PACK_VTX_NOTEX, sc, vtx64_buf, vtx_cnt, sp_state,
+                                             0u, (uint32_t)depth, 0u, 0u);
+                    }
+                } else {
+                    cv_call_direct_u32_8(ctx, CV_FD_FN_PACK_VTX_ALT, sc, vtx64_buf, vtx_cnt, sp_state,
+                                         0u, (uint32_t)depth, 0u, 0u);
+                }
+            }
+        }
+    }
 }
