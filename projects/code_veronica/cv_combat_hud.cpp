@@ -76,12 +76,12 @@ Bitmap* icon(int id){
 Color life_color(int hp,int maximum,int condition){
  switch(health_condition(maximum>0?hp:0,condition)){
  case SRT_FINE:return Color(255,147,203,158);case SRT_CAUTION:return Color(255,222,190,104);case SRT_WARNING:return Color(255,220,145,78);
- case SRT_POISON:return Color(255,139,164,238);case SRT_GAS:return Color(255,176,165,191);default:return Color(255,224,90,82);
+ case SRT_POISON:case SRT_GAS:return Color(255,196,26,148);default:return Color(255,224,90,82);
  }
 }
 int health_word(int hp,int maximum,int condition){
  switch(health_condition(maximum>0?hp:0,condition)){
- case SRT_FINE:return 7;case SRT_CAUTION:case SRT_WARNING:return 8;case SRT_DANGER:return 9;case SRT_POISON:return 10;case SRT_GAS:return 11;default:return 12;
+ case SRT_FINE:return 7;case SRT_CAUTION:case SRT_WARNING:return 8;case SRT_DANGER:return 9;case SRT_POISON:case SRT_GAS:return 10;default:return 12;
  }
 }
 void health_label(Graphics& g,int hp,int maximum,int condition,int language,Color color){
@@ -112,7 +112,7 @@ std::unique_ptr<Bitmap> render(int hp,int maximum,const Weapon& w,float scale=1,
  arc(Color(190,20,32,27),7,53,90,270);
  arc(Color(130,62,87,71),1,57,90,270);
  }
- if(layer!=1&&ratio>0){arc(Color(38,health.GetR(),health.GetG(),health.GetB()),11,53,90,270*ratio);arc(health,5,53,90,270*ratio);arc(Color(100,223,247,225),1,51,90,270*ratio);}
+ if(layer!=1&&ratio>0){const bool poisoned=(condition==SRT_POISON||condition==SRT_GAS);arc(Color(poisoned?54:38,health.GetR(),health.GetG(),health.GetB()),11,53,90,270*ratio);arc(health,5,53,90,270*ratio);arc(poisoned?Color(115,245,145,220):Color(100,223,247,225),1,51,90,270*ratio);}
  if(layer!=3){
  // Short, subtle ring ticks; no melee icon or auxiliary lower bar.
  for(int i=0;i<4;i++){float a=(106+i*63)*3.14159265f/180.f;Pen tick(Color(110,123,138,130),.7f);g.DrawLine(&tick,86+std::cos(a)*65,91+std::sin(a)*65,86+std::cos(a)*70,91+std::sin(a)*70);}
@@ -191,6 +191,14 @@ cv_srt_state sample(){
  s.valid=1;s.character=inventory.character;s.equipped=inventory.equipped;
  s.hp=int32_t(vm_read32(CV_SRT_HEALTH));
  if(s.hp<=0||s.hp>10000)return {};
+#ifdef CV_REGION_US
+ const uint32_t sys=vm_read32(0x00A79BD0u);
+#elif defined(CV_REGION_JP)
+ const uint32_t sys=vm_read32(0x00A79C34u);
+#else
+ const uint32_t sys=vm_read32(0x00A89BD0u);
+#endif
+ if(sys&&(vm_read16(sys+0x2A6D6u)!=0||vm_read32(sys+0x2A6D8u)!=0))return {};
  const bool easy=vm_read8(CV_SRT_DIFFICULTY)==2;
 #ifdef CV_REGION_JP
  s.maximum=easy?400:200;
