@@ -4221,7 +4221,7 @@ static u32  s_fp_arena_used = 0;
 #define FP_ARENA_CAP  (8u << 20)
 #define FP_ARENA_PAD  16u
 #define FP_SNAP_MAGIC 0x50534E46u   /* "FNSP": header before each snapshot */
-typedef struct { u32 addr, len, snap; } FPSnap;
+typedef struct { u32 addr, len, snap, ea; } FPSnap;
 static FPSnap s_fp_snaps[64];
 static u32 s_fp_nsnap = 0;
 static u32 s_fp_last_idx = 0;
@@ -4279,29 +4279,30 @@ static void fp_snapshot(D3D12DrawRecord* dr)
     dr->fp_snap = 0;
     dr->fp_bytes = 0;
     if (!dr->fp_addr || !vm_base) return;
+    static int fp_nosnap = -1;
+    if (fp_nosnap < 0) fp_nosnap = getenv("FP_NOSNAP") ? 1 : 0;
+    if (!fp_nosnap && s_fp_nsnap && s_fp_last_idx < s_fp_nsnap) {
+        const FPSnap* q = &s_fp_snaps[s_fp_last_idx];
+        if (q->addr == dr->fp_addr && !memcmp(s_fp_arena + q->snap - 1, vm_base + q->ea, q->len)) {
+            dr->fp_bytes = q->len; dr->fp_snap = q->snap; return;
+        }
+    }
     u32 ea = cellGcmResolveLocated((dr->fp_addr & 0x3u) == 1, dr->fp_addr & ~0x3u);
     if (ea == 0xFFFFFFFFu) return;
     const u8* src = vm_base + ea;
     /* The same bytes as a snapshot already taken at this address this
      * frame: the same program, so the same length and per-program data.
      * Parsing it again was most of this function, ~9000 times a frame. */
-    { static int off = -1; if (off < 0) off = getenv("FP_NOSNAP") ? 1 : 0;
-      if (!off && s_fp_nsnap) {
-          if (s_fp_last_idx < s_fp_nsnap) {
-              const FPSnap* q = &s_fp_snaps[s_fp_last_idx];
-              if (q->addr == dr->fp_addr && !memcmp(s_fp_arena + q->snap - 1, src, q->len)) {
-                  dr->fp_bytes = q->len; dr->fp_snap = q->snap; return;
-              }
-          }
-          for (u32 i = 0; i < s_fp_nsnap; i++) {
-              if (i == s_fp_last_idx) continue;
-              const FPSnap* q = &s_fp_snaps[i];
-              if (q->addr == dr->fp_addr && !memcmp(s_fp_arena + q->snap - 1, src, q->len)) {
-                  s_fp_last_idx = i;
-                  dr->fp_bytes = q->len; dr->fp_snap = q->snap; return;
-              }
-          }
-      } }
+    if (!fp_nosnap && s_fp_nsnap) {
+        for (u32 i = 0; i < s_fp_nsnap; i++) {
+            if (i == s_fp_last_idx) continue;
+            const FPSnap* q = &s_fp_snaps[i];
+            if (q->addr == dr->fp_addr && !memcmp(s_fp_arena + q->snap - 1, src, q->len)) {
+                s_fp_last_idx = i;
+                dr->fp_bytes = q->len; dr->fp_snap = q->snap; return;
+            }
+        }
+    }
     u32 constants = 0;
     u32 len = fp_guest_program_size(src, &constants);
     if (!len) return;
@@ -4341,7 +4342,7 @@ static void fp_snapshot(D3D12DrawRecord* dr)
     /* Newest first; the table is a small most-recent window. */
     u32 n = s_fp_nsnap < 64 ? s_fp_nsnap : 63;
     memmove(&s_fp_snaps[1], &s_fp_snaps[0], sizeof(FPSnap) * n);
-    s_fp_snaps[0].addr = dr->fp_addr; s_fp_snaps[0].len = len; s_fp_snaps[0].snap = at + 1;
+    s_fp_snaps[0].addr = dr->fp_addr; s_fp_snaps[0].len = len; s_fp_snaps[0].snap = at + 1; s_fp_snaps[0].ea = ea;
     s_fp_nsnap = n + 1;
     s_fp_last_idx = 0;
 }
@@ -7827,12 +7828,27 @@ static void vp_record_cb(u32 slot, int vs_idx, const D3D12DrawRecord* dr)
     if (s_d3d.vp_fpcb_mapped) {
         float* ts = (float*)((char*)s_d3d.vp_fpcb_mapped
             + ((u64)s_d3d.vp_parity * MAX_DRAWS + slot) * VP_FPCB_STRIDE);
+        static int s_hdr_ok = 0;
+        static u32 s_hdr_alpha, s_hdr_rt, s_hdr_rw, s_hdr_rh, s_hdr_fpsnap;
+        static float s_hdr_rs;
+        static unsigned char s_hdr_tex[sizeof(((D3D12DrawRecord*)0)->tex)];
+        static float s_hdr_cache[FP_K_BASE];
+        static int s_no_texgamma = -1, s_no_alphatest = -1, s_cube_raw = -1, s_has_ng = -1;
+        if (s_no_texgamma < 0) {
+            s_no_texgamma  = getenv("NO_TEXGAMMA") ? 1 : 0;
+            s_no_alphatest = getenv("NO_ALPHATEST") ? 1 : 0;
+            s_cube_raw     = getenv("RSX_CUBE_LUT_RAW") ? 1 : 0;
+            s_has_ng       = getenv("TEX_NOGAMMA_FP") ? 1 : 0;
+        }
+        if (dr && s_hdr_ok && !s_lighter_probe && !s_has_ng &&
+            dr->alpha_ctl == s_hdr_alpha && dr->rt_off == s_hdr_rt &&
+            dr->rt_w == s_hdr_rw && dr->rt_h == s_hdr_rh &&
+            dr->fp_snap == s_hdr_fpsnap && s_rs == s_hdr_rs &&
+            !memcmp(dr->tex, s_hdr_tex, sizeof s_hdr_tex)) {
+            memcpy(ts, s_hdr_cache, sizeof s_hdr_cache);
+        } else {
         float hdr[FP_K_BASE];
         const int pre_edges = precomputed_tex_edges_on();
-        static int s_no_texgamma = -1, s_no_alphatest = -1, s_cube_raw = -1;
-        if (s_no_texgamma < 0)  s_no_texgamma  = getenv("NO_TEXGAMMA") ? 1 : 0;
-        if (s_no_alphatest < 0) s_no_alphatest = getenv("NO_ALPHATEST") ? 1 : 0;
-        if (s_cube_raw < 0)     s_cube_raw     = getenv("RSX_CUBE_LUT_RAW") ? 1 : 0;
         int shadow_checked = 0, compensated_shadow = 0;
 
         for (int _u = 0; _u < FP_TEX_UNITS; _u++) {
@@ -7904,6 +7920,15 @@ static void vp_record_cb(u32 slot, int vs_idx, const D3D12DrawRecord* dr)
             hdr[7*4+3] = InterlockedCompareExchange(&s_lighter_shadow_bypass, 0, 0) ? -1234.0f : 0.0f;
         }
         memcpy(ts, hdr, sizeof hdr);
+        if (dr && !s_lighter_probe && !s_has_ng) {
+            s_hdr_alpha = dr->alpha_ctl; s_hdr_rt = dr->rt_off;
+            s_hdr_rw = dr->rt_w; s_hdr_rh = dr->rt_h;
+            s_hdr_fpsnap = dr->fp_snap; s_hdr_rs = s_rs;
+            memcpy(s_hdr_tex, dr->tex, sizeof s_hdr_tex);
+            memcpy(s_hdr_cache, hdr, sizeof s_hdr_cache);
+            s_hdr_ok = 1;
+        }
+        }
 
         /* fp_k[]: the program's inline fragment constants. */
         if (dr && dr->fp_addr) {
@@ -8100,6 +8125,47 @@ static u32 current_rt_off(u32* out_w, u32* out_h, u32 out_mrt[3])
     if (out_h) *out_h = 0;
     if (out_mrt) out_mrt[0] = out_mrt[1] = out_mrt[2] = 0;
     if (!st) return 0;
+    { static int s_rt_dbg = -1;
+      if (s_rt_dbg < 0) s_rt_dbg = (getenv("RT_SEQDBG") || getenv("RT_OFFDBG") || getenv("RT_DISPLAY_BY_SIZE")) ? 1 : 0;
+      static int s_rt_ok = 0;
+      static u32 s_c_tgt, s_c_off[4], s_c_cw, s_c_ch, s_c_fmt, s_c_ret, s_c_w, s_c_h, s_c_mrt[3];
+      if (!s_rt_dbg && s_rt_ok &&
+          st->color_target == s_c_tgt &&
+          st->surface_color_offset[0] == s_c_off[0] && st->surface_color_offset[1] == s_c_off[1] &&
+          st->surface_color_offset[2] == s_c_off[2] && st->surface_color_offset[3] == s_c_off[3] &&
+          st->surface_clip_w == s_c_cw && st->surface_clip_h == s_c_ch &&
+          st->surface_format == s_c_fmt) {
+          if (out_w) *out_w = s_c_w;
+          if (out_h) *out_h = s_c_h;
+          if (out_mrt) { out_mrt[0] = s_c_mrt[0]; out_mrt[1] = s_c_mrt[1]; out_mrt[2] = s_c_mrt[2]; }
+          return s_c_ret;
+      }
+      /* Compute and populate cache below when !s_rt_dbg */
+      int sel = (st->color_target == 2) ? 1 : 0;
+      u32 raw = st->surface_color_offset[sel];
+      u32 mrt0 = (st->color_target >= 0x13) ? st->surface_color_offset[1] : 0;
+      u32 mrt1 = (st->color_target >= 0x17) ? st->surface_color_offset[2] : 0;
+      u32 mrt2 = (st->color_target >= 0x1F) ? st->surface_color_offset[3] : 0;
+      if (!s_rt_dbg) {
+          u32 ret = cellGcmOffsetIsDisplay(raw) ? 0u : raw;
+          u32 w = 0, h = 0;
+          if (ret) {
+              w = st->surface_clip_w; h = st->surface_clip_h;
+              if (w < 1 || w > 2048 || h < 1 || h > 2048) { w = 0; h = 0; }
+          }
+          s_c_tgt = st->color_target;
+          s_c_off[0] = st->surface_color_offset[0]; s_c_off[1] = st->surface_color_offset[1];
+          s_c_off[2] = st->surface_color_offset[2]; s_c_off[3] = st->surface_color_offset[3];
+          s_c_cw = st->surface_clip_w; s_c_ch = st->surface_clip_h; s_c_fmt = st->surface_format;
+          s_c_ret = ret; s_c_w = w; s_c_h = h;
+          s_c_mrt[0] = mrt0; s_c_mrt[1] = mrt1; s_c_mrt[2] = mrt2;
+          s_rt_ok = 1;
+          if (out_w) *out_w = w;
+          if (out_h) *out_h = h;
+          if (out_mrt) { out_mrt[0] = mrt0; out_mrt[1] = mrt1; out_mrt[2] = mrt2; }
+          return ret;
+      }
+    }
     /* SET_SURFACE_COLOR_TARGET: 1 = A, 2 = B, 0x13 = MRT1 (A+B),
      * 0x17 = MRT2 (A+B+C), 0x1F = MRT3 (A+B+C+D). */
     int sel = (st->color_target == 2) ? 1 : 0;

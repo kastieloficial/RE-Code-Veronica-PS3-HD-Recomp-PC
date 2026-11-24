@@ -382,6 +382,80 @@ int rsx_process_method(rsx_state* state, u32 method, u32 data)
     { static int _rt=-1; if(_rt<0){ const char* e=getenv("RSX_TRACE");
         _rt = e ? (atoi(e) > 1 ? atoi(e) : 250) : 0; }
       if(_rt){ static int _m=0; if(_m++<_rt) fprintf(stderr,"[rsxm] method=0x%04X data=0x%08X\n", method, data); } }
+
+    /* Fast dispatch for the 2 hottest per-draw methods (18k+ calls/frame each),
+     * avoiding 56+ sequential method comparisons before reaching them. */
+    if (method == NV4097_DRAW_ARRAYS) {
+        u32 first = data & 0xFFFFFF;
+        u32 count = ((data >> 24) & 0xFF) + 1;
+        { static int _d=0; if (_d++ < 32) fprintf(stderr, "[RSX] DRAW_ARRAYS prim=%u first=%u count=%u\n", state->primitive_type, first, count); }
+        { static int _sq=0, _e=-1; if (_e < 0) _e = getenv("SEQ_DBG") ? 1 : 0; if (_e && _sq++ < 500)
+            fprintf(stderr, "[SEQ] DRAW surf0=0x%X c256.x=%.4f c257.y=%.4f\n",
+                    state->surface_color_offset[0], state->vertex_constants[256][0],
+                    state->vertex_constants[257][1]); }
+        static int s_mvp = -1; if (s_mvp < 0) s_mvp = getenv("MVPDBG") ? 1 : 0;
+        if (s_mvp && state->surface_color_offset[0] == 0xCC0000) {
+            static int _once = 0;
+            if (!_once) { _once = 1;
+                for (int s = 0; s < RSX_MAX_VERTEX_CONSTANTS; s++) {
+                    float* v = state->vertex_constants[s];
+                    if (v[0]||v[1]||v[2]||v[3])
+                        fprintf(stderr, "[MVP] c[%3d] = %10.4f %10.4f %10.4f %10.4f\n",
+                                s, v[0], v[1], v[2], v[3]);
+                }
+            }
+        }
+        ps3_ms("rsx:draw_arrays");
+        if (s_backend && s_backend->draw_arrays)
+            s_backend->draw_arrays(s_backend->userdata, state->primitive_type, first, count);
+        return 0;
+    }
+    if (method == NV4097_SET_BEGIN_END) {
+        if (data == 0) {
+            state->in_begin_end = 0;
+            return 0;
+        }
+        state->primitive_type = data;
+        state->in_begin_end = 1;
+        state->begin_epoch++;
+        if (s_backend) {
+            if (state->surface_dirty && s_backend->set_render_target)
+                s_backend->set_render_target(s_backend->userdata, state);
+            if (state->viewport_dirty && s_backend->set_viewport)
+                s_backend->set_viewport(s_backend->userdata, state);
+            if (state->blend_dirty && s_backend->set_blend)
+                s_backend->set_blend(s_backend->userdata, state);
+            if ((state->depth_dirty || state->stencil_dirty) && s_backend->set_depth_stencil)
+                s_backend->set_depth_stencil(s_backend->userdata, state);
+            if (state->color_mask_dirty && s_backend->set_color_mask)
+                s_backend->set_color_mask(s_backend->userdata, state);
+            if (state->alpha_dirty && s_backend->set_alpha_test)
+                s_backend->set_alpha_test(s_backend->userdata, state);
+            if (state->shader_dirty && s_backend->set_shader)
+                s_backend->set_shader(s_backend->userdata, state);
+            if (state->vertex_dirty && s_backend->set_vertex_attribs)
+                s_backend->set_vertex_attribs(s_backend->userdata, state);
+            if (state->texture_dirty && s_backend->bind_texture) {
+                for (u32 i = 0; i < RSX_MAX_TEXTURES; i++) {
+                    if (state->textures[i].dirty) {
+                        s_backend->bind_texture(s_backend->userdata, i, &state->textures[i]);
+                        state->textures[i].dirty = 0;
+                    }
+                }
+            }
+            state->surface_dirty = 0;
+            state->viewport_dirty = 0;
+            state->blend_dirty = 0;
+            state->depth_dirty = 0;
+            state->stencil_dirty = 0;
+            state->color_mask_dirty = 0;
+            state->alpha_dirty = 0;
+            state->shader_dirty = 0;
+            state->vertex_dirty = 0;
+            state->texture_dirty = 0;
+        }
+        return 0;
+    }
     /* Back-end write label / semaphore (cellGcmSetWriteBackEndLabel): the RSX
      * writes a value to a report/label the CPU polls for CPU<->RSX sync (double
      * buffering). Real hardware DOES this; without it the game's frame-fence

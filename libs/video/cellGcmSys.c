@@ -2251,6 +2251,16 @@ static void gcm_rsx_process_fifo_unlocked(void)
                               s_fifo_getoff += 8u;
                               continue;
                           }
+                          if (s_fast_tconst && type == 0 && method >= NV4097_SET_VERTEX_DATA_ARRAY_OFFSET &&
+                              method + (count << 2) <= NV4097_SET_VERTEX_DATA_ARRAY_OFFSET + RSX_MAX_VERTEX_ATTRIBS * 4u) {
+                              const u32 idx = (method - NV4097_SET_VERTEX_DATA_ARRAY_OFFSET) >> 2;
+                              for (u32 i = 0; i < count; i++)
+                                  s_state.vertex_attribs[idx + i].offset = vm_read32(base_ea + (i << 2));
+                              s_state.vertex_dirty = 1;
+                              s_state.va_gen++;
+                              s_fifo_getoff += 4u + (count << 2);
+                              continue;
+                          }
                           if (s_fast_tconst && type == 0 && method == NV4097_SET_TRANSFORM_CONSTANT && count <= 64u) {
                               const u32 load = s_state.transform_constant_load;
                               u32 changed = 0;
