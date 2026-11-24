@@ -32,13 +32,23 @@ struct Sprite {
     std::vector<uint32_t> xyzw,rgba,tex;
     int previous=-1;
 };
-// Equipment can change without a new tab or selected item. Cut that boundary
-// before borrowing geometry from the previous owner of the blue panels.
+// Any inventory slot change (equip, combine, use, discard, item box transfer)
+// shifts sprite draw order even when tab and cursor stay the same. Hash all 16
+// inventory words for the active character so that boundary cuts cleanly.
 using Selection=std::array<uint32_t,4>;
 inline Selection selection_state(){
     const uint32_t character=vm_read8(CV_SRT_CHARACTER);
+    uint32_t inv_hash=0xFFFFFFFFu;
+    if(character<4){
+        inv_hash=2166136261u;
+        const uint32_t base=CV_SRT_INVENTORY+character*0x40;
+        for(unsigned i=0;i<16;i++){
+            inv_hash^=vm_read32(base+i*4);
+            inv_hash*=16777619u;
+        }
+    }
     return {vm_read32(CV_SCENE_INVENTORY+0x44),vm_read32(CV_SCENE_INVENTORY+0x54),
-        character,character<4?vm_read32(CV_SRT_INVENTORY+character*0x40):0xFFFFFFFFu};
+        character,inv_hash};
 }
 struct Frame {uint32_t system=0,object=0;Selection selection{};std::vector<Sprite> sprites;};
 inline Frame current,previous;
@@ -98,13 +108,16 @@ inline void capture() {
                !range(s.colors,4*s.count)||!range(s.uv,8*s.count))continue;
             vertices+=s.count;if(vertices>16384){reset();return;}
             for(unsigned j=0;j<6;j++)s.state[j]=vm_read32(s.command+0x10+4*j);
+            s.xyzw.reserve(s.count*4);
             bool valid=true;
             for(unsigned j=0;j<s.count*4;j++) {
                 auto v=vm_read32(s.positions+4*j);s.xyzw.push_back(v);
                 if(j%4<2&&(!std::isfinite(real(v))||std::abs(real(v))>16384))valid=false;
             }
             if(!valid)continue;
+            s.rgba.reserve(s.count);
             for(unsigned j=0;j<s.count;j++)s.rgba.push_back(vm_read32(s.colors+4*j));
+            s.tex.reserve(s.count*2);
             for(unsigned j=0;j<s.count*2;j++)s.tex.push_back(vm_read32(s.uv+4*j));
             next.sprites.push_back(std::move(s));
         }
@@ -113,12 +126,17 @@ inline void capture() {
     unsigned matched=0,moving=0;
     // Match the ORIGINAL draw role, not a screen-space neighbor or transient
     // list index. A changing glyph/icon can no longer disable a whole panel.
-    std::map<DrawId,size_t> identities;
+    std::vector<std::pair<DrawId,size_t>> identities;
     if(previous.system==current.system&&previous.object==current.object&&
-       previous.selection==current.selection)
-        for(size_t i=0;i<previous.sprites.size();i++)identities.emplace(previous.sprites[i].id,i);
+       previous.selection==current.selection){
+        identities.reserve(previous.sprites.size());
+        for(size_t i=0;i<previous.sprites.size();i++)identities.emplace_back(previous.sprites[i].id,i);
+        std::sort(identities.begin(),identities.end(),[](const auto& a,const auto& b){return a.first<b.first;});
+    }
     for(auto& s:current.sprites) {
-        const auto found=identities.find(s.id);if(found==identities.end())continue;
+        const auto found=std::lower_bound(identities.begin(),identities.end(),s.id,
+            [](const auto& a,const DrawId& b){return a.first<b;});
+        if(found==identities.end()||found->first!=s.id)continue;
         const auto& p=previous.sprites[found->second];
         if((p.key>>16)!=(s.key>>16)||p.count!=s.count||p.state!=s.state||p.tex!=s.tex)continue;
         bool valid=true,changed=p.rgba!=s.rgba;
@@ -132,11 +150,13 @@ inline void capture() {
             // depth and homogeneous terms retain their original ownership.
             if(p.xyzw[4*v+2]!=s.xyzw[4*v+2]||p.xyzw[4*v+3]!=s.xyzw[4*v+3])valid=false;
         }
-        if(valid){s.previous=int(found->second);++matched;if(changed)++moving;}
+        if(valid){++matched;if(changed){s.previous=int(found->second);++moving;}}
     }
+#ifndef CV_DISTRIBUTION
     static unsigned moving_reports=0;
     if(captures++%150==0||(moving&&moving_reports++<8))
         std::fprintf(stderr,"[INVENTORY-UI] origin-v5 sprites=%zu paired=%u animated=%u registered=%zu; mode=%08X item=%08X character=%u equipped=%u; logic unchanged at 30 Hz\n",current.sprites.size(),matched,moving,draw_ids.size(),current.selection[0],current.selection[1],current.selection[2],current.selection[3]);
+#endif
 }
 
 inline uint32_t color(uint32_t a,uint32_t b,float t) {

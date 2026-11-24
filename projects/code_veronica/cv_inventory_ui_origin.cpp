@@ -6,7 +6,7 @@ void cv_fast_enqueue_00015AFC(ppu_context*);
 void func_00015AFC(ppu_context* ctx){
     using namespace cv_inventory_ui;
     const uint32_t command=uint32_t(ctx->gpr[4]);
-    if(enabled()&&range(command,0x3C)&&vm_read32(command)==CV_SCENE_SPRITE_VTABLE){
+    if(enabled()&&(vm_read32(CV_SCENE_SYSTEM)==0||active())&&range(command,0x3C)&&vm_read32(command)==CV_SCENE_SPRITE_VTABLE){
         DrawRole role{};role[0]=uint32_t(ctx->lr);role[4]=uint32_t(ctx->gpr[31]);
         uint32_t sp=uint32_t(ctx->gpr[1]);
         // The generated PPC prologues save LR at parent SP + 0x10.

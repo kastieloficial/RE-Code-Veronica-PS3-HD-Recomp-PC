@@ -54,14 +54,14 @@ inline void capture() {
     next.item=vm_read32(menu+0x54);
     if(!next.object){reset();return;}
     const uint32_t count=vm_read32(next.object+0x128),list=vm_read32(next.object+0x134);
-    if(!count||count>32||!list){reset();return;}
+    if(!count||count>128||!list){reset();return;}
     unsigned total=0;
     for(unsigned n=0;n<count;n++) {
         const uint32_t command=vm_read32(list+4*n);
         if(!command||vm_read32(command)!=CV_SCENE_MESH_VTABLE){reset();return;}
         Mesh m{command,vm_read32(command+0x30),vm_read32(command+4),vm_read32(command+12),vm_read32(command+16),{}};
         total+=m.count;
-        if(!m.model||!m.count||m.count>8192||total>32768||vm_read32(command+20)!=m.count||
+        if(!m.model||!m.count||m.count>8192||total>65536||vm_read32(command+20)!=m.count||
            !m.vertices||!m.normals||m.vertices>0xFFFFFFFFu-m.count*16||
            m.normals>0xFFFFFFFFu-m.count*16){reset();return;}
         m.words.reserve(m.count*8);
