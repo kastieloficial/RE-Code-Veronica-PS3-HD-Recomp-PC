@@ -2888,8 +2888,12 @@ void CV_FD_FN_EMIT_SPRITES(ppu_context* ctx)
     static constexpr uint32_t kIdxLut[2][4] = { { 0u, 2u, 1u, 3u }, { 0u, 1u, 2u, 3u } };
     const uint32_t* const idx_row = kIdxLut[order_flag];
 
-    const uint32_t alloc_off  = read_be32_fast(vm_base + kAllocDesc + 0x18u);
-    const uint32_t alloc_inst = read_be32_fast(vm_base + kAllocBase + alloc_off);
+    const uint32_t alloc_off  = (read_be32_fast(vm_base + kAllocDesc + 0x18u) >> 1) & 0xFCu;
+    const uint32_t alloc_inst = read_be32_fast(vm_base + kAllocObj + alloc_off);
+    if (!alloc_inst) {
+        CV_FD_ORIG_EMIT_SPRITES(ctx);
+        return;
+    }
     const uint32_t alloc_vt   = read_be32_fast(vm_base + alloc_inst);
     const uint32_t alloc_fn   = read_be32_fast(vm_base + read_be32_fast(vm_base + alloc_vt + 0x1Cu));
 
@@ -3006,11 +3010,13 @@ void CV_FD_FN_EMIT_SPRITES(ppu_context* ctx)
             GuestCall call(ctx);
             sub_arr = call.run_indirect_u32(alloc_fn, alloc_inst, 64u, 16u);
         }
-        std::memset(vm_base + sub_arr, 0, 64u);
-        write_be32_fast(vm_base + sub_arr, sub);
-        write_be32_fast(op + 0x2Cu, sub_arr);
-        write_be32_fast(op + 0x24u, 16u);
-        write_be32_fast(op + 0x20u, 1u);
+        if (sub_arr) {
+            std::memset(vm_base + sub_arr, 0, 64u);
+            write_be32_fast(vm_base + sub_arr, sub);
+            write_be32_fast(op + 0x2Cu, sub_arr);
+            write_be32_fast(op + 0x24u, 16u);
+            write_be32_fast(op + 0x20u, 1u);
+        }
 
         cv_enqueue_trans_inline(ctx, enq_mgr, obj);
     }
@@ -3168,20 +3174,22 @@ void CV_FD_FN_EMIT_STRIP(ppu_context* ctx)
         }
     }
 
-    const uint32_t alloc_off  = read_be32_fast(vm_base + kAllocDesc + 0x18u);
-    const uint32_t alloc_inst = read_be32_fast(vm_base + kAllocBase + alloc_off);
-    const uint32_t alloc_vt   = read_be32_fast(vm_base + alloc_inst);
-    const uint32_t alloc_fn   = read_be32_fast(vm_base + read_be32_fast(vm_base + alloc_vt + 0x1Cu));
+    const uint32_t alloc_off  = (read_be32_fast(vm_base + kAllocDesc + 0x18u) >> 1) & 0xFCu;
+    const uint32_t alloc_inst = read_be32_fast(vm_base + kAllocObj + alloc_off);
+    const uint32_t alloc_vt   = alloc_inst ? read_be32_fast(vm_base + alloc_inst) : 0u;
+    const uint32_t alloc_fn   = alloc_vt ? read_be32_fast(vm_base + read_be32_fast(vm_base + alloc_vt + 0x1Cu)) : 0u;
     uint32_t sub_arr = 0u;
-    {
+    if (alloc_fn) {
         GuestCall call(ctx);
         sub_arr = call.run_indirect_u32(alloc_fn, alloc_inst, 64u, 16u);
     }
-    std::memset(vm_base + sub_arr, 0, 64u);
-    write_be32_fast(vm_base + sub_arr, sub);
-    write_be32_fast(op + 0x2Cu, sub_arr);
-    write_be32_fast(op + 0x24u, 16u);
-    write_be32_fast(op + 0x20u, 1u);
+    if (sub_arr) {
+        std::memset(vm_base + sub_arr, 0, 64u);
+        write_be32_fast(vm_base + sub_arr, sub);
+        write_be32_fast(op + 0x2Cu, sub_arr);
+        write_be32_fast(op + 0x24u, 16u);
+        write_be32_fast(op + 0x20u, 1u);
+    }
 
     cv_enqueue_trans_inline(ctx, read_be32_fast(vm_base + kEnqMgrPtr), obj);
 }
