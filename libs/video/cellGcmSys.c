@@ -2240,7 +2240,7 @@ static void gcm_rsx_process_fifo_unlocked(void)
                                    !rsx_live_draw_enabled() && !rsx_draw_engine_enabled()) ? 1 : 0;
                   s_fast_tconst = (s_fast_subch0 && !getenv("TCONST_DBG") && !getenv("SEQ_DBG") &&
                                    !getenv("RSX_TRACE") && !getenv("LOAD_DBG")) ? 1 : 0;
-                  s_fast_draw   = (s_fast_tconst && !getenv("MVPDBG")) ? 1 : 0;
+                  s_fast_draw   = (s_fast_tconst && !getenv("MVPDBG") && !getenv("RSX_VTXDBG")) ? 1 : 0;
               }
               if (s_fast_subch0 && subch == 0 && count > 0) {
                   const u32 io_first = s_fifo_getoff + 4u;
@@ -2294,7 +2294,10 @@ static void gcm_rsx_process_fifo_unlocked(void)
                                       changed = 1;
                                   }
                               }
-                              if (changed) { s_state.vertex_dirty = 1; s_state.va_gen++; }
+                              if (changed) {
+                                  if (!s_fast_draw) s_state.vertex_dirty = 1;
+                                  s_state.va_off_gen++;
+                              }
                               s_fifo_getoff += 4u + (count << 2);
                               continue;
                           }

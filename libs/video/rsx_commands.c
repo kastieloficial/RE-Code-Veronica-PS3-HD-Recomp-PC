@@ -326,9 +326,11 @@ static int process_vertex_attrib_method(rsx_state* state, u32 method, u32 data)
     if (method >= NV4097_SET_VERTEX_DATA_ARRAY_OFFSET &&
         method < NV4097_SET_VERTEX_DATA_ARRAY_OFFSET + RSX_MAX_VERTEX_ATTRIBS * 4) {
         u32 index = (method - NV4097_SET_VERTEX_DATA_ARRAY_OFFSET) / 4;
-        state->vertex_attribs[index].offset = data;
-        state->vertex_dirty = 1;
-        state->va_gen++;
+        if (state->vertex_attribs[index].offset != data) {
+            state->vertex_attribs[index].offset = data;
+            state->vertex_dirty = 1;
+            state->va_off_gen++;
+        }
         return 0;
     }
 

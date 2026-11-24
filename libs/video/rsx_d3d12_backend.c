@@ -14595,6 +14595,7 @@ static u32 s_vmemo_gen = 1;
 static rsx_fetch_plan s_vplan;
 static const rsx_state* s_vplan_state = NULL;
 static u32 s_vplan_gen = ~0u;
+static u32 s_vplan_off_gen = ~0u;
 static void vp_fetch_begin(const rsx_state* state)
 {
     ++s_vmemo_gen;
@@ -14610,6 +14611,20 @@ static void vp_fetch_begin(const rsx_state* state)
         rsx_fetch_plan_build(state, &s_vplan);
         s_vplan_state = state;
         s_vplan_gen = state->va_gen;
+        s_vplan_off_gen = state->va_off_gen;
+    } else if (s_vplan_off_gen != state->va_off_gen) {
+        /* Only vertex-array offsets changed: refresh off0/main_mem on active
+         * attributes in-place without rebuilding desc_template or flushing
+         * s_vf_cur (vf_prepare_range checks if offset-shifted coalescing fits). */
+        for (int ai = 0; ai < s_vplan.n_active; ai++) {
+            const int i = s_vplan.active_idx[ai];
+            const u32 raw_off = state->vertex_attribs[i].offset;
+            rsx_attr_plan* a = &s_vplan.a[i];
+            a->off0 = raw_off & 0x7FFFFFFFu;
+            a->main_mem = (raw_off & 0x80000000u) ? 1 : 0;
+            a->page = 0xFFFFFFFFu;
+        }
+        s_vplan_off_gen = state->va_off_gen;
     }
 }
 #define VP_FETCH_BEGIN() vp_fetch_begin(state)
@@ -14623,7 +14638,10 @@ static void vp_fetch_begin(const rsx_state* state)
 #define VF_RANGE_MAX (4u << 20)   /* larger ranges: converted here instead */
 static int s_vf_cur = -1;
 static const rsx_state* s_vf_state;
-static u32 s_vf_epoch = 0;
+static u32 s_vf_epoch = 0, s_vf_off_gen = 0;
+static u32 s_vf_base_off[16];
+static int s_vf_base_main[16];
+static int s_vf_has_base = 0;
 static u32 s_vf_vmin, s_vf_vmax, s_vf_rmin, s_vf_rmax;
 static int vf_batch_on(void)
 {
@@ -14631,21 +14649,68 @@ static int vf_batch_on(void)
     if (on < 0) { const char* e = getenv("CV_VF_BATCH"); on = !(e && e[0] == '0' && !e[1]); }
     return on;
 }
-/* Draw-level descriptor coalescing for non-indexed draws: reuse the open
- * descriptor when va_gen/state/drain-epoch match and the new draw's guest
- * vertex range is within 64 vertices of the open range (total span <= 4096),
- * avoiding thousands of 512-byte WC descriptor writes and small copies/frame. */
-static void vf_prepare_range(const rsx_state* state, u32 v_lo, u32 v_hi)
+static void vf_snapshot_base(const rsx_state* state)
+{
+    if (s_vplan_state == state) {
+        for (int ai = 0; ai < s_vplan.n_active; ai++) {
+            const int i = s_vplan.active_idx[ai];
+            s_vf_base_off[ai] = s_vplan.a[i].off0;
+            s_vf_base_main[ai] = s_vplan.a[i].main_mem;
+        }
+        s_vf_has_base = 1;
+    } else {
+        s_vf_has_base = 0;
+    }
+    s_vf_off_gen = state ? state->va_off_gen : 0;
+}
+/* Draw-level offset-shifted descriptor coalescing for non-indexed draws:
+ * when format/stride/state/drain-epoch match and every active attribute's
+ * offset shifted by the same integer vertex delta (delta_vi * stride) into an
+ * adjacent range (gap <= 64 verts, total span <= 4096), reuse s_vf_cur and
+ * return delta_vi so the draw shares one GPU descriptor and one vertex copy. */
+static s32 vf_prepare_range(const rsx_state* state, u32 v_lo, u32 v_hi)
 {
     extern volatile u32 g_gcm_drain_epoch;
+    s64 delta_vi = 0;
     if (s_vf_cur >= 0) {
-        const u32 nmin = (v_lo < s_vf_vmin) ? v_lo : s_vf_vmin;
-        const u32 nmax = (v_hi > s_vf_vmax) ? v_hi : s_vf_vmax;
-        if (!vf_batch_on() || s_vf_state != state || s_vf_epoch != g_gcm_drain_epoch ||
-            v_lo > s_vf_vmax + 64u || s_vf_vmin > v_hi + 64u || (nmax - nmin) > 4096u) {
+        int ok = vf_batch_on() && s_vf_has_base && s_vf_state == state &&
+                 s_vplan_state == state && s_vf_epoch == g_gcm_drain_epoch;
+        if (ok && s_vf_off_gen != state->va_off_gen) {
+            int have_delta = 0;
+            for (int ai = 0; ai < s_vplan.n_active; ai++) {
+                const int i = s_vplan.active_idx[ai];
+                const rsx_attr_plan* a = &s_vplan.a[i];
+                if (a->main_mem != s_vf_base_main[ai]) { ok = 0; break; }
+                const s64 diff = (s64)a->off0 - (s64)s_vf_base_off[ai];
+                if (a->freq != 0 || a->stride == 0) {
+                    if (diff != 0) { ok = 0; break; }
+                } else if (!have_delta) {
+                    if ((diff % (s64)a->stride) != 0) { ok = 0; break; }
+                    delta_vi = diff / (s64)a->stride;
+                    have_delta = 1;
+                } else {
+                    if (diff != delta_vi * (s64)a->stride) { ok = 0; break; }
+                }
+            }
+        }
+        if (ok) {
+            const s64 sv_lo = (s64)v_lo + delta_vi;
+            const s64 sv_hi = (s64)v_hi + delta_vi;
+            if (sv_lo < 0 || sv_hi > 0x7FFFFFFFll ||
+                sv_lo > (s64)s_vf_vmax + 64ll || (s64)s_vf_vmin > sv_hi + 64ll) {
+                ok = 0;
+            } else {
+                const u32 nmin = ((u32)sv_lo < s_vf_vmin) ? (u32)sv_lo : s_vf_vmin;
+                const u32 nmax = ((u32)sv_hi > s_vf_vmax) ? (u32)sv_hi : s_vf_vmax;
+                if ((nmax - nmin) > 4096u) ok = 0;
+            }
+        }
+        if (!ok) {
             vf_flush();
+            delta_vi = 0;
         } else {
             s_vf_batched++;
+            return (s32)delta_vi;
         }
     }
     if (s_vf_cur < 0) {
@@ -14655,7 +14720,9 @@ static void vf_prepare_range(const rsx_state* state, u32 v_lo, u32 v_hi)
         }
         s_vf_cur = (int)s_vf_ndesc++; s_vf_state = state; s_vf_epoch = g_gcm_drain_epoch;
         s_vf_vmin = s_vf_rmin = ~0u; s_vf_vmax = s_vf_rmax = 0;
+        vf_snapshot_base(state);
     }
+    return 0;
 }
 static u8* vf_parity_base(void) { return s_vf_mapped + (u64)s_d3d.vp_parity * vf_parity_bytes(); }
 static void pose_note_raw_vertex(const rsx_state* state,VPSlot* dst,u32 vi);
@@ -14681,7 +14748,8 @@ static void vf_note(const rsx_state* state, VPSlot* dst, u32 vi)
         return;
     }
     extern volatile u32 g_gcm_drain_epoch;
-    if (s_vf_cur >= 0 && (s_vf_state != state || s_vf_epoch != g_gcm_drain_epoch)) vf_flush();
+    if (s_vf_cur >= 0 && (s_vf_state != state || s_vf_epoch != g_gcm_drain_epoch ||
+                          s_vf_off_gen != state->va_off_gen)) vf_flush();
     if (s_vf_cur < 0) {
         if (s_vf_ndesc >= VF_DESC_MAX) {
             static int w = 0; if (w++ < 4) fprintf(stderr, "[VFETCH] descriptor table full%c", 10);
@@ -14689,6 +14757,7 @@ static void vf_note(const rsx_state* state, VPSlot* dst, u32 vi)
         }
         s_vf_cur = (int)s_vf_ndesc++; s_vf_state = state; s_vf_epoch = g_gcm_drain_epoch;
         s_vf_vmin = s_vf_rmin = ~0u; s_vf_vmax = s_vf_rmax = 0;
+        vf_snapshot_base(state);
     }
     const u32 r = (u32)(((u8*)dst - vb) / VP_VERT_STRIDE);
     if(vf_pose_enabled()) {
@@ -14822,6 +14891,7 @@ static void vf_flush(void)
     if (s_vf_cur < 0) return;
     const int cur = s_vf_cur; s_vf_cur = -1;
     const rsx_state* st = s_vf_state;
+    const int use_base = s_vf_has_base; s_vf_has_base = 0;
     s_vf_nflush++; s_vf_flushes_win++;
     rsx_fetch_plan local;
     rsx_fetch_plan* plan = &s_vplan;
@@ -14834,24 +14904,36 @@ static void vf_flush(void)
     for (int ai = 0; ai < plan->n_active; ai++) {
         const int i = plan->active_idx[ai];
         const rsx_attr_plan* a = &plan->a[i];
+        const u32 a_off0 = (use_base && plan == &s_vplan) ? s_vf_base_off[ai] : a->off0;
+        const int a_main = (use_base && plan == &s_vplan) ? s_vf_base_main[ai] : a->main_mem;
         u32 e0 = s_vf_vmin, e1 = s_vf_vmax;
         if (a->freq) { if (a->modulo) { e0 = 0; e1 = a->freq - 1; } else { e0 /= a->freq; e1 /= a->freq; } }
-        const u64 rs = (u64)a->off0 + (u64)e0 * a->stride;
-        const u64 re = (u64)a->off0 + (u64)e1 * a->stride + plan->elem_bytes[i];
+        const u64 rs = (u64)a_off0 + (u64)e0 * a->stride;
+        const u64 re = (u64)a_off0 + (u64)e1 * a->stride + plan->elem_bytes[i];
         int k = 0;
         for (; k < nseg; k++)   /* interleaved arrays share one copy */
-            if (seg[k].main_mem == a->main_mem && rs <= seg[k].e + 4096 && seg[k].s <= re + 4096) {
+            if (seg[k].main_mem == a_main && rs <= seg[k].e + 4096 && seg[k].s <= re + 4096) {
                 if (rs < seg[k].s) seg[k].s = rs;
                 if (re > seg[k].e) seg[k].e = re;
                 break;
             }
-        if (k == nseg) { seg[k].main_mem = a->main_mem; seg[k].s = rs; seg[k].e = re; nseg++; }
+        if (k == nseg) { seg[k].main_mem = a_main; seg[k].s = rs; seg[k].e = re; nseg++; }
         segof[ai] = k;
     }
     u64 total = 0;
     for (int k = 0; k < nseg; k++) total += seg[k].e - seg[k].s + 32;
     if (total > VF_RANGE_MAX || s_vf_aused + total > VF_ARENA_BYTES) {
         memcpy(desc, desc_local, sizeof desc_local);
+        if (use_base && plan == &s_vplan) {
+            local = *plan;
+            for (int ai = 0; ai < local.n_active; ai++) {
+                const int i = local.active_idx[ai];
+                local.a[i].off0 = s_vf_base_off[ai];
+                local.a[i].main_mem = s_vf_base_main[ai];
+                local.a[i].page = 0xFFFFFFFFu;
+            }
+            plan = &local;
+        }
         s_vf_nfall++; vf_fallback(plan, cur, desc); return;
     }
     u8* arena = vf_parity_base() + VF_ARENA_OFF;
@@ -14864,7 +14946,8 @@ static void vf_flush(void)
     for (int ai = 0; ai < plan->n_active; ai++) {
         const int i = plan->active_idx[ai];
         const rsx_attr_plan* a = &plan->a[i];
-        desc_local[i * 8 + 0] = seg[segof[ai]].arena + (a->off0 - (u32)seg[segof[ai]].s);
+        const u32 a_off0 = (use_base && plan == &s_vplan) ? s_vf_base_off[ai] : a->off0;
+        desc_local[i * 8 + 0] = seg[segof[ai]].arena + (a_off0 - (u32)seg[segof[ai]].s);
         desc_local[i * 8 + 1] = a->stride;
         desc_local[i * 8 + 2] = plan->ctrl_word[i];
         desc_local[i * 8 + 3] = a->freq;
@@ -15111,13 +15194,15 @@ static u32 upload_tris_vp(const rsx_state* state, u32 first, u32 count)
     { double _tv = perf_on() ? perf_now() : 0.0;
       if (s_vf_mapped && !vf_pose_enabled() && count > 0) {
           const u32 v_lo = first, v_hi = first + count - 1;
-          vf_prepare_range(state, v_lo, v_hi);
+          const s32 dvi = vf_prepare_range(state, v_lo, v_hi);
+          const u32 base_vi = (u32)((s64)first + dvi);
+          const u32 sv_lo = (u32)((s64)v_lo + dvi), sv_hi = (u32)((s64)v_hi + dvi);
           const u32 r0 = s_d3d.vp_vb_offset / VP_VERT_STRIDE;
           const u32 cur_u = (u32)s_vf_cur;
           u32* rec = (u32*)vf_parity_base() + (u64)r0 * 2;
-          for (u32 k = 0; k < count; k++) { rec[k * 2 + 0] = first + k; rec[k * 2 + 1] = cur_u; }
-          if (v_lo < s_vf_vmin) s_vf_vmin = v_lo;
-          if (v_hi > s_vf_vmax) s_vf_vmax = v_hi;
+          for (u32 k = 0; k < count; k++) { rec[k * 2 + 0] = base_vi + k; rec[k * 2 + 1] = cur_u; }
+          if (sv_lo < s_vf_vmin) s_vf_vmin = sv_lo;
+          if (sv_hi > s_vf_vmax) s_vf_vmax = sv_hi;
           if (r0 < s_vf_rmin) s_vf_rmin = r0;
           if (r0 + count - 1 > s_vf_rmax) s_vf_rmax = r0 + count - 1;
       } else {
@@ -15191,7 +15276,9 @@ static u32 upload_strip_vp_from(const rsx_state* state, u32 first, u32 count, in
     if (s_vf_mapped && !vf_pose_enabled() && t_begin < tris) {
         const u32 v_lo = fan ? first : (first + t_begin);
         const u32 v_hi = first + tris + 1;
-        vf_prepare_range(state, v_lo, v_hi);
+        const s32 dvi = vf_prepare_range(state, v_lo, v_hi);
+        const u32 base_vi = (u32)((s64)first + dvi);
+        const u32 sv_lo = (u32)((s64)v_lo + dvi), sv_hi = (u32)((s64)v_hi + dvi);
         const u32 r0 = s_d3d.vp_vb_offset / VP_VERT_STRIDE;
         const u32 cur_u = (u32)s_vf_cur;
         u32* rec = (u32*)vf_parity_base() + (u64)r0 * 2;
@@ -15199,12 +15286,12 @@ static u32 upload_strip_vp_from(const rsx_state* state, u32 first, u32 count, in
             u32 i0 = fan ? 0 : t;
             u32 i1 = t + 1, i2 = t + 2;
             if (!fan && (t & 1)) { u32 tmp = i1; i1 = i2; i2 = tmp; }
-            rec[o * 2 + 0] = first + i0; rec[o * 2 + 1] = cur_u; o++;
-            rec[o * 2 + 0] = first + i1; rec[o * 2 + 1] = cur_u; o++;
-            rec[o * 2 + 0] = first + i2; rec[o * 2 + 1] = cur_u; o++;
+            rec[o * 2 + 0] = base_vi + i0; rec[o * 2 + 1] = cur_u; o++;
+            rec[o * 2 + 0] = base_vi + i1; rec[o * 2 + 1] = cur_u; o++;
+            rec[o * 2 + 0] = base_vi + i2; rec[o * 2 + 1] = cur_u; o++;
         }
-        if (v_lo < s_vf_vmin) s_vf_vmin = v_lo;
-        if (v_hi > s_vf_vmax) s_vf_vmax = v_hi;
+        if (sv_lo < s_vf_vmin) s_vf_vmin = sv_lo;
+        if (sv_hi > s_vf_vmax) s_vf_vmax = sv_hi;
         if (r0 < s_vf_rmin) s_vf_rmin = r0;
         if (r0 + o - 1 > s_vf_rmax) s_vf_rmax = r0 + o - 1;
     } else {
