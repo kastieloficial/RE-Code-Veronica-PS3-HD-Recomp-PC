@@ -107,12 +107,18 @@
 #define CV_FD_ORIG_DEPTH_KEY     cv_original_00016658
 #define CV_FD_FN_TEX_LOOKUP      func_0001638C
 #define CV_FD_ORIG_TEX_LOOKUP    cv_original_0001638C
+#define CV_FD_FN_RENDER_STATE    func_00016838
+#define CV_FD_ORIG_RENDER_STATE  cv_original_00016838
+#define CV_FD_FN_PACK_VTX64      func_007BE738
+#define CV_FD_ORIG_PACK_VTX64    cv_original_007BE738
 #define CV_FD_FN_HEAP_COALESCE   func_0084059C
 #define CV_FD_FN_GET_MAT         func_00283E9C
 #define CV_FD_FN_DEPTH_FALLBACK  func_004B7548
 #define CV_FD_FN_TEX_FIND_IDX    func_002461C8
 #define CV_FD_FN_TEX_GET_BY_IDX  func_00246210
 #define CV_FD_FN_TEX_GET_SUB     func_00246240
+#define CV_FD_FN_VB_FLUSH        func_003E18B8
+#define CV_FD_FN_CONST_FLUSH     func_0027B130
 #elif defined(CV_REGION_JP)
 #define CV_FD_FN_DOOR_DEMO       func_001AE120
 #define CV_FD_ORIG_DOOR_DEMO     cv_original_001AE120
@@ -183,12 +189,18 @@
 #define CV_FD_ORIG_DEPTH_KEY     cv_original_00016658
 #define CV_FD_FN_TEX_LOOKUP      func_0001638C
 #define CV_FD_ORIG_TEX_LOOKUP    cv_original_0001638C
+#define CV_FD_FN_RENDER_STATE    func_00016838
+#define CV_FD_ORIG_RENDER_STATE  cv_original_00016838
+#define CV_FD_FN_PACK_VTX64      func_007BF028
+#define CV_FD_ORIG_PACK_VTX64    cv_original_007BF028
 #define CV_FD_FN_HEAP_COALESCE   func_00840E8C
 #define CV_FD_FN_GET_MAT         func_0028478C
 #define CV_FD_FN_DEPTH_FALLBACK  func_004B7E38
 #define CV_FD_FN_TEX_FIND_IDX    func_00246AB8
 #define CV_FD_FN_TEX_GET_BY_IDX  func_00246B00
 #define CV_FD_FN_TEX_GET_SUB     func_00246B30
+#define CV_FD_FN_VB_FLUSH        func_003E21A8
+#define CV_FD_FN_CONST_FLUSH     func_0027BA20
 #else /* EU */
 #define CV_FD_FN_DOOR_DEMO       func_001AFAE8
 #define CV_FD_ORIG_DOOR_DEMO     cv_original_001AFAE8
@@ -259,12 +271,18 @@
 #define CV_FD_ORIG_DEPTH_KEY     cv_original_00016658
 #define CV_FD_FN_TEX_LOOKUP      func_0001638C
 #define CV_FD_ORIG_TEX_LOOKUP    cv_original_0001638C
+#define CV_FD_FN_RENDER_STATE    func_00016838
+#define CV_FD_ORIG_RENDER_STATE  cv_original_00016838
+#define CV_FD_FN_PACK_VTX64      func_007C06F8
+#define CV_FD_ORIG_PACK_VTX64    cv_original_007C06F8
 #define CV_FD_FN_HEAP_COALESCE   func_0084255C
 #define CV_FD_FN_GET_MAT         func_00285E5C
 #define CV_FD_FN_DEPTH_FALLBACK  func_004B9508
 #define CV_FD_FN_TEX_FIND_IDX    func_00248198
 #define CV_FD_FN_TEX_GET_BY_IDX  func_002481E0
 #define CV_FD_FN_TEX_GET_SUB     func_00248210
+#define CV_FD_FN_VB_FLUSH        func_003E3878
+#define CV_FD_FN_CONST_FLUSH     func_0027D0F0
 #endif
 
 void CV_FD_ORIG_DOOR_DEMO(ppu_context* ctx);      /* bhSysCallDoordemo */
@@ -301,6 +319,8 @@ void CV_FD_ORIG_HEAP_FREE(ppu_context* ctx);      /* MtHeapAllocator::free */
 void CV_FD_ORIG_HEAP_ALLOC_BKT(ppu_context* ctx); /* MtHeapAllocator::alloc_bucket */
 void CV_FD_ORIG_DEPTH_KEY(ppu_context* ctx);      /* translucent depth-sort key calc */
 void CV_FD_ORIG_TEX_LOOKUP(ppu_context* ctx);     /* texture/material descriptor lookup */
+void CV_FD_ORIG_RENDER_STATE(ppu_context* ctx);   /* render-state/blend bitfield builder */
+void CV_FD_ORIG_PACK_VTX64(ppu_context* ctx);     /* 64B->32B vertex packer + draw enqueue */
 void CV_FD_FN_DRAWELEM_DTOR(ppu_context* ctx);
 void CV_FD_FN_HEAP_FREE(ppu_context* ctx);
 void CV_FD_FN_HEAP_ALLOC_INNER(ppu_context* ctx);
@@ -310,6 +330,8 @@ void CV_FD_FN_DEPTH_FALLBACK(ppu_context* ctx);
 void CV_FD_FN_TEX_FIND_IDX(ppu_context* ctx);
 void CV_FD_FN_TEX_GET_BY_IDX(ppu_context* ctx);
 void CV_FD_FN_TEX_GET_SUB(ppu_context* ctx);
+void CV_FD_FN_VB_FLUSH(ppu_context* ctx);
+void CV_FD_FN_CONST_FLUSH(ppu_context* ctx);
 void cv_ui_original_enqueue(ppu_context* ctx);    /* UI/draw command vector push_back */
 void CV_FD_FN_MT_SEEK(ppu_context* ctx);          /* MtFile::seek(obj, off, origin) */
 void CV_FN_STOP_BANK(ppu_context* ctx);           /* (sound_mgr, bank_id) */
@@ -378,6 +400,8 @@ constexpr uint32_t kHeapFreeAddr = 0x006D94FCu;
 constexpr uint32_t kDepthHi      = 0x00AEB0E8u;
 constexpr uint32_t kDepthLo      = 0x008B2064u;
 constexpr uint32_t kTexMgrPtr    = 0x00A73C24u;
+constexpr uint32_t kStateFlagAddr = 0x00AC2E24u;
+constexpr uint32_t kPackConsts   = 0x007BE6F0u;
 #elif defined(CV_REGION_JP)
 constexpr uint32_t kSysPtrAddr   = 0x00A79C34u;
 constexpr uint32_t kScratchMgr   = 0x00A73C68u;
@@ -428,6 +452,8 @@ constexpr uint32_t kHeapFreeAddr = 0x006D9DECu;
 constexpr uint32_t kDepthHi      = 0x00AEB168u;
 constexpr uint32_t kDepthLo      = 0x008B290Cu;
 constexpr uint32_t kTexMgrPtr    = 0x00A73C24u;
+constexpr uint32_t kStateFlagAddr = 0x00AC2EA4u;
+constexpr uint32_t kPackConsts   = 0x007BEFE0u;
 #else /* EU */
 constexpr uint32_t kSysPtrAddr   = 0x00A89BD0u;
 constexpr uint32_t kScratchMgr   = 0x00A83C68u;
@@ -478,6 +504,8 @@ constexpr uint32_t kHeapFreeAddr = 0x006DB4BCu;
 constexpr uint32_t kDepthHi      = 0x00AFB3E8u;
 constexpr uint32_t kDepthLo      = 0x008B4A14u;
 constexpr uint32_t kTexMgrPtr    = 0x00A83C24u;
+constexpr uint32_t kStateFlagAddr = 0x00AD3124u;
+constexpr uint32_t kPackConsts   = 0x007C06B0u;
 #endif
 constexpr uint32_t kOffSsFlg     = 0x00050u;    /* bit 0x400000 = attract demo */
 constexpr uint32_t kOffTsFlg     = 0x00068u;    /* bit 0x800 = door ready */
@@ -3662,4 +3690,419 @@ void CV_FD_FN_TEX_LOOKUP(ppu_context* ctx)
         cnt = read_be32_fast(vm_base + list + 4u);
     }
     ctx->gpr[3] = res;
+}
+
+static inline int32_t cv_f2i32_trunc(float f)
+{
+    if (f != f || f <= -2147483648.0f) return (int32_t)0x80000000;
+    if (f >= 2147483647.0f) return 0x7FFFFFFF;
+    return (int32_t)f;
+}
+
+static inline uint32_t cv_f2u32_sat(float v)
+{
+    if (v != v || v <= 0.0f) return 0u;
+    if (v >= 4294967295.0f) return 4294967295u;
+    return (uint32_t)v;
+}
+
+/* Hook 33: Render-state / blend bitfield builder (EU/US/JP 0x00016838, pure leaf) */
+void CV_FD_FN_RENDER_STATE(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        CV_FD_ORIG_RENDER_STATE(ctx);
+        return;
+    }
+
+    const uint32_t p    = (uint32_t)ctx->gpr[3] + 8u;
+    uint32_t       r9   = (uint32_t)ctx->gpr[4];
+    const int32_t  s5   = (int32_t)ctx->gpr[5];
+    const int32_t  s6   = (int32_t)ctx->gpr[6];
+    const uint32_t out  = (uint32_t)ctx->gpr[7];
+
+    const uint32_t r11  = r9 & 0xFFFF0000u;
+    const uint8_t  b14  = vm_base[p + 0x14u];
+    const uint8_t  b17  = vm_base[p + 0x17u];
+
+    uint32_t r10 = 0x10u;
+    uint32_t r30 = 0x10u;
+    uint32_t r3  = 0x10u;
+    if (r11 == 0x80000000u) {
+        r10 = 0x12u;
+        r3  = 0u;
+    }
+
+    if ((b14 & 0x10u) == 0u) {
+        r3 |= 0x00020000u;
+    }
+
+    if (b17 != 0u) {
+        const uint8_t b18 = vm_base[p + 0x18u];
+        if (b18 != 0u) {
+            const uint8_t b19 = vm_base[p + 0x19u];
+            uint32_t v30 = b17;
+            uint32_t v31 = b18;
+            if (b19 != 0u) {
+                static constexpr uint32_t kBlendLut[8] = { 0xBu, 0xAu, 3u, 5u, 8u, 6u, 2u, 4u };
+                if (b17 >= 8u || b18 >= 8u) {
+                    CV_FD_ORIG_RENDER_STATE(ctx);
+                    return;
+                }
+                v30 = kBlendLut[b17];
+                v31 = kBlendLut[b18];
+            }
+            if (v30 == 8u && v31 == 6u) {
+                r30 = 0x12u;
+            } else if (v30 == 8u && v31 == 0xAu) {
+                r30 = 0x11u;
+            } else {
+                r30 = (v30 == 4u && v31 == 5u) ? 0x19u : 0x12u;
+            }
+        }
+    }
+
+    if (r11 == 0x80000000u) {
+        if (s6 <= 0x50) {
+            if (s6 <= 0x22) {
+                r10 = (s6 == 0x1E || s6 == 0x11 || s6 == 0x0B) ? 0x12u : 0x11u;
+            } else if (s6 <= 0x3A) {
+                if (s6 <= 0x2E) {
+                    r10 = (s6 <= 0x24 || s6 > 0x29) ? 0x12u : 0x11u;
+                } else if (s6 <= 0x32) {
+                    r10 = (s6 <= 0x31) ? 0x11u : 0x12u;
+                } else {
+                    r10 = (s6 == 0x37) ? 0x12u : 0x11u;
+                }
+            } else if (s6 > 0x45) {
+                r10 = 0x11u;
+            } else if (s6 <= 0x40) {
+                r10 = (s6 == 0x3F) ? 0x11u : 0x12u;
+            } else if (s6 <= 0x42) {
+                r10 = (s6 <= 0x41) ? 0x11u : 0x12u;
+            } else {
+                r10 = (s6 <= 0x43) ? 0x11u : 0x12u;
+            }
+        } else if (s6 <= 0x1A0) {
+            if (s6 <= 0x61) {
+                if (s6 > 0x5A) {
+                    r10 = 0x12u;
+                } else if (s6 <= 0x54) {
+                    r10 = (s6 <= 0x53) ? 0x12u : 0x11u;
+                } else {
+                    r10 = (s6 <= 0x55) ? 0x12u : 0x11u;
+                }
+            } else if (s6 <= 0x199) {
+                if (s6 <= 0x197) {
+                    r10 = (s6 <= 0x18F) ? 0x11u : 0x12u;
+                } else {
+                    r10 = (s6 <= 0x198) ? 0x11u : 0x12u;
+                }
+            } else if (s6 <= 0x19B) {
+                r10 = (s6 <= 0x19A) ? 0x11u : 0x12u;
+            } else {
+                r10 = (s6 == 0x19D) ? 0x12u : 0x11u;
+            }
+        } else if (s6 <= 0x1AC) {
+            if (s6 <= 0x1A6) {
+                r10 = 0x12u;
+            } else if (s6 <= 0x1AA) {
+                r10 = (s6 <= 0x1A9) ? 0x11u : 0x12u;
+            } else {
+                r10 = (s6 <= 0x1AB) ? 0x11u : 0x12u;
+            }
+        } else if (s6 <= 0x1B7) {
+            r10 = (s6 == 0x1AE) ? 0x12u : 0x11u;
+        } else {
+            r10 = (s6 > 0x1B9) ? 0x11u : 0x12u;
+        }
+
+        if (s5 <= 0xDD) {
+            if (s5 <= 0x6F) {
+                if (s5 == 0x6F) {
+                    r30 = 0x10u; r9 |= 0x10u; r10 = 0x10u;
+                } else if (s5 == 0x0D || s5 == 0x0A || s5 == 0x07 || s5 == 0x00) {
+                    r30 = 0x12u; r10 = 0x12u;
+                } else if (s5 == 0x05) {
+                    r30 = 1u; r10 = 1u;
+                } else {
+                    r30 = r10;
+                }
+            } else if (s5 == 0xDD) {
+                const uint32_t sys = get_sys();
+                const uint8_t b95 = vm_base[sys + 0x95u];
+                const uint8_t b96 = vm_base[sys + 0x96u];
+                r10 = (b95 == 9u && (b96 == 0x1Eu || b96 == 6u || b96 == 5u)) ? 0x15u : 0x12u;
+                r30 = r10;
+            } else if (s5 == 0xCB || s5 == 0x77 || s5 == 0x72) {
+                r30 = 0x12u; r10 = 0x12u;
+            } else if (s5 == 0xC1) {
+                const uint32_t sys = get_sys();
+                r10 = (vm_base[sys + 0x95u] == 9u && vm_base[sys + 0x96u] == 5u) ? 0x15u : 0x11u;
+                r30 = r10;
+            } else if (s5 == 0x93) {
+                r30 = 1u; r10 = 1u;
+            } else {
+                r30 = r10;
+            }
+        } else if (s5 <= 0x12C) {
+            if (s5 == 0x128 || s5 == 0xFA) {
+                r30 = 0x12u; r10 = 0x12u;
+            } else if (s5 == 0x109 || s5 == 0x100) {
+                r30 = 1u; r10 = 1u;
+            } else {
+                r30 = r10;
+            }
+        } else if (s5 <= 0x169) {
+            if (s5 <= 0x134) {
+                if (s5 <= 0x12E)      { r30 = 1u; r10 = 1u; }
+                else if (s5 == 0x12F) { r30 = 0x12u; r10 = 0x12u; }
+                else                  { r30 = r10; }
+            } else if (s5 <= 0x136) {
+                if (s5 <= 0x135)      { r30 = 1u; r10 = 1u; }
+                else                  { r30 = r10; }
+            } else if (s5 <= 0x137) {
+                r30 = 0x12u; r10 = 0x12u;
+            } else {
+                r30 = r10;
+            }
+        } else if (s5 <= 0x172) {
+            if (s5 <= 0x16D) {
+                if (s5 <= 0x16C)      { r30 = 0x12u; r10 = 0x12u; }
+                else                  { r30 = r10; }
+            } else if (s5 <= 0x16E) {
+                r30 = 0x12u; r9 |= 0x2u; r10 = 0x12u;
+            } else {
+                r30 = r10;
+            }
+        } else if (s5 <= 0x18C) {
+            if (s5 <= 0x175) { r30 = 0x12u; r10 = 0x12u; }
+            else             { r30 = r10; }
+        } else if (s5 <= 0x18E) {
+            r30 = 1u; r10 = 1u;
+        } else {
+            r30 = r10;
+        }
+    }
+
+    if (b14 & 0x08u) {
+        r10 = r30;
+    }
+
+    if (r9 != 0u) {
+        if (r9 & 0x02u) r3 &= ~0x00020000u;
+        if (r9 & 0x04u) r3 &= ~0x00000010u;
+        if (r9 & 0x08u) r3 |= 0x00000008u;
+        if (r9 & 0x20u) r3 |= 0x00001000u;
+        if (r9 & 0x10u) r10 = 0x10u;
+    }
+
+    const uint8_t flag4 = vm_base[kStateFlagAddr];
+    if (flag4 != 0u) {
+        r10 = 0x10u;
+    }
+
+    if (out != 0u) {
+        const uint32_t hi = (uint32_t)(flag4 & 0xC0u) | ((r10 & 0x1Fu) << 16);
+        write_be32_fast(vm_base + out + 0u, hi);
+        write_be32_fast(vm_base + out + 4u, r3);
+    }
+}
+
+/* Hook 34: 64B->32B vertex packer + draw command enqueue (US 0x007BE738 / EU 0x007C06F8 / JP 0x007BF028) */
+void CV_FD_FN_PACK_VTX64(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        CV_FD_ORIG_PACK_VTX64(ctx);
+        return;
+    }
+
+    const uint32_t sc        = (uint32_t)ctx->gpr[3];
+    const uint32_t vtx_in    = (uint32_t)ctx->gpr[4];
+    const uint32_t vtx_cnt   = (uint32_t)ctx->gpr[5];
+    const uint32_t state_ptr = (uint32_t)ctx->gpr[6];
+    const uint32_t arg7      = (uint32_t)ctx->gpr[7];
+    const int32_t  depth_in  = (int32_t)ctx->gpr[8];
+    const uint32_t arg9      = (uint32_t)ctx->gpr[9];
+    const uint32_t arg10     = (uint32_t)ctx->gpr[10];
+
+    uint32_t       state_hi  = read_be32_fast(vm_base + state_ptr + 0u);
+    const uint32_t state_lo  = read_be32_fast(vm_base + state_ptr + 4u);
+    const uint32_t sc94      = read_be32_fast(vm_base + sc + 0x94u);
+    state_hi = (state_hi & ~0x0000FFC0u) | ((sc94 << 6) & 0x0000FFC0u);
+    state_hi = (state_hi & ~0xF8000000u) | (3u << 27);
+
+    const uint32_t mode      = read_be32_fast(vm_base + sc + 0x88u);
+    const int32_t  sentinel  = (int32_t)read_be32_fast(vm_base + kDepthLo + 8u);
+    int32_t        depth     = depth_in;
+
+    if (depth == sentinel) {
+        const uint32_t n   = read_be32_fast(vm_base + sc + 0x54u);
+        const uint32_t idx = (n != 0u) ? read_be32_fast(vm_base + sc + (n - 1u) * 12u + 0x14u) : 0u;
+        if (mode == 0x10u || mode == 0x14u) {
+            const uint32_t mat = cv_call_direct_u32(ctx, CV_FD_FN_GET_MAT, idx);
+            const uint8_t* const mp = vm_base + mat;
+            const uint8_t* const pp = vm_base + vtx_in;
+            const float px = read_bef32_fast(pp + 0u);
+            const float py = read_bef32_fast(pp + 4u);
+            const float pz = read_bef32_fast(pp + 8u);
+            const float z  = px * read_bef32_fast(mp + 0x08u)
+                           + py * read_bef32_fast(mp + 0x18u)
+                           + pz * read_bef32_fast(mp + 0x28u)
+                           + read_bef32_fast(mp + 0x38u);
+            int32_t iv = cv_f2i32_trunc(-z);
+            if (iv > 0x7FFF) iv = 0x7FFF;
+            if (iv < 0)      iv = 0;
+            depth = 0x7FFF - (int32_t)((uint32_t)(0x7FFF - iv) & 0xFFFFFu);
+        } else {
+            ctx->gpr[1] -= 0x20u;
+            const uint32_t pos_tmp = (uint32_t)ctx->gpr[1] + 0x10u;
+            std::memcpy(vm_base + pos_tmp, vm_base + vtx_in, 12u);
+            const double saved_f1 = ctx->fpr[1];
+            ctx->fpr[1] = read_bef32_fast(vm_base + kPackConsts + 0x30u);
+            depth = (int32_t)cv_call_direct_u32(ctx, CV_FD_FN_DEPTH_FALLBACK, pos_tmp, sc + 0x60u);
+            ctx->fpr[1] = saved_f1;
+            ctx->gpr[1] += 0x20u;
+        }
+    }
+
+    if (depth < 0) {
+        ctx->gpr[3] = 0xEu;
+        return;
+    }
+
+    const int32_t max_depth = (int32_t)read_be32_fast(vm_base + kDepthLo);
+    if (max_depth < depth) depth = max_depth;
+
+    uint32_t       vb        = read_be32_fast(vm_base + sc + 0x08u);
+    const uint32_t req_bytes = vtx_cnt << 5;
+    const uint32_t cur_off   = read_be32_fast(vm_base + vb + 0x0Cu);
+    uint32_t       cap       = read_be32_fast(vm_base + vb + 0x08u);
+    uint32_t       dst_ptr   = 0u;
+    if ((uint32_t)(cur_off + req_bytes) <= cap) {
+        dst_ptr = read_be32_fast(vm_base + vb + 0x14u);
+    } else {
+        write_be32_fast(vm_base + vb + 0x04u, 0u);
+        cv_call_direct_u32(ctx, CV_FD_FN_VB_FLUSH, vb, 0x00020000u);
+        cap = read_be32_fast(vm_base + vb + 0x08u);
+        if (req_bytes > cap) {
+            ctx->gpr[3] = 4u;
+            return;
+        }
+        dst_ptr = read_be32_fast(vm_base + vb + 0x14u);
+    }
+    write_be32_fast(vm_base + vb + 0x04u, req_bytes);
+    if (dst_ptr == 0u) {
+        ctx->gpr[3] = 4u;
+        return;
+    }
+
+    const uint8_t* const kc  = vm_base + kPackConsts;
+    const float c34          = read_bef32_fast(kc + 0x34u);
+    const uint16_t v28_u16   = (uint16_t)cv_f2i32_trunc((float)(int32_t)(arg7 + 0x8000u) - c34);
+
+    if (vtx_cnt > 0u) {
+        const float   c38       = read_bef32_fast(kc + 0x38u);
+        const float   c3C       = read_bef32_fast(kc + 0x3Cu);
+        const float   c40       = read_bef32_fast(kc + 0x40u);
+        const uint8_t b_arg9    = (uint8_t)cv_f2i32_trunc((float)(int32_t)(arg9 - 128u) + c40);
+        const bool    has_extra = ((arg10 & 0xFFu) != 0u);
+
+        uint32_t src_addr = vtx_in;
+        uint8_t* dst      = vm_base + dst_ptr;
+        for (uint32_t i = 0; i < vtx_cnt; ++i, src_addr += 0x40u, dst += 0x20u) {
+            const uint8_t* const src = vm_base + src_addr;
+            std::memcpy(dst, src, 16u);
+
+            const float u = read_bef32_fast(src + 0x18u);
+            const float v = read_bef32_fast(src + 0x1Cu);
+            write_be16_fast(dst + 0x10u, (uint16_t)cv_f2i32_trunc(u * c38));
+            write_be16_fast(dst + 0x12u, (uint16_t)cv_f2i32_trunc(v * c38));
+            write_be16_fast(dst + 0x14u, v28_u16);
+
+            const uint16_t s14 = read_be16_fast(src + 0x14u);
+            write_be16_fast(dst + 0x16u, (uint16_t)cv_f2i32_trunc((float)s14 - c34));
+
+            if (has_extra) {
+                const uint8_t* const p20 = vm_base + ((src_addr + 0x20u) & ~0xFu);
+                dst[0x18u] = (uint8_t)cv_f2u32_sat(read_bef32_fast(p20 + 0u) * c3C + c40);
+                dst[0x19u] = (uint8_t)cv_f2u32_sat(read_bef32_fast(p20 + 4u) * c3C + c40);
+                dst[0x1Au] = (uint8_t)cv_f2u32_sat(read_bef32_fast(p20 + 8u) * c3C + c40);
+
+                const uint8_t* const p30 = vm_base + ((src_addr + 0x30u) & ~0xFu);
+                dst[0x1Cu] = (uint8_t)cv_f2u32_sat(read_bef32_fast(p30 + 0u) * c3C + c40);
+                dst[0x1Du] = (uint8_t)cv_f2u32_sat(read_bef32_fast(p30 + 4u) * c3C + c40);
+                dst[0x1Eu] = (uint8_t)cv_f2u32_sat(read_bef32_fast(p30 + 8u) * c3C + c40);
+
+                dst[0x1Bu] = (uint8_t)cv_f2i32_trunc((float)src[0x16u] + c40);
+            }
+            dst[0x1Fu] = b_arg9;
+        }
+    }
+
+    vb = read_be32_fast(vm_base + sc + 0x08u);
+    const uint32_t pending = read_be32_fast(vm_base + vb + 0x04u);
+    if (pending != 0u) {
+        write_be32_fast(vm_base + vb + 0x04u, 0u);
+        write_be32_fast(vm_base + vb + 0x14u, read_be32_fast(vm_base + vb + 0x14u) + pending);
+        write_be32_fast(vm_base + vb + 0x0Cu, read_be32_fast(vm_base + vb + 0x0Cu) + pending);
+        vb = read_be32_fast(vm_base + sc + 0x08u);
+    }
+
+    const uint32_t m88    = read_be32_fast(vm_base + sc + 0x88u);
+    const uint32_t m8C    = read_be32_fast(vm_base + sc + 0x8Cu) & 0x0FFFu;
+    const uint32_t key25  = ((m88 & 0x1Fu) << 27) | (((uint32_t)depth & 0x7FFFu) << 12) | m8C;
+    const uint32_t q      = read_be32_fast(vm_base + sc + 0x04u);
+    const uint32_t n2     = read_be32_fast(vm_base + sc + 0x54u);
+    const uint32_t idx2   = (n2 != 0u) ? read_be32_fast(vm_base + sc + (n2 - 1u) * 12u + 0x14u) : 0u;
+
+    uint32_t const_buf = 0u;
+    if ((state_lo & 0xF08900A0u) != 0u) {
+        if (vm_base[sc + 0xC4u] != 0u) {
+            uint32_t c_cur = read_be32_fast(vm_base + idx2 + 0x14u);
+            const uint32_t c_end = read_be32_fast(vm_base + idx2 + 0x18u);
+            if (c_cur + 0x20u > c_end) {
+                cv_call_direct_u32(ctx, CV_FD_FN_CONST_FLUSH, idx2);
+                c_cur = read_be32_fast(vm_base + idx2 + 0x14u);
+            }
+            write_be32_fast(vm_base + idx2 + 0x14u, c_cur + 0x20u);
+            std::memcpy(vm_base + c_cur, vm_base + sc + 0xA0u, 32u);
+            write_be32_fast(vm_base + sc + 0xC0u, c_cur);
+            vm_base[sc + 0xC4u] = 0u;
+        }
+        const_buf = read_be32_fast(vm_base + sc + 0xC0u);
+    }
+
+    const uint32_t q_cnt = read_be32_fast(vm_base + q + 0x80u);
+    const uint32_t q_max = read_be32_fast(vm_base + q + 0x7Cu);
+    if (q_cnt + 1u > q_max) {
+        ctx->gpr[3] = 0xCu;
+        return;
+    }
+
+    const uint32_t q64    = read_be32_fast(vm_base + q + 0x64u);
+    const uint32_t cmd    = read_be32_fast(vm_base + q + 0x74u);
+    const uint32_t sort_p = read_be32_fast(vm_base + q + 0x78u);
+
+    uint8_t* const cp = vm_base + cmd;
+    write_be32_fast(cp + 0x00u, state_hi & 0xFFFFFFFCu);
+    write_be32_fast(cp + 0x04u, state_lo);
+    write_be32_fast(cp + 0x08u, key25);
+    write_be32_fast(cp + 0x0Cu, vb);
+    write_be32_fast(cp + 0x10u, const_buf);
+    write_be32_fast(cp + 0x14u, dst_ptr);
+    write_be32_fast(cp + 0x18u, 0u);
+    write_be32_fast(cp + 0x1Cu, vtx_cnt);
+    write_be32_fast(cp + 0x20u, ((vtx_cnt + 1u) & ~1u) + 2u);
+
+    write_be32_fast(vm_base + sort_p + 0x00u, cmd);
+    write_be32_fast(vm_base + sort_p + 0x04u, key25);
+
+    write_be32_fast(vm_base + q + 0x74u, cmd + 0x28u);
+    write_be32_fast(vm_base + q + 0x78u, sort_p + 8u);
+    write_be32_fast(vm_base + q + 0x80u, q_cnt + 1u);
+
+    const uint32_t bkt_cnt_addr = q + ((q64 - 1u) << 4) + 0x0Cu;
+    write_be32_fast(vm_base + bkt_cnt_addr, read_be32_fast(vm_base + bkt_cnt_addr) + 1u);
+
+    ctx->gpr[3] = 0u;
 }
