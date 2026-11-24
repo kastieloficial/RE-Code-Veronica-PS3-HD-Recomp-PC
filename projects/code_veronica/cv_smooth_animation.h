@@ -7,6 +7,11 @@ bool native_scene_ready() {
     const unsigned character=vm_read8(CV_SRT_CHARACTER);
     static constexpr uint32_t live_markers[]={0x3D650,0x3C4FC,0x3A4D0,0x3E814};
     if(!system || character>=4 || vm_read32(CV_SRT_RDX)!=live_markers[character] || int32_t(vm_read32(CV_SRT_HEALTH))<=0)return false;
+    // Game Over ("YOU DIED" / "Retry? Yes/No", system+0x2A6D6/+0x2A6D8) can run
+    // with HP > 0 (e.g. instant-death fall off the Antarctica helipad), and
+    // room/disc-swap monitor (system+0x1B108 == 4) also draws 2D prompts.
+    // Rebuilding the 3D scene via 000155D0 would free their 2D text/sprite lists.
+    if(vm_read16(system+0x2A6D6)!=0 || vm_read32(system+0x2A6D8)!=0 || vm_read8(system+0x1B108)==4)return false;
     const uint32_t tasks=vm_read32(system+0x64)&~vm_read32(system+0x68);
     const uint32_t camera_mode=vm_read32(system+0x74),control=vm_read32(system+0x70);
     // Script command 0012C864 mode 3 sets 0x44 and control bit 4. The
@@ -268,17 +273,46 @@ void scene_models_blend(const ProbeModel* models,unsigned count,const ProbeModel
         scene_model_write(current,*previous,alpha);
     }
 }
+static std::atomic<bool> scene_replacing_active{false};
 // EU-only diagnostic: repeat scene preparation without the task dispatcher.
 void render_scene_between_ticks(ppu_context* ctx, unsigned count, double phase) {
     static const bool on=[] {const char* e=std::getenv("CV_SMOOTH_ANIMATION");return e&&std::strcmp(e,"1")==0;}();
-    if(!on || !scene_pose_have || !native_scene_ready())return;
+    static thread_local unsigned consecutive_ticks=0;
+    if(!on || !scene_pose_have || !native_scene_ready()) {
+        consecutive_ticks=0;
+        scene_replacing_active.store(false,std::memory_order_relaxed);
+        return;
+    }
     if(!scene_camera_matches(scene_pose_current.cut)||!scene_matches(scene_pose_current.scene)||
        scene_pose_current.scripted!=((vm_read32(vm_read32(CV_SCENE_SYSTEM)+0x74)&4)!=0)) {
-        scene_pose_have=scene_pose_pair=false;return;
+        scene_pose_have=scene_pose_pair=false;
+        consecutive_ticks=0;
+        scene_replacing_active.store(false,std::memory_order_relaxed);
+        return;
+    }
+    if(count==0) {
+        consecutive_ticks=0;
+    } else {
+        if(++consecutive_ticks>=2) {
+            // Heavy scene (running <= ~35 FPS): every frame is already a real
+            // 30 Hz logic tick with no in-between frames to interpolate. Keep
+            // CV_BIO_UPDATE's freshly built scene instead of discarding and
+            // rebuilding it a second time on the same frame.
+            scene_replacing_active.store(false,std::memory_order_relaxed);
+            return;
+        }
+        if(!scene_pose_pair && !scene_pose_current.camera_cut) {
+            // CV_BIO_UPDATE just drew current_pose at alpha=1.0; no blend needed.
+            scene_replacing_active.store(false,std::memory_order_relaxed);
+            return;
+        }
     }
     const uint32_t system=vm_read32(CV_SCENE_SYSTEM), object=vm_read32(CV_SCENE_RENDER);
-    if(!system || !object)return;
-    (void)count;
+    if(!system || !object) {
+        scene_replacing_active.store(false,std::memory_order_relaxed);
+        return;
+    }
+    scene_replacing_active.store(true,std::memory_order_relaxed);
     const ppu_context incoming=*ctx;
     const uint32_t camera=CV_SCENE_CAMERA;
     const uint32_t counter=vm_read32(camera+0x4B0),last=vm_read32(camera+0x4AC);

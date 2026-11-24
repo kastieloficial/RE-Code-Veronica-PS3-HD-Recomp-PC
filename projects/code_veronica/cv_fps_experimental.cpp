@@ -185,7 +185,7 @@ void bio_update_30hz(ppu_context* ctx) {
 // drops the game's own 2D layer (the self-destruct countdown), so the port
 // draws that countdown itself (cv_combat_hud.cpp). Read from the render thread.
 extern "C" int cv_native_scene_replacing(void) {
-    return enabled()&&cv_options::enabled("CV_SMOOTH_ANIMATION")&&native_scene_ready()?1:0;
+    return enabled()&&cv_options::enabled("CV_SMOOTH_ANIMATION")&&scene_replacing_active.load(std::memory_order_relaxed)?1:0;
 }
 extern "C" void cv_fps_register_game_update() {
     const char* raw=std::getenv("CV_FPS_BENCHMARK_RAW");
