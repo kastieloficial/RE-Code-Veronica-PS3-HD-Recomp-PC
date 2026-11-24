@@ -85,6 +85,16 @@
 #define CV_FD_ORIG_ENQUEUE_TRANS cv_original_00015DDC
 #define CV_FD_FN_HEAP_ALLOC_INNER   func_006D8B4C
 #define CV_FD_ORIG_HEAP_ALLOC_INNER cv_original_006D8B4C
+#define CV_FD_FN_XFORM_VEC3      func_001CC7C0
+#define CV_FD_ORIG_XFORM_VEC3    cv_original_001CC7C0
+#define CV_FD_FN_DEPTH_MERGE     func_003DBAB8
+#define CV_FD_ORIG_DEPTH_MERGE   cv_original_003DBAB8
+#define CV_FD_FN_DESC_LOOKUP     func_007BE4D8
+#define CV_FD_ORIG_DESC_LOOKUP   cv_original_007BE4D8
+#define CV_FD_FN_EMIT_SPRITES    func_001D2E60
+#define CV_FD_ORIG_EMIT_SPRITES  cv_original_001D2E60
+#define CV_FD_FN_EMIT_STRIP      func_001C6A10
+#define CV_FD_ORIG_EMIT_STRIP    cv_original_001C6A10
 #elif defined(CV_REGION_JP)
 #define CV_FD_FN_DOOR_DEMO       func_001AE120
 #define CV_FD_ORIG_DOOR_DEMO     cv_original_001AE120
@@ -133,6 +143,16 @@
 #define CV_FD_ORIG_ENQUEUE_TRANS cv_original_00015DDC
 #define CV_FD_FN_HEAP_ALLOC_INNER   func_006D943C
 #define CV_FD_ORIG_HEAP_ALLOC_INNER cv_original_006D943C
+#define CV_FD_FN_XFORM_VEC3      func_001CC940
+#define CV_FD_ORIG_XFORM_VEC3    cv_original_001CC940
+#define CV_FD_FN_DEPTH_MERGE     func_003DC3A8
+#define CV_FD_ORIG_DEPTH_MERGE   cv_original_003DC3A8
+#define CV_FD_FN_DESC_LOOKUP     func_007BEDC8
+#define CV_FD_ORIG_DESC_LOOKUP   cv_original_007BEDC8
+#define CV_FD_FN_EMIT_SPRITES    func_001D2FE0
+#define CV_FD_ORIG_EMIT_SPRITES  cv_original_001D2FE0
+#define CV_FD_FN_EMIT_STRIP      func_001C6B90
+#define CV_FD_ORIG_EMIT_STRIP    cv_original_001C6B90
 #else /* EU */
 #define CV_FD_FN_DOOR_DEMO       func_001AFAE8
 #define CV_FD_ORIG_DOOR_DEMO     cv_original_001AFAE8
@@ -181,6 +201,16 @@
 #define CV_FD_ORIG_ENQUEUE_TRANS cv_original_00015DDC
 #define CV_FD_FN_HEAP_ALLOC_INNER   func_006DAB0C
 #define CV_FD_ORIG_HEAP_ALLOC_INNER cv_original_006DAB0C
+#define CV_FD_FN_XFORM_VEC3      func_001CE5E0
+#define CV_FD_ORIG_XFORM_VEC3    cv_original_001CE5E0
+#define CV_FD_FN_DEPTH_MERGE     func_003DDA78
+#define CV_FD_ORIG_DEPTH_MERGE   cv_original_003DDA78
+#define CV_FD_FN_DESC_LOOKUP     func_007C0498
+#define CV_FD_ORIG_DESC_LOOKUP   cv_original_007C0498
+#define CV_FD_FN_EMIT_SPRITES    func_001D4C80
+#define CV_FD_ORIG_EMIT_SPRITES  cv_original_001D4C80
+#define CV_FD_FN_EMIT_STRIP      func_001C8830
+#define CV_FD_ORIG_EMIT_STRIP    cv_original_001C8830
 #endif
 
 void CV_FD_ORIG_DOOR_DEMO(ppu_context* ctx);      /* bhSysCallDoordemo */
@@ -206,6 +236,11 @@ void CV_FD_ORIG_MAT4_VEC4(ppu_context* ctx);      /* mat4x4 * vec4 */
 void CV_FD_ORIG_CULL_PARTS(ppu_context* ctx);     /* uModel::cullParts */
 void CV_FD_ORIG_ENQUEUE_TRANS(ppu_context* ctx);  /* translucent/effect command enqueue */
 void CV_FD_ORIG_HEAP_ALLOC_INNER(ppu_context* ctx); /* MtHeapAllocator first-fit free-list alloc */
+void CV_FD_ORIG_XFORM_VEC3(ppu_context* ctx);     /* Vec3[count] * affine 4x3 matrix */
+void CV_FD_ORIG_DEPTH_MERGE(ppu_context* ctx);    /* 8-byte translucent depth-sort merge */
+void CV_FD_ORIG_DESC_LOOKUP(ppu_context* ctx);    /* 5x u32 descriptor linear lookup/insert */
+void CV_FD_ORIG_EMIT_SPRITES(ppu_context* ctx);   /* billboard/particle sprite array emitter */
+void CV_FD_ORIG_EMIT_STRIP(ppu_context* ctx);     /* polygon/strip particle emitter */
 void cv_ui_original_enqueue(ppu_context* ctx);    /* UI/draw command vector push_back */
 void CV_FD_FN_MT_SEEK(ppu_context* ctx);          /* MtFile::seek(obj, off, origin) */
 void CV_FN_STOP_BANK(ppu_context* ctx);           /* (sound_mgr, bank_id) */
@@ -253,6 +288,21 @@ constexpr uint32_t kNrmScale     = 0x0001D5CCu;
 constexpr uint32_t kEnqMgrPtr    = 0x00A73CD0u;
 constexpr uint32_t kEnqG0        = 0x00AAE9C0u;
 constexpr uint32_t kEnqG2        = 0x00ACC8B0u;
+constexpr uint32_t kSpriteColor  = 0x00ADE824u;
+constexpr uint32_t kObjVtable    = 0x008EDD70u;
+constexpr uint32_t kObjMeta      = 0x00905528u;
+constexpr uint32_t kSubVtable    = 0x008EDD90u;
+constexpr uint32_t kSpriteConstA = 0x001D2E40u;
+constexpr uint32_t kStripConstA  = 0x001C69E0u;
+constexpr uint32_t kSpriteVecB   = 0x00BA9500u;
+constexpr uint32_t kSpriteVecC   = 0x00BA9490u;
+constexpr uint32_t kFlag3470     = 0x00ADCB90u;
+constexpr uint32_t kMatStatePtr  = 0x00AAEA68u;
+constexpr uint32_t kByte3654     = 0x00ADC9ACu;
+constexpr uint32_t kSpriteUvTpl  = 0x00AAEC40u;
+constexpr uint32_t kAllocDesc    = 0x00BAA018u;
+constexpr uint32_t kAllocBase    = 0x00B30000u;
+constexpr uint32_t kTexIdAddr    = 0x00ADC8E8u;
 #elif defined(CV_REGION_JP)
 constexpr uint32_t kSysPtrAddr   = 0x00A79C34u;
 constexpr uint32_t kScratchMgr   = 0x00A73C68u;
@@ -283,6 +333,21 @@ constexpr uint32_t kNrmScale     = 0x0001D5CCu;
 constexpr uint32_t kEnqMgrPtr    = 0x00A73CD0u;
 constexpr uint32_t kEnqG0        = 0x00AAEA7Cu;
 constexpr uint32_t kEnqG2        = 0x00ACC930u;
+constexpr uint32_t kSpriteColor  = 0x00ADE8A4u;
+constexpr uint32_t kObjVtable    = 0x008EE620u;
+constexpr uint32_t kObjMeta      = 0x00905DD8u;
+constexpr uint32_t kSubVtable    = 0x008EE640u;
+constexpr uint32_t kSpriteConstA = 0x001D2FC0u;
+constexpr uint32_t kStripConstA  = 0x001C6B60u;
+constexpr uint32_t kSpriteVecB   = 0x00BA9580u;
+constexpr uint32_t kSpriteVecC   = 0x00BA9510u;
+constexpr uint32_t kFlag3470     = 0x00ADCC10u;
+constexpr uint32_t kMatStatePtr  = 0x00AAEB24u;
+constexpr uint32_t kByte3654     = 0x00ADCA2Cu;
+constexpr uint32_t kSpriteUvTpl  = 0x00AAECFCu;
+constexpr uint32_t kAllocDesc    = 0x00BAA098u;
+constexpr uint32_t kAllocBase    = 0x00B30000u;
+constexpr uint32_t kTexIdAddr    = 0x00ADC968u;
 #else /* EU */
 constexpr uint32_t kSysPtrAddr   = 0x00A89BD0u;
 constexpr uint32_t kScratchMgr   = 0x00A83C68u;
@@ -313,6 +378,21 @@ constexpr uint32_t kNrmScale     = 0x0001D5CCu;
 constexpr uint32_t kEnqMgrPtr    = 0x00A83CD0u;
 constexpr uint32_t kEnqG0        = 0x00ABED0Cu;
 constexpr uint32_t kEnqG2        = 0x00ADCBB0u;
+constexpr uint32_t kSpriteColor  = 0x00AEEB24u;
+constexpr uint32_t kObjVtable    = 0x008F0720u;
+constexpr uint32_t kObjMeta      = 0x00907ED8u;
+constexpr uint32_t kSubVtable    = 0x008F0740u;
+constexpr uint32_t kSpriteConstA = 0x001D4C60u;
+constexpr uint32_t kStripConstA  = 0x001C8800u;
+constexpr uint32_t kSpriteVecB   = 0x00BB9800u;
+constexpr uint32_t kSpriteVecC   = 0x00BB9790u;
+constexpr uint32_t kFlag3470     = 0x00AECE90u;
+constexpr uint32_t kMatStatePtr  = 0x00ABEDB4u;
+constexpr uint32_t kByte3654     = 0x00AECCACu;
+constexpr uint32_t kSpriteUvTpl  = 0x00ABEF8Cu;
+constexpr uint32_t kAllocDesc    = 0x00BBA318u;
+constexpr uint32_t kAllocBase    = 0x00B40000u;
+constexpr uint32_t kTexIdAddr    = 0x00AECBE8u;
 #endif
 constexpr uint32_t kOffSsFlg     = 0x00050u;    /* bit 0x400000 = attract demo */
 constexpr uint32_t kOffTsFlg     = 0x00068u;    /* bit 0x800 = door ready */
@@ -2544,4 +2624,564 @@ void CV_FD_FN_HEAP_ALLOC_INNER(ppu_context* ctx)
     }
 
     ctx->gpr[3] = node;
+}
+
+/* Shared inline helper for Hooks 20, 25, 26: translucent draw command enqueue */
+static inline void cv_enqueue_trans_inline(ppu_context* ctx, uint32_t obj, uint32_t item)
+{
+    const uint32_t mgr   = read_be32_fast(vm_base + kEnqMgrPtr);
+    const uint32_t val44 = read_be32_fast(vm_base + mgr + 0x154u);
+    const int32_t  mode  = (int32_t)read_be32_fast(vm_base + obj + 0x14Cu);
+
+    uint32_t off_cnt, off_cap, off_arr;
+    bool copy_vec = false;
+    if (mode == 3) {
+        off_cnt = 0x13Cu; off_cap = 0x140u; off_arr = 0x148u;
+    } else if (mode == 4) {
+        off_cnt = 0x128u; off_cap = 0x12Cu; off_arr = 0x134u;
+    } else {
+        const uint32_t hi = val44 & 0xFFFF0000u;
+        if (hi == 0x08000000u || hi == 0x04000000u || hi == 0x00400000u) {
+            off_cnt = 0x114u; off_cap = 0x118u; off_arr = 0x120u;
+        } else if (hi == 0x80000000u) {
+            off_cnt = 0x114u; off_cap = 0x118u; off_arr = 0x120u;
+            copy_vec = (vm_base[kEnqG2 + 8u] != 0u);
+        } else {
+            off_cnt = 0x100u; off_cap = 0x104u; off_arr = 0x10Cu;
+        }
+    }
+
+    const uint32_t cnt = read_be32_fast(vm_base + obj + off_cnt);
+    const uint32_t cap = read_be32_fast(vm_base + obj + off_cap);
+    if (cnt >= cap) {
+        const uint64_t s3 = ctx->gpr[3], s4 = ctx->gpr[4];
+        ctx->gpr[3] = obj;
+        ctx->gpr[4] = item;
+        CV_FD_ORIG_ENQUEUE_TRANS(ctx);
+        ctx->gpr[3] = s3;
+        ctx->gpr[4] = s4;
+        return;
+    }
+
+    write_be32_fast(vm_base + item + 0x44u, val44);
+    write_be32_fast(vm_base + item + 0x48u, read_be32_fast(vm_base + kEnqG0 + 4u));
+    write_be32_fast(vm_base + item + 0x4Cu, read_be32_fast(vm_base + kEnqG2));
+    write_be32_fast(vm_base + item + 0x50u, read_be32_fast(vm_base + kEnqG2 + 4u));
+    if (copy_vec) {
+        std::memcpy(vm_base + item + 0x34u, vm_base + kEnqG2 + 12u, 12u);
+        write_be32_fast(vm_base + item + 0x40u, 0x3F800000u);
+    }
+
+    const uint32_t arr = read_be32_fast(vm_base + obj + off_arr);
+    write_be32_fast(vm_base + obj + off_cnt, cnt + 1u);
+    write_be32_fast(vm_base + arr + (cnt << 2), item);
+
+    write_be32_fast(vm_base + mgr + 0x154u, val44 & 0xFFFF0000u);
+    write_be32_fast(vm_base + kEnqG0,      1u);
+    write_be32_fast(vm_base + kEnqG0 + 4u, 0xFFFFFFFFu);
+    write_be32_fast(vm_base + kEnqG2,      0u);
+    write_be32_fast(vm_base + kEnqG2 + 4u, 0u);
+}
+
+/* Hook 22: Affine 4x3 matrix * Vec3[count] transform (EU 0x001CE5E0 / US 0x001CC7C0 / JP 0x001CC940) */
+void CV_FD_FN_XFORM_VEC3(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        CV_FD_ORIG_XFORM_VEC3(ctx);
+        return;
+    }
+
+    uint32_t       mat   = (uint32_t)ctx->gpr[3];
+    const uint32_t src   = (uint32_t)ctx->gpr[4];
+    const uint32_t dst   = (uint32_t)ctx->gpr[5];
+    const uint32_t count = (uint32_t)ctx->gpr[6];
+    if (count == 0u) return;
+    if (mat == 0u) mat = read_be32_fast(vm_base + kMatPtr);
+
+    const uint8_t* mp = vm_base + mat;
+    const float m00 = read_bef32_fast(mp + 0x00u), m01 = read_bef32_fast(mp + 0x04u), m02 = read_bef32_fast(mp + 0x08u);
+    const float m10 = read_bef32_fast(mp + 0x10u), m11 = read_bef32_fast(mp + 0x14u), m12 = read_bef32_fast(mp + 0x18u);
+    const float m20 = read_bef32_fast(mp + 0x20u), m21 = read_bef32_fast(mp + 0x24u), m22 = read_bef32_fast(mp + 0x28u);
+    const float m30 = read_bef32_fast(mp + 0x30u), m31 = read_bef32_fast(mp + 0x34u), m32 = read_bef32_fast(mp + 0x38u);
+
+    const uint8_t* sp = vm_base + src;
+    uint8_t*       dp = vm_base + dst;
+    for (uint32_t i = 0; i < count; ++i, sp += 12u, dp += 12u) {
+        const float x = read_bef32_fast(sp + 0x0u);
+        const float y = read_bef32_fast(sp + 0x4u);
+        const float z = read_bef32_fast(sp + 0x8u);
+        const float ox = m00 * x + m10 * y + m20 * z + m30;
+        const float oy = m01 * x + m11 * y + m21 * z + m31;
+        const float oz = m02 * x + m12 * y + m22 * z + m32;
+        write_bef32_fast(dp + 0x0u, ox);
+        write_bef32_fast(dp + 0x4u, oy);
+        write_bef32_fast(dp + 0x8u, oz);
+    }
+}
+
+/* Hook 23: Translucent depth-sort 8-byte merge step (EU 0x003DDA78 / US 0x003DBAB8 / JP 0x003DC3A8) */
+void CV_FD_FN_DEPTH_MERGE(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        CV_FD_ORIG_DEPTH_MERGE(ctx);
+        return;
+    }
+
+    const uint32_t arr_addr = (uint32_t)ctx->gpr[4];
+    const uint32_t tmp_addr = (uint32_t)ctx->gpr[5];
+    const int32_t  lo       = (int32_t)ctx->gpr[6];
+    const int32_t  mid      = (int32_t)ctx->gpr[7];
+    const int32_t  hi       = (int32_t)ctx->gpr[8];
+    if (lo < 0 || lo >= mid || mid >= hi) {
+        CV_FD_ORIG_DEPTH_MERGE(ctx);
+        return;
+    }
+
+    uint64_t* const arr = reinterpret_cast<uint64_t*>(vm_base + arr_addr);
+    uint64_t* const tmp = reinterpret_cast<uint64_t*>(vm_base + tmp_addr);
+    std::memcpy(tmp + lo, arr + lo, (size_t)(hi - lo) * 8u);
+
+    int32_t i = lo, j = mid, k = lo;
+    const uint8_t* const tmp_b = vm_base + tmp_addr;
+    for (;;) {
+        const uint32_t key_j = read_be32_fast(tmp_b + (size_t)j * 8u + 4u);
+        const uint32_t key_i = read_be32_fast(tmp_b + (size_t)i * 8u + 4u);
+        if (key_j > key_i) {
+            arr[k++] = tmp[j++];
+            if (j == hi) break;
+        } else {
+            arr[k++] = tmp[i++];
+            if (i == mid) { i = j; break; }
+        }
+    }
+    if (k < hi) {
+        std::memcpy(arr + k, tmp + i, (size_t)(hi - k) * 8u);
+    }
+}
+
+/* Hook 24: 5x u32 vertex-format/state descriptor lookup (EU 0x007C0498 / US 0x007BE4D8 / JP 0x007BEDC8) */
+void CV_FD_FN_DESC_LOOKUP(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        CV_FD_ORIG_DESC_LOOKUP(ctx);
+        return;
+    }
+
+    const uint32_t obj = (uint32_t)ctx->gpr[3];
+    const uint32_t a   = (uint32_t)ctx->gpr[4];
+    const uint32_t b   = (uint32_t)ctx->gpr[5];
+    const uint32_t c   = (uint32_t)ctx->gpr[6];
+    const uint32_t d   = (uint32_t)ctx->gpr[7];
+
+    uint32_t flags = (b != 0u) ? 5u : 1u;
+    if (c != 0u) flags |= 8u;
+    if (d != 0u) flags |= 16u;
+
+    const uint32_t key_be[5] = {
+        bswap32_fast(flags), bswap32_fast(a), bswap32_fast(b),
+        bswap32_fast(c),     bswap32_fast(d)
+    };
+    std::memcpy(vm_base + obj + 0x74u, key_be, 20u);
+
+    const uint32_t arr     = read_be32_fast(vm_base + obj + 0x24Cu);
+    const uint32_t count   = read_be32_fast(vm_base + obj + 0x250u);
+    const uint32_t base_id = read_be32_fast(vm_base + obj + 0x258u);
+
+    uint32_t result = 0u;
+    if (count > 0u) {
+        const uint8_t* p = vm_base + arr;
+        for (uint32_t i = 0; i < count; ++i, p += 20u) {
+            if (std::memcmp(p, key_be, 20u) == 0) {
+                result = base_id + i;
+                break;
+            }
+        }
+    }
+
+    if (result == 0u) {
+        const uint32_t cap = read_be32_fast(vm_base + obj + 0x254u);
+        if (count >= cap) {
+            CV_FD_ORIG_DESC_LOOKUP(ctx);
+            return;
+        }
+        std::memcpy(vm_base + arr + count * 20u, key_be, 20u);
+        write_be32_fast(vm_base + obj + 0x250u, count + 1u);
+        result = base_id + count;
+    }
+
+    write_be32_fast(vm_base + obj + 0x94u, result);
+    ctx->gpr[3] = result;
+}
+
+/* Shared helper for Hooks 25 & 26: build the 16-byte Altivec blend constant */
+static inline void cv_build_draw_vec80(uint32_t const_a_addr, uint8_t out_vec[16])
+{
+    uint8_t splat[16];
+    const uint8_t* ca = vm_base + const_a_addr;
+    for (int k = 0; k < 4; ++k) std::memcpy(splat + k * 4, ca, 4);
+    const uint8_t* vb   = vm_base + kSpriteVecB;
+    const uint8_t* mask = vm_base + const_a_addr + 0x10u;
+    for (int k = 0; k < 16; ++k) {
+        out_vec[k] = (uint8_t)((vb[k] & ~mask[k]) | (splat[k] & mask[k]));
+    }
+}
+
+/* Hook 25: Billboard/sprite particle array emitter (EU 0x001D4C80 / US 0x001D2E60 / JP 0x001D2FE0)
+ * #1 hottest function in Nosferatu snow+gas+gunfire (~14% of ppu:main). */
+void CV_FD_FN_EMIT_SPRITES(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        CV_FD_ORIG_EMIT_SPRITES(ctx);
+        return;
+    }
+
+    const uint32_t pos_arr = (uint32_t)ctx->gpr[3];
+    const int32_t  count   = (int32_t)ctx->gpr[4];
+    const float    half_w  = (float)ctx->fpr[1];
+    const float    half_h  = (float)ctx->fpr[2];
+
+    const uint32_t order_flag = read_be32_fast(vm_base + kEnqG0);
+    const uint32_t blend_mode = read_be32_fast(vm_base + kEnqG0 + 4u);
+    if (count <= 0) return;
+    if (order_flag > 1u) {
+        CV_FD_ORIG_EMIT_SPRITES(ctx);
+        return;
+    }
+
+    const uint32_t col_w = read_be32_fast(vm_base + kSpriteColor);
+    const uint32_t c_r   = ((col_w >> 16) & 0xFFu) + 1u;
+    const uint32_t c_g   = ((col_w >> 8)  & 0xFFu) + 1u;
+    const uint32_t c_b   = ( col_w        & 0xFFu) + 1u;
+    const uint32_t c_a   = ((col_w >> 24) & 0xFFu) + 1u;
+    const uint32_t packed_color =
+          (((c_a >> 1) & 0xFFu) << 24)
+        | (((c_b >> 1) & 0xFFu) << 16)
+        | (((c_g >> 1) & 0xFFu) << 8)
+        | ( (c_r >> 1) & 0xFFu);
+
+    uint8_t vec_80[16];
+    cv_build_draw_vec80(kSpriteConstA, vec_80);
+    uint8_t vec_f0[16];
+    std::memcpy(vec_f0, vm_base + kSpriteVecC, 16u);
+
+    const uint32_t mat_addr = read_be32_fast(vm_base + kMatPtr);
+    const uint8_t* mp       = vm_base + mat_addr;
+    const float m00 = read_bef32_fast(mp + 0x00u), m01 = read_bef32_fast(mp + 0x04u), m02 = read_bef32_fast(mp + 0x08u);
+    const float m10 = read_bef32_fast(mp + 0x10u), m11 = read_bef32_fast(mp + 0x14u), m12 = read_bef32_fast(mp + 0x18u);
+    const float m20 = read_bef32_fast(mp + 0x20u), m21 = read_bef32_fast(mp + 0x24u), m22 = read_bef32_fast(mp + 0x28u);
+    const float m30 = read_bef32_fast(mp + 0x30u), m31 = read_bef32_fast(mp + 0x34u), m32 = read_bef32_fast(mp + 0x38u);
+
+    const uint32_t uv_u[4] = {
+        read_be32_fast(vm_base + kSpriteUvTpl + 0x08u),
+        read_be32_fast(vm_base + kSpriteUvTpl + 0x18u),
+        read_be32_fast(vm_base + kSpriteUvTpl + 0x28u),
+        read_be32_fast(vm_base + kSpriteUvTpl + 0x38u)
+    };
+    const uint32_t uv_v[4] = {
+        read_be32_fast(vm_base + kSpriteUvTpl + 0x0Cu),
+        read_be32_fast(vm_base + kSpriteUvTpl + 0x1Cu),
+        read_be32_fast(vm_base + kSpriteUvTpl + 0x2Cu),
+        read_be32_fast(vm_base + kSpriteUvTpl + 0x3Cu)
+    };
+    const float dx[4] = { -half_w, +half_w, -half_w, +half_w };
+    const float dy[4] = { -half_h, -half_h, +half_h, +half_h };
+    static constexpr uint32_t kIdxLut[2][4] = { { 0u, 2u, 1u, 3u }, { 0u, 1u, 2u, 3u } };
+    const uint32_t* const idx_row = kIdxLut[order_flag];
+
+    const uint32_t alloc_off  = read_be32_fast(vm_base + kAllocDesc + 0x18u);
+    const uint32_t alloc_inst = read_be32_fast(vm_base + kAllocBase + alloc_off);
+    const uint32_t alloc_vt   = read_be32_fast(vm_base + alloc_inst);
+    const uint32_t alloc_fn   = read_be32_fast(vm_base + read_be32_fast(vm_base + alloc_vt + 0x1Cu));
+
+    const uint32_t enq_mgr   = read_be32_fast(vm_base + kEnqMgrPtr);
+    const uint32_t mat_state = read_be32_fast(vm_base + kMatStatePtr);
+    const uint32_t tex_id    = read_be32_fast(vm_base + kTexIdAddr);
+    const uint8_t  b1f       = vm_base[kByte3654];
+    const uint8_t  b20       = vm_base[kByte3654 + 1u];
+
+    for (int32_t i = 0; i < count; ++i) {
+        write_be32_fast(vm_base + kEnqG0 + 4u, blend_mode);
+
+        const uint32_t obj = cv_alloc_scratch_000124F4(0u, 0x100u);
+        if (!obj) break;
+
+        uint8_t* const op = vm_base + obj;
+        write_be32_fast(op + 0x00u, kObjVtable);
+        std::memset(op + 0x04u, 0, 0x18u);
+        write_be32_fast(op + 0x1Cu, kObjMeta);
+        write_be32_fast(op + 0x20u, 0u);
+        write_be32_fast(op + 0x24u, 0u);
+        op[0x28u] = 0u;
+        write_be32_fast(op + 0x2Cu, 0u);
+        write_be32_fast(op + 0x30u, mat_state);
+        write_be32_fast(op + 0x44u, 0u);
+        write_be32_fast(op + 0x54u, 0u);
+        write_be32_fast(op + 0x58u, 0u);
+        write_be32_fast(op + 0x5Cu, 1u);
+        write_be32_fast(op + 0x60u, 1u);
+        write_be32_fast(op + 0x64u, 0u);
+        const uint32_t w68 = (read_be32_fast(op + 0x68u) & 0x0000FFFFu) | 0x0FE10000u;
+        write_be32_fast(op + 0x68u, w68);
+        write_be32_fast(op + 0x6Cu, 0u);
+        write_be32_fast(op + 0x70u, 0x3F800000u);
+        std::memcpy(op + 0x80u, vec_80, 16u);
+        std::memcpy(op + 0xE0u, vec_80, 16u);
+        std::memcpy(op + 0xF0u, vec_f0, 16u);
+        vm_base[kFlag3470] = 0u;
+
+        const uint32_t verts = cv_alloc_scratch_000124F4(0u, 0x40u);
+        const uint32_t cols  = cv_alloc_scratch_000124F4(0u, 0x10u);
+        write_be32_fast(op + 0x04u, verts);
+        write_be32_fast(op + 0x08u, cols);
+        write_be32_fast(op + 0x10u, 4u);
+        op[0x18u] = 1u;
+
+        const uint32_t sub = cv_alloc_scratch_000124F4(0u, 0x4Cu);
+        if (!sub) break;
+        uint8_t* const sp = vm_base + sub;
+        write_be32_fast(sp + 0x00u, kSubVtable);
+        write_be32_fast(sp + 0x04u, 1u);
+        const uint8_t obj_lo = (uint8_t)(obj & 0xFFu);
+        sp[0x08u] = 0xFFu; sp[0x09u] = 0xFFu; sp[0x0Au] = 0xFFu; sp[0x0Bu] = obj_lo;
+        sp[0x0Cu] = 0xFFu; sp[0x0Du] = 0xFFu; sp[0x0Eu] = 0xFFu; sp[0x0Fu] = obj_lo;
+        sp[0x10u] = 0xFFu; sp[0x11u] = 0xFFu; sp[0x12u] = 0xFFu; sp[0x13u] = obj_lo;
+        sp[0x1Cu] = 0u;    sp[0x1Du] = 0xFFu; sp[0x1Eu] = 0x10u;
+        sp[0x1Fu] = b1f;   sp[0x20u] = b20;   sp[0x21u] = 0u;
+        write_be32_fast(sp + 0x24u, 0u);
+        write_be32_fast(sp + 0x2Cu, 0xFFFFFFFFu);
+        write_be32_fast(sp + 0x30u, 0u);
+        write_be32_fast(sp + 0x34u, 0u);
+        write_be32_fast(sp + 0x38u, 0u);
+        write_be32_fast(sp + 0x3Cu, 4u);
+        write_be32_fast(sp + 0x40u, 0xFFFFFFFFu);
+        write_be32_fast(sp + 0x44u, 0u);
+        const uint32_t s48 = (read_be32_fast(sp + 0x48u) & ~0x20000000u) | 0xC0000000u;
+        write_be32_fast(sp + 0x48u, s48);
+
+        const uint32_t entry   = cv_alloc_scratch_000124F4(0u, 0x10u);
+        const uint32_t idx_buf = cv_alloc_scratch_000124F4(0u, 0x10u);
+        const uint32_t uv_buf  = cv_alloc_scratch_000124F4(0u, 0x30u);
+        write_be32_fast(sp + 0x28u, entry);
+        uint8_t* const ep = vm_base + entry;
+        write_be32_fast(ep + 0x00u, 4u);
+        ep[0x04u] = 1u;
+        ep[0x05u] = 1u;
+        write_be32_fast(ep + 0x08u, idx_buf);
+        write_be32_fast(ep + 0x0Cu, uv_buf);
+
+        const uint8_t* const pp = vm_base + pos_arr + (uint32_t)i * 12u;
+        const float px = read_bef32_fast(pp + 0x0u);
+        const float py = read_bef32_fast(pp + 0x4u);
+        const float pz = read_bef32_fast(pp + 0x8u);
+
+        /* Set light pos (func_001C6054) + white light color (func_001C5FB0) */
+        vm_base[kEnqG2 + 8u] = 1u;
+        std::memcpy(vm_base + kEnqG2 + 12u, pp, 12u);
+        write_be32_fast(vm_base + kEnqG0 + 0x08u, 0x437F0000u);
+        write_be32_fast(vm_base + kEnqG0 + 0x0Cu, 0x437F0000u);
+        write_be32_fast(vm_base + kEnqG0 + 0x10u, 0x437F0000u);
+        write_be32_fast(vm_base + kEnqG0 + 0x14u, 0x00000000u);
+
+        const float tx = m00 * px + m10 * py + m20 * pz + m30;
+        const float ty = m01 * px + m11 * py + m21 * pz + m31;
+        const float tz = m02 * px + m12 * py + m22 * pz + m32;
+
+        uint8_t* const vp = vm_base + verts;
+        uint8_t* const cp = vm_base + cols;
+        uint8_t* const ip = vm_base + idx_buf;
+        uint8_t* const up = vm_base + uv_buf;
+        for (int j = 0; j < 4; ++j) {
+            write_bef32_fast(vp + j * 16 + 0, tx + dx[j]);
+            write_bef32_fast(vp + j * 16 + 4, ty + dy[j]);
+            write_bef32_fast(vp + j * 16 + 8, tz);
+            write_be32_fast(cp + j * 4, packed_color);
+            write_be32_fast(ip + j * 4, idx_row[j]);
+            write_be32_fast(up + j * 12 + 0, uv_u[j]);
+            write_be32_fast(up + j * 12 + 4, uv_v[j]);
+            write_be32_fast(up + j * 12 + 8, tex_id);
+        }
+
+        uint32_t sub_arr = 0u;
+        {
+            GuestCall call(ctx);
+            sub_arr = call.run_indirect_u32(alloc_fn, alloc_inst, 64u, 16u);
+        }
+        std::memset(vm_base + sub_arr, 0, 64u);
+        write_be32_fast(vm_base + sub_arr, sub);
+        write_be32_fast(op + 0x2Cu, sub_arr);
+        write_be32_fast(op + 0x24u, 16u);
+        write_be32_fast(op + 0x20u, 1u);
+
+        cv_enqueue_trans_inline(ctx, enq_mgr, obj);
+    }
+}
+
+/* Hook 26: Polygon/strip particle emitter (EU 0x001C8830 / US 0x001C6A10 / JP 0x001C6B90)
+ * #2 hottest function in Nosferatu snow+gas+gunfire (~7.5% of ppu:main). */
+void CV_FD_FN_EMIT_STRIP(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        CV_FD_ORIG_EMIT_STRIP(ctx);
+        return;
+    }
+
+    const uint32_t vtx_in = (uint32_t)ctx->gpr[3];
+    const int32_t  count  = (int32_t)ctx->gpr[4];
+    const uint32_t mode   = (uint32_t)ctx->gpr[5];
+    if (count < 0) {
+        CV_FD_ORIG_EMIT_STRIP(ctx);
+        return;
+    }
+
+    const uint32_t order_flag = read_be32_fast(vm_base + kEnqG0);
+    if (count > 0 && order_flag > 1u) {
+        CV_FD_ORIG_EMIT_STRIP(ctx);
+        return;
+    }
+
+    const uint8_t mode_byte = (uint8_t)((mode == 1u) ? (mode | 0x18u) : ((mode | 0x10u) & ~8u));
+
+    const uint32_t obj = cv_alloc_scratch_000124F4(0u, 0x100u);
+    if (!obj) {
+        CV_FD_ORIG_EMIT_STRIP(ctx);
+        return;
+    }
+
+    uint8_t vec_80[16];
+    cv_build_draw_vec80(kStripConstA, vec_80);
+
+    uint8_t* const op = vm_base + obj;
+    write_be32_fast(op + 0x00u, kObjVtable);
+    std::memset(op + 0x04u, 0, 0x18u);
+    write_be32_fast(op + 0x1Cu, kObjMeta);
+    write_be32_fast(op + 0x20u, 0u);
+    write_be32_fast(op + 0x24u, 0u);
+    op[0x28u] = 0u;
+    write_be32_fast(op + 0x2Cu, 0u);
+    write_be32_fast(op + 0x30u, read_be32_fast(vm_base + kMatStatePtr));
+    write_be32_fast(op + 0x44u, 0u);
+    write_be32_fast(op + 0x54u, 0u);
+    write_be32_fast(op + 0x58u, 0u);
+    write_be32_fast(op + 0x5Cu, 1u);
+    write_be32_fast(op + 0x60u, 1u);
+    write_be32_fast(op + 0x64u, 0u);
+    const uint32_t w68 = (read_be32_fast(op + 0x68u) & 0x0000FFFFu) | 0x0FE10000u;
+    write_be32_fast(op + 0x68u, w68);
+    write_be32_fast(op + 0x6Cu, 0u);
+    write_be32_fast(op + 0x70u, 0x3F800000u);
+    std::memcpy(op + 0x80u, vec_80, 16u);
+    std::memcpy(op + 0xE0u, vec_80, 16u);
+    std::memcpy(op + 0xF0u, vm_base + kSpriteVecC, 16u);
+    vm_base[kFlag3470] = 0u;
+
+    const uint32_t ucnt  = (uint32_t)count;
+    const uint32_t verts = cv_alloc_scratch_000124F4(0u, ucnt << 4);
+    const uint32_t cols  = cv_alloc_scratch_000124F4(0u, ucnt << 2);
+    write_be32_fast(op + 0x04u, verts);
+    write_be32_fast(op + 0x08u, cols);
+    write_be32_fast(op + 0x10u, ucnt);
+    op[0x18u] = 0u;
+    if (ucnt > 0u) {
+        const uint32_t def_col = read_be32_fast(vm_base + kDefCol);
+        uint8_t* cp = vm_base + cols;
+        for (uint32_t i = 0; i < ucnt; ++i) write_be32_fast(cp + i * 4u, def_col);
+    }
+
+    const uint32_t sub = cv_alloc_scratch_000124F4(0u, 0x4Cu);
+    if (!sub) return;
+    uint8_t* const sp = vm_base + sub;
+    write_be32_fast(sp + 0x00u, kSubVtable);
+    write_be32_fast(sp + 0x04u, 1u);
+    const uint8_t pad_a = (uint8_t)(ctx->gpr[28] & 0xFFu);
+    sp[0x08u] = 0xFFu; sp[0x09u] = 0xFFu; sp[0x0Au] = 0xFFu; sp[0x0Bu] = pad_a;
+    sp[0x0Cu] = 0xFFu; sp[0x0Du] = 0xFFu; sp[0x0Eu] = 0xFFu; sp[0x0Fu] = pad_a;
+    sp[0x10u] = 0xFFu; sp[0x11u] = 0xFFu; sp[0x12u] = 0xFFu; sp[0x13u] = pad_a;
+    sp[0x1Cu] = mode_byte;
+    sp[0x1Du] = 0xFFu; sp[0x1Eu] = 0x10u;
+    sp[0x1Fu] = vm_base[kByte3654];
+    sp[0x20u] = vm_base[kByte3654 + 1u];
+    sp[0x21u] = 0u;
+    write_be32_fast(sp + 0x24u, 0u);
+    write_be32_fast(sp + 0x2Cu, 0xFFFFFFFFu);
+    write_be32_fast(sp + 0x30u, 0u);
+    write_be32_fast(sp + 0x34u, 0u);
+    write_be32_fast(sp + 0x38u, 0u);
+    write_be32_fast(sp + 0x3Cu, 4u);
+    write_be32_fast(sp + 0x40u, 0xFFFFFFFFu);
+    write_be32_fast(sp + 0x44u, 0u);
+    const uint32_t s48 = (read_be32_fast(sp + 0x48u) & ~0x20000000u) | 0xC0000000u;
+    write_be32_fast(sp + 0x48u, s48);
+
+    const uint32_t entry   = cv_alloc_scratch_000124F4(0u, 0x10u);
+    const uint32_t idx_buf = cv_alloc_scratch_000124F4(0u, ucnt << 2);
+    const uint32_t uv_buf  = cv_alloc_scratch_000124F4(0u, ucnt * 12u);
+    write_be32_fast(sp + 0x28u, entry);
+    uint8_t* const ep = vm_base + entry;
+    write_be32_fast(ep + 0x00u, ucnt);
+    ep[0x04u] = 1u;
+    ep[0x05u] = 0u;
+    write_be32_fast(ep + 0x08u, idx_buf);
+    write_be32_fast(ep + 0x0Cu, uv_buf);
+
+    if (ucnt > 0u) {
+        const uint32_t mat_addr = read_be32_fast(vm_base + kMatPtr);
+        const uint8_t* mp       = vm_base + mat_addr;
+        const float m00 = read_bef32_fast(mp + 0x00u), m01 = read_bef32_fast(mp + 0x04u), m02 = read_bef32_fast(mp + 0x08u);
+        const float m10 = read_bef32_fast(mp + 0x10u), m11 = read_bef32_fast(mp + 0x14u), m12 = read_bef32_fast(mp + 0x18u);
+        const float m20 = read_bef32_fast(mp + 0x20u), m21 = read_bef32_fast(mp + 0x24u), m22 = read_bef32_fast(mp + 0x28u);
+        const float m30 = read_bef32_fast(mp + 0x30u), m31 = read_bef32_fast(mp + 0x34u), m32 = read_bef32_fast(mp + 0x38u);
+
+        const uint32_t tex_id = read_be32_fast(vm_base + kTexIdAddr);
+        static constexpr uint32_t kIdxLut[2][4] = { { 0u, 2u, 1u, 3u }, { 0u, 1u, 2u, 3u } };
+        const uint32_t* const idx_row = kIdxLut[order_flag];
+
+        const uint8_t* in_p = vm_base + vtx_in;
+        uint8_t* const vp   = vm_base + verts;
+        uint8_t* const cp   = vm_base + cols;
+        uint8_t* const ip   = vm_base + idx_buf;
+        uint8_t* const up   = vm_base + uv_buf;
+
+        for (uint32_t i = 0; i < ucnt; ++i, in_p += 0x18u) {
+            const uint32_t dst_idx = (i & ~3u) + idx_row[i & 3u];
+            if (dst_idx < ucnt) {
+                const float x = read_bef32_fast(in_p + 0x00u);
+                const float y = read_bef32_fast(in_p + 0x04u);
+                const float z = read_bef32_fast(in_p + 0x08u);
+                const float ox = m00 * x + m10 * y + m20 * z + m30;
+                const float oy = m01 * x + m11 * y + m21 * z + m31;
+                const float oz = m02 * x + m12 * y + m22 * z + m32;
+                write_bef32_fast(vp + dst_idx * 16u + 0u, ox);
+                write_bef32_fast(vp + dst_idx * 16u + 4u, oy);
+                write_bef32_fast(vp + dst_idx * 16u + 8u, oz);
+
+                const uint32_t c = read_be32_fast(in_p + 0x14u);
+                const uint32_t swiz = (c & 0xFF00FF00u) | ((c & 0x000000FFu) << 16) | ((c & 0x00FF0000u) >> 16);
+                write_be32_fast(cp + dst_idx * 4u, swiz);
+                op[0x18u] = 1u;
+
+                write_be32_fast(ip + dst_idx * 4u, i);
+                ep[0x05u] = 1u;
+                write_be32_fast(up + dst_idx * 12u + 0u, read_be32_fast(in_p + 0x0Cu));
+                write_be32_fast(up + dst_idx * 12u + 4u, read_be32_fast(in_p + 0x10u));
+                write_be32_fast(up + dst_idx * 12u + 8u, tex_id);
+            }
+        }
+    }
+
+    const uint32_t alloc_off  = read_be32_fast(vm_base + kAllocDesc + 0x18u);
+    const uint32_t alloc_inst = read_be32_fast(vm_base + kAllocBase + alloc_off);
+    const uint32_t alloc_vt   = read_be32_fast(vm_base + alloc_inst);
+    const uint32_t alloc_fn   = read_be32_fast(vm_base + read_be32_fast(vm_base + alloc_vt + 0x1Cu));
+    uint32_t sub_arr = 0u;
+    {
+        GuestCall call(ctx);
+        sub_arr = call.run_indirect_u32(alloc_fn, alloc_inst, 64u, 16u);
+    }
+    std::memset(vm_base + sub_arr, 0, 64u);
+    write_be32_fast(vm_base + sub_arr, sub);
+    write_be32_fast(op + 0x2Cu, sub_arr);
+    write_be32_fast(op + 0x24u, 16u);
+    write_be32_fast(op + 0x20u, 1u);
+
+    cv_enqueue_trans_inline(ctx, read_be32_fast(vm_base + kEnqMgrPtr), obj);
 }
