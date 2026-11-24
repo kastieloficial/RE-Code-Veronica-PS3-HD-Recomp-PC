@@ -75,6 +75,12 @@
 #define CV_FD_ORIG_TREE_TRAV     cv_original_00547FBC
 #define CV_FD_FN_DRAW_MODEL      func_001D0208
 #define CV_FD_ORIG_DRAW_MODEL    cv_original_001D0208
+#define CV_FD_FN_TEST_SPHERE     func_00283910
+#define CV_FD_ORIG_TEST_SPHERE   cv_original_00283910
+#define CV_FD_FN_MAT4_VEC4       func_00202464
+#define CV_FD_ORIG_MAT4_VEC4     cv_original_00202464
+#define CV_FD_FN_CULL_PARTS      func_00203788
+#define CV_FD_ORIG_CULL_PARTS    cv_original_00203788
 #elif defined(CV_REGION_JP)
 #define CV_FD_FN_DOOR_DEMO       func_001AE120
 #define CV_FD_ORIG_DOOR_DEMO     cv_original_001AE120
@@ -113,6 +119,12 @@
 #define CV_FD_ORIG_TREE_TRAV     cv_original_005488AC
 #define CV_FD_FN_DRAW_MODEL      func_001D0388
 #define CV_FD_ORIG_DRAW_MODEL    cv_original_001D0388
+#define CV_FD_FN_TEST_SPHERE     func_00284200
+#define CV_FD_ORIG_TEST_SPHERE   cv_original_00284200
+#define CV_FD_FN_MAT4_VEC4       func_00202D54
+#define CV_FD_ORIG_MAT4_VEC4     cv_original_00202D54
+#define CV_FD_FN_CULL_PARTS      func_00204078
+#define CV_FD_ORIG_CULL_PARTS    cv_original_00204078
 #else /* EU */
 #define CV_FD_FN_DOOR_DEMO       func_001AFAE8
 #define CV_FD_ORIG_DOOR_DEMO     cv_original_001AFAE8
@@ -151,6 +163,12 @@
 #define CV_FD_ORIG_TREE_TRAV     cv_original_00549F7C
 #define CV_FD_FN_DRAW_MODEL      func_001D2028
 #define CV_FD_ORIG_DRAW_MODEL    cv_original_001D2028
+#define CV_FD_FN_TEST_SPHERE     func_002858D0
+#define CV_FD_ORIG_TEST_SPHERE   cv_original_002858D0
+#define CV_FD_FN_MAT4_VEC4       func_00204404
+#define CV_FD_ORIG_MAT4_VEC4     cv_original_00204404
+#define CV_FD_FN_CULL_PARTS      func_00205728
+#define CV_FD_ORIG_CULL_PARTS    cv_original_00205728
 #endif
 
 void CV_FD_ORIG_DOOR_DEMO(ppu_context* ctx);      /* bhSysCallDoordemo */
@@ -171,6 +189,9 @@ void CV_FD_ORIG_DRAW_DESC_ALLOC(ppu_context* ctx);/* vertex buffer + draw desc a
 void CV_FD_ORIG_BUMP_ALLOC(ppu_context* ctx);     /* atomic scratch bump allocator */
 void CV_FD_ORIG_TREE_TRAV(ppu_context* ctx);      /* recursive tree traversal */
 void CV_FD_ORIG_DRAW_MODEL(ppu_context* ctx);     /* njCnkDrawModel */
+void CV_FD_ORIG_TEST_SPHERE(ppu_context* ctx);    /* cCamera::testSphere (6-plane) */
+void CV_FD_ORIG_MAT4_VEC4(ppu_context* ctx);      /* mat4x4 * vec4 */
+void CV_FD_ORIG_CULL_PARTS(ppu_context* ctx);     /* uModel::cullParts */
 void cv_ui_original_enqueue(ppu_context* ctx);    /* UI/draw command vector push_back */
 void CV_FD_FN_MT_SEEK(ppu_context* ctx);          /* MtFile::seek(obj, off, origin) */
 void CV_FN_STOP_BANK(ppu_context* ctx);           /* (sound_mgr, bank_id) */
@@ -2130,4 +2151,143 @@ void CV_FD_FN_DRAW_MODEL(ppu_context* ctx)
             }
         }
     }
+}
+
+/* =========================================================================
+ * Hook 17: cCamera::testSphere (6-plane frustum sphere test)
+ *          EU 0x002858D0 | US 0x00283910 | JP 0x00284200
+ * Hook 18: mat4x4 * vec4
+ *          EU 0x00204404 | US 0x00202464 | JP 0x00202D54
+ * Hook 19: uModel::cullParts (bounding-sphere transform + frustum cull loop)
+ *          EU 0x00205728 | US 0x00203788 | JP 0x00204078
+ * ========================================================================= */
+static inline int32_t cv_test_sphere_6planes(uint32_t cam, float sx, float sy, float sz, float sr, int32_t mask)
+{
+    const uint32_t planes = read_be32_fast(vm_base + cam + 0xCE0u) & ~0xFu;
+    int32_t out = mask;
+    for (uint32_t i = 0; i < 6u; ++i) {
+        const int32_t bit = 1 << i;
+        if (mask & bit) continue;
+        const uint8_t* p = vm_base + planes + i * 16u;
+        const float dot = read_bef32_fast(p + 0x0u) * sx
+                        + read_bef32_fast(p + 0x4u) * sy
+                        + read_bef32_fast(p + 0x8u) * sz
+                        + read_bef32_fast(p + 0xCu);
+        if (dot < -sr) return -1;
+        if (dot >= sr) out |= bit;
+    }
+    return out;
+}
+
+void CV_FD_FN_TEST_SPHERE(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        CV_FD_ORIG_TEST_SPHERE(ctx);
+        return;
+    }
+    const uint32_t cam = (uint32_t)ctx->gpr[3];
+    const uint8_t* sp  = vm_base + (uint32_t)ctx->gpr[4];
+    const int32_t  msk = (int32_t)ctx->gpr[5];
+    const float sx = read_bef32_fast(sp + 0x0u);
+    const float sy = read_bef32_fast(sp + 0x4u);
+    const float sz = read_bef32_fast(sp + 0x8u);
+    const float sr = read_bef32_fast(sp + 0xCu);
+    ctx->gpr[3] = (int64_t)cv_test_sphere_6planes(cam, sx, sy, sz, sr, msk);
+}
+
+static inline void cv_mat4_mul_vec4_inline(const uint8_t* m, float vx, float vy, float vz, float vw,
+                                           float& ox, float& oy, float& oz, float& ow)
+{
+    ox = read_bef32_fast(m + 0x00u) * vx + read_bef32_fast(m + 0x04u) * vy + read_bef32_fast(m + 0x08u) * vz + read_bef32_fast(m + 0x0Cu) * vw;
+    oy = read_bef32_fast(m + 0x10u) * vx + read_bef32_fast(m + 0x14u) * vy + read_bef32_fast(m + 0x18u) * vz + read_bef32_fast(m + 0x1Cu) * vw;
+    oz = read_bef32_fast(m + 0x20u) * vx + read_bef32_fast(m + 0x24u) * vy + read_bef32_fast(m + 0x28u) * vz + read_bef32_fast(m + 0x2Cu) * vw;
+    ow = read_bef32_fast(m + 0x30u) * vx + read_bef32_fast(m + 0x34u) * vy + read_bef32_fast(m + 0x38u) * vz + read_bef32_fast(m + 0x3Cu) * vw;
+}
+
+void CV_FD_FN_MAT4_VEC4(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        CV_FD_ORIG_MAT4_VEC4(ctx);
+        return;
+    }
+    uint8_t*       dst = vm_base + ((uint32_t)ctx->gpr[3] & ~0xFu);
+    const uint8_t* v   = vm_base + (uint32_t)ctx->gpr[5];
+    const uint8_t* m   = vm_base + (uint32_t)ctx->gpr[6];
+    const float vx = read_bef32_fast(v + 0x0u);
+    const float vy = read_bef32_fast(v + 0x4u);
+    const float vz = read_bef32_fast(v + 0x8u);
+    const float vw = read_bef32_fast(v + 0xCu);
+    float ox, oy, oz, ow;
+    cv_mat4_mul_vec4_inline(m, vx, vy, vz, vw, ox, oy, oz, ow);
+    write_bef32_fast(dst + 0x0u, ox);
+    write_bef32_fast(dst + 0x4u, oy);
+    write_bef32_fast(dst + 0x8u, oz);
+    write_bef32_fast(dst + 0xCu, ow);
+}
+
+void CV_FD_FN_CULL_PARTS(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        CV_FD_ORIG_CULL_PARTS(ctx);
+        return;
+    }
+    const uint32_t model = (uint32_t)ctx->gpr[3];
+    const uint32_t cam   = (uint32_t)ctx->gpr[4];
+    const uint32_t grp   = (uint32_t)ctx->gpr[5];
+    const int32_t  mask  = (int32_t)ctx->gpr[6];
+    if (mask == 0x3F) {
+        ctx->gpr[3] = 0x3F;
+        return;
+    }
+    const uint32_t count = read_be16_fast(vm_base + grp + 0x28u);
+    if (count == 0u) {
+        ctx->gpr[3] = (int64_t)-1;
+        return;
+    }
+    const uint32_t parts_arr = read_be32_fast(vm_base + grp + 0x30u);
+    const uint32_t bone_base = read_be32_fast(vm_base + model + 0x274u);
+    const bool     has_xform = (vm_base[model + 0x2A5u] != 0u);
+    const uint8_t* xform_m   = vm_base + model + 0x230u;
+    int32_t acc = -1;
+
+    for (uint32_t i = 0; i < count; ++i) {
+        const uint32_t part = parts_arr + i * 0x90u;
+        const uint32_t bone = read_be32_fast(vm_base + part);
+        const uint32_t mat_addr = (bone == 0xFFu)
+            ? (model + 0xB0u)
+            : (bone_base + bone * 0xC0u + 0x10u);
+        const uint8_t* m = vm_base + (mat_addr & ~0xFu);
+
+        const float m00 = read_bef32_fast(m + 0x00u), m01 = read_bef32_fast(m + 0x04u), m02 = read_bef32_fast(m + 0x08u), m03 = read_bef32_fast(m + 0x0Cu);
+        const float m10 = read_bef32_fast(m + 0x10u), m11 = read_bef32_fast(m + 0x14u), m12 = read_bef32_fast(m + 0x18u), m13 = read_bef32_fast(m + 0x1Cu);
+        const float m20 = read_bef32_fast(m + 0x20u), m21 = read_bef32_fast(m + 0x24u), m22 = read_bef32_fast(m + 0x28u), m23 = read_bef32_fast(m + 0x2Cu);
+        const float m30 = read_bef32_fast(m + 0x30u), m31 = read_bef32_fast(m + 0x34u), m32 = read_bef32_fast(m + 0x38u);
+
+        const uint8_t* sp = vm_base + ((part + 0x10u) & ~0xFu);
+        const float sx = read_bef32_fast(sp + 0x0u);
+        const float sy = read_bef32_fast(sp + 0x4u);
+        const float sz = read_bef32_fast(sp + 0x8u);
+        const float sr = read_bef32_fast(sp + 0xCu);
+
+        float wx = m00 * sx + m10 * sy + m20 * sz + m30;
+        float wy = m01 * sx + m11 * sy + m21 * sz + m31;
+        float wz = m02 * sx + m12 * sy + m22 * sz + m32;
+
+        const float l0 = m00 * m00 + m01 * m01 + m02 * m02 + m03 * m03;
+        const float l1 = m10 * m10 + m11 * m11 + m12 * m12 + m13 * m13;
+        const float l2 = m20 * m20 + m21 * m21 + m22 * m22 + m23 * m23;
+        float max_l = l0 > l1 ? l0 : l1;
+        if (l2 > max_l) max_l = l2;
+        const float wr = (max_l > 0.0f) ? (sr * std::sqrt(max_l)) : 0.0f;
+
+        if (has_xform) {
+            float tx, ty, tz, tw;
+            cv_mat4_mul_vec4_inline(xform_m, wx, -wy, -wz, 1.0f, tx, ty, tz, tw);
+            wx = tx; wy = ty; wz = tz;
+        }
+
+        acc &= cv_test_sphere_6planes(cam, wx, wy, wz, wr, mask);
+        if (acc == 0) break;
+    }
+    ctx->gpr[3] = (int64_t)acc;
 }
