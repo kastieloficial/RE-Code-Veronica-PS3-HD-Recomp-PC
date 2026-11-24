@@ -35,6 +35,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <thread>
 
 #if !defined(CV_REGION_JP) && !defined(CV_REGION_US)
 
@@ -519,7 +520,11 @@ void func_001B0CB0(ppu_context* ctx)
         g_prof.record_md1(vm_read8(sys + kOffMnMd1), sys);
     }
 
-    for (int pass = 0; pass < 16; ++pass) {
+    static int micropoll_env = -1;
+    if (micropoll_env < 0) micropoll_env = env_flag("CV_FAST_DOOR_MICROPOLL", true) ? 1 : 0;
+    int wait_budget_ms = (micropoll_env && g_prof.active) ? 120 : 0;
+
+    for (int pass = 0; pass < 64; ++pass) {
         const uint8_t before_md0 = vm_read8(sys + kOffMnMd0);
         const uint8_t before_md1 = vm_read8(sys + kOffMnMd1);
 
@@ -559,6 +564,18 @@ void func_001B0CB0(ppu_context* ctx)
         }
 
         if (after_md0 == before_md0 && after_md1 == before_md1) {
+            /* Screen is already black waiting on background Resource Loader /
+             * decodeProc threads (kFileStatAddr). Micro-poll in 1 ms steps so
+             * file loading completes in ~5-30 ms in a single frame instead of
+             * sleeping 33.3 ms per step. Never micro-poll s11 (snddrv), which
+             * requires main-thread audio ticks to advance. */
+            if (wait_budget_ms > 0 && vm_read32(kFileStatAddr) != 0) {
+                while (wait_budget_ms > 0 && vm_read32(kFileStatAddr) != 0) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                    --wait_budget_ms;
+                }
+                if (vm_read32(kFileStatAddr) == 0) continue;
+            }
             break;
         }
     }
