@@ -4221,7 +4221,7 @@ static u32  s_fp_arena_used = 0;
 #define FP_ARENA_CAP  (8u << 20)
 #define FP_ARENA_PAD  16u
 #define FP_SNAP_MAGIC 0x50534E46u   /* "FNSP": header before each snapshot */
-typedef struct { u32 addr, len, snap, ea; } FPSnap;
+typedef struct { u32 addr, len, snap, ea, epoch; } FPSnap;
 static FPSnap s_fp_snaps[64];
 static u32 s_fp_nsnap = 0;
 static u32 s_fp_last_idx = 0;
@@ -4276,15 +4276,24 @@ static void fp_snapshot(D3D12DrawRecord* dr)
 {
     extern uint8_t* vm_base;
     extern u32 cellGcmResolveLocated(int local, u32 offset);
+    extern volatile u32 g_gcm_drain_epoch;
     dr->fp_snap = 0;
     dr->fp_bytes = 0;
     if (!dr->fp_addr || !vm_base) return;
-    static int fp_nosnap = -1;
-    if (fp_nosnap < 0) fp_nosnap = getenv("FP_NOSNAP") ? 1 : 0;
+    static int fp_nosnap = -1, fp_epoch = -1;
+    if (fp_nosnap < 0) {
+        fp_nosnap = getenv("FP_NOSNAP") ? 1 : 0;
+        const char* ep = getenv("FP_EPOCH");
+        fp_epoch = (ep && ep[0] == '0' && !ep[1]) ? 0 : 1;
+    }
     if (!fp_nosnap && s_fp_nsnap && s_fp_last_idx < s_fp_nsnap) {
-        const FPSnap* q = &s_fp_snaps[s_fp_last_idx];
-        if (q->addr == dr->fp_addr && !memcmp(s_fp_arena + q->snap - 1, vm_base + q->ea, q->len)) {
-            dr->fp_bytes = q->len; dr->fp_snap = q->snap; return;
+        FPSnap* q = &s_fp_snaps[s_fp_last_idx];
+        if (q->addr == dr->fp_addr) {
+            if ((fp_epoch && q->epoch == g_gcm_drain_epoch) ||
+                !memcmp(s_fp_arena + q->snap - 1, vm_base + q->ea, q->len)) {
+                q->epoch = g_gcm_drain_epoch;
+                dr->fp_bytes = q->len; dr->fp_snap = q->snap; return;
+            }
         }
     }
     u32 ea = cellGcmResolveLocated((dr->fp_addr & 0x3u) == 1, dr->fp_addr & ~0x3u);
@@ -4296,8 +4305,11 @@ static void fp_snapshot(D3D12DrawRecord* dr)
     if (!fp_nosnap && s_fp_nsnap) {
         for (u32 i = 0; i < s_fp_nsnap; i++) {
             if (i == s_fp_last_idx) continue;
-            const FPSnap* q = &s_fp_snaps[i];
-            if (q->addr == dr->fp_addr && !memcmp(s_fp_arena + q->snap - 1, src, q->len)) {
+            FPSnap* q = &s_fp_snaps[i];
+            if (q->addr == dr->fp_addr &&
+                ((fp_epoch && q->epoch == g_gcm_drain_epoch) ||
+                 !memcmp(s_fp_arena + q->snap - 1, src, q->len))) {
+                q->epoch = g_gcm_drain_epoch;
                 s_fp_last_idx = i;
                 dr->fp_bytes = q->len; dr->fp_snap = q->snap; return;
             }
@@ -4342,7 +4354,7 @@ static void fp_snapshot(D3D12DrawRecord* dr)
     /* Newest first; the table is a small most-recent window. */
     u32 n = s_fp_nsnap < 64 ? s_fp_nsnap : 63;
     memmove(&s_fp_snaps[1], &s_fp_snaps[0], sizeof(FPSnap) * n);
-    s_fp_snaps[0].addr = dr->fp_addr; s_fp_snaps[0].len = len; s_fp_snaps[0].snap = at + 1; s_fp_snaps[0].ea = ea;
+    s_fp_snaps[0].addr = dr->fp_addr; s_fp_snaps[0].len = len; s_fp_snaps[0].snap = at + 1; s_fp_snaps[0].ea = ea; s_fp_snaps[0].epoch = g_gcm_drain_epoch;
     s_fp_nsnap = n + 1;
     s_fp_last_idx = 0;
 }
@@ -4406,6 +4418,7 @@ static void vtex_record(D3D12DrawRecord* dr, const rsx_state* st)
 {
     extern uint8_t* vm_base;
     extern u32 cellGcmResolveLocated(int local, u32 offset);
+    extern volatile u32 g_gcm_drain_epoch;
     dr->vtex_mask = 0;
     u32 mask = vtex_mask_of(st);
     for (u32 u = 0; u < RSX_MAX_VERTEX_TEXTURES && mask && vm_base; u++) {
@@ -14995,6 +15008,7 @@ static u32 read_guest_index(const rsx_state* st, u32 k)
 {
     extern uint8_t* vm_base;
     extern u32 cellGcmResolveLocated(int local, u32 offset);
+    extern volatile u32 g_gcm_drain_epoch;
     int local = ((st->index_array_dma & 0xF) == 0);
     u32 base = cellGcmResolveLocated(local, st->index_array_offset);
     const u8* p = vm_base + base;

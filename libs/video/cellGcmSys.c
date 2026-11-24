@@ -2261,6 +2261,24 @@ static void gcm_rsx_process_fifo_unlocked(void)
                               s_fifo_getoff += 4u + (count << 2);
                               continue;
                           }
+                          if (s_fast_tconst && type == 0 && method >= NV4097_SET_VERTEX_DATA_ARRAY_FORMAT &&
+                              method + (count << 2) <= NV4097_SET_VERTEX_DATA_ARRAY_FORMAT + RSX_MAX_VERTEX_ATTRIBS * 4u) {
+                              const u32 idx = (method - NV4097_SET_VERTEX_DATA_ARRAY_FORMAT) >> 2;
+                              for (u32 i = 0; i < count; i++) {
+                                  const u32 d = vm_read32(base_ea + (i << 2));
+                                  rsx_vertex_attrib* a = &s_state.vertex_attribs[idx + i];
+                                  a->type      = d & 0xFu;
+                                  a->size      = (d >> 4) & 0xFu;
+                                  a->stride    = (d >> 8) & 0xFFu;
+                                  a->frequency = (d >> 16) & 0xFFFFu;
+                                  a->enabled   = (a->size != 0);
+                                  a->format    = d;
+                              }
+                              s_state.vertex_dirty = 1;
+                              s_state.va_gen++;
+                              s_fifo_getoff += 4u + (count << 2);
+                              continue;
+                          }
                           if (s_fast_tconst && type == 0 && method == NV4097_SET_TRANSFORM_CONSTANT && count <= 64u) {
                               const u32 load = s_state.transform_constant_load;
                               u32 changed = 0;
