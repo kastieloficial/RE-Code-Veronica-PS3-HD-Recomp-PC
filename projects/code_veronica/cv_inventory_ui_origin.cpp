@@ -2,6 +2,9 @@
 #include "ppu_recomp.h"
 #include "cv_inventory_ui_interpolation.h"
 void cv_ui_original_enqueue(ppu_context*);
+#if !defined(CV_REGION_JP) && !defined(CV_REGION_US)
+void cv_fast_enqueue_00015AFC(ppu_context*);
+#endif
 void func_00015AFC(ppu_context* ctx){
     using namespace cv_inventory_ui;
     const uint32_t command=uint32_t(ctx->gpr[4]);
@@ -18,5 +21,9 @@ void func_00015AFC(ppu_context* ctx){
         }
         record(command,role);
     }
+#if !defined(CV_REGION_JP) && !defined(CV_REGION_US)
+    cv_fast_enqueue_00015AFC(ctx);
+#else
     cv_ui_original_enqueue(ctx);
+#endif
 }

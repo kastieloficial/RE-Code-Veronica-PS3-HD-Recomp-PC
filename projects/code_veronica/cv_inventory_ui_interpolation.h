@@ -44,7 +44,7 @@ struct Frame {uint32_t system=0,object=0;Selection selection{};std::vector<Sprit
 inline Frame current,previous;
 inline bool borrowed=false;
 inline unsigned captures=0;
-inline bool enabled() {const char* e=std::getenv("CV_INVENTORY_UI_SMOOTH");return e&&!std::strcmp(e,"1");}
+inline bool enabled() {static const bool v=[]{const char* e=std::getenv("CV_INVENTORY_UI_SMOOTH");return e&&!std::strcmp(e,"1");}();return v;}
 inline bool range(uint32_t p,uint32_t n) {return p>=0x10000&&p<0xBFFFF000u&&n<=0xBFFFF000u-p&&(p&3)==0;}
 inline float real(uint32_t w) {float f;std::memcpy(&f,&w,4);return f;}
 inline uint32_t word(float f) {uint32_t w;std::memcpy(&w,&f,4);return w;}

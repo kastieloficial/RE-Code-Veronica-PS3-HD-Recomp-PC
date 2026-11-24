@@ -339,6 +339,7 @@ typedef struct spu_context {
      * spu_channels.c casts to the real types. */
     void* ch_wait_cv;
     void* ch_wait_lock;
+    volatile long ch_waiters; /* >0 while host thread is inside spu_ch_wait */
 
     /* --- SPU interrupt facility (faithful; WWS jobmanager depends on it) ---
      * The bi-family E/D bits (bie/bid, irete/iretd...) toggle int_enable; while

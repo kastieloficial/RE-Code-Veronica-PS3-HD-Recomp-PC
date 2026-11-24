@@ -104,7 +104,10 @@ void rsx_state_init(rsx_state* state)
     state->color_mask_dirty = 1;
     state->alpha_dirty = 1;
     state->shader_dirty = 1;
+    state->rs_gen = 1;
 }
+
+#define RSX_SET(field, val) do { u32 _nv = (u32)(val); if ((u32)(field) != _nv) { (field) = _nv; state->rs_gen++; } } while (0)
 
 /* ---------------------------------------------------------------------------
  * Method processing
@@ -114,21 +117,21 @@ static int process_surface_method(rsx_state* state, u32 method, u32 data)
 {
     switch (method) {
     case NV4097_SET_SURFACE_FORMAT:
-        state->surface_format = data;
+        RSX_SET(state->surface_format, data);
         state->surface_dirty = 1;
         return 0;
     case NV4097_SET_SURFACE_CLIP_HORIZONTAL:
-        state->surface_clip_x = data & 0xFFFF;
-        state->surface_clip_w = (data >> 16) & 0xFFFF;
+        RSX_SET(state->surface_clip_x, data & 0xFFFF);
+        RSX_SET(state->surface_clip_w, (data >> 16) & 0xFFFF);
         state->surface_dirty = 1;
         return 0;
     case NV4097_SET_SURFACE_CLIP_VERTICAL:
-        state->surface_clip_y = data & 0xFFFF;
-        state->surface_clip_h = (data >> 16) & 0xFFFF;
+        RSX_SET(state->surface_clip_y, data & 0xFFFF);
+        RSX_SET(state->surface_clip_h, (data >> 16) & 0xFFFF);
         state->surface_dirty = 1;
         return 0;
     case NV4097_SET_SURFACE_COLOR_AOFFSET:
-        state->surface_color_offset[0] = data;
+        RSX_SET(state->surface_color_offset[0], data);
         { static int _s = -1; if (_s < 0) _s = getenv("SURFDBG") ? 1 : 0;
           static unsigned _seen[32]; static int _n = 0;
           if (_s) { int f = 0; for (int k = 0; k < _n; k++) if (_seen[k] == data) f = 1;
@@ -137,19 +140,19 @@ static int process_surface_method(rsx_state* state, u32 method, u32 data)
         state->surface_dirty = 1;
         return 0;
     case NV4097_SET_SURFACE_COLOR_BOFFSET:
-        state->surface_color_offset[1] = data;
+        RSX_SET(state->surface_color_offset[1], data);
         state->surface_dirty = 1;
         return 0;
     case NV4097_SET_SURFACE_COLOR_COFFSET:
-        state->surface_color_offset[2] = data;
+        RSX_SET(state->surface_color_offset[2], data);
         state->surface_dirty = 1;
         return 0;
     case NV4097_SET_SURFACE_COLOR_DOFFSET:
-        state->surface_color_offset[3] = data;
+        RSX_SET(state->surface_color_offset[3], data);
         state->surface_dirty = 1;
         return 0;
     case NV4097_SET_SURFACE_ZETA_OFFSET:
-        state->surface_zeta_offset = data;
+        RSX_SET(state->surface_zeta_offset, data);
         state->surface_dirty = 1;
         return 0;
     case NV4097_SET_SURFACE_COLOR_TARGET:
@@ -157,23 +160,23 @@ static int process_surface_method(rsx_state* state, u32 method, u32 data)
             fprintf(stderr, "[RSXCT] color_target=0x%X offA=0x%X offB=0x%X offC=0x%X offD=0x%X%s",
                     data, state->surface_color_offset[0], state->surface_color_offset[1],
                     state->surface_color_offset[2], state->surface_color_offset[3], "\n"); }
-        state->color_target = data;
+        RSX_SET(state->color_target, data);
         state->surface_dirty = 1;
         return 0;
     case NV4097_SET_SURFACE_PITCH_A:
-        state->surface_color_pitch[0] = data;
+        RSX_SET(state->surface_color_pitch[0], data);
         return 0;
     case NV4097_SET_SURFACE_PITCH_B:
-        state->surface_color_pitch[1] = data;
+        RSX_SET(state->surface_color_pitch[1], data);
         return 0;
     case NV4097_SET_SURFACE_PITCH_C:
-        state->surface_color_pitch[2] = data;
+        RSX_SET(state->surface_color_pitch[2], data);
         return 0;
     case NV4097_SET_SURFACE_PITCH_D:
-        state->surface_color_pitch[3] = data;
+        RSX_SET(state->surface_color_pitch[3], data);
         return 0;
     case NV4097_SET_SURFACE_PITCH_Z:
-        state->surface_zeta_pitch = data;
+        RSX_SET(state->surface_zeta_pitch, data);
         return 0;
     default:
         return -1;
@@ -249,16 +252,17 @@ static int process_vertex_texture_method(rsx_state* state, u32 method, u32 data)
         return -1;
 
     rsx_texture_state* tex = &state->vertex_textures[unit];
+    state->vtex_any = 1;
 
     switch (reg) {
-    case 0x00: tex->offset       = data; break;
-    case 0x04: tex->format       = data; break;
-    case 0x08: tex->address      = data; break;
-    case 0x0C: tex->control0     = data; break;
-    case 0x10: tex->control3     = data; break;   /* CONTROL1's slot */
-    case 0x14: tex->filter       = data; break;
-    case 0x18: tex->image_rect   = data; break;
-    case 0x1C: tex->border_color = data; break;
+    case 0x00: RSX_SET(tex->offset, data); break;
+    case 0x04: RSX_SET(tex->format, data); break;
+    case 0x08: RSX_SET(tex->address, data); break;
+    case 0x0C: RSX_SET(tex->control0, data); break;
+    case 0x10: RSX_SET(tex->control3, data); break;   /* CONTROL1's slot */
+    case 0x14: RSX_SET(tex->filter, data); break;
+    case 0x18: RSX_SET(tex->image_rect, data); break;
+    case 0x1C: RSX_SET(tex->border_color, data); break;
     default:
         return -1;
     }
@@ -315,14 +319,18 @@ static int process_vertex_attrib_method(rsx_state* state, u32 method, u32 data)
         attr->enabled   = (attr->size != 0);
         attr->format    = data;
         state->vertex_dirty = 1;
+        state->va_gen++;
         return 0;
     }
 
     if (method >= NV4097_SET_VERTEX_DATA_ARRAY_OFFSET &&
         method < NV4097_SET_VERTEX_DATA_ARRAY_OFFSET + RSX_MAX_VERTEX_ATTRIBS * 4) {
         u32 index = (method - NV4097_SET_VERTEX_DATA_ARRAY_OFFSET) / 4;
-        state->vertex_attribs[index].offset = data;
-        state->vertex_dirty = 1;
+        if (state->vertex_attribs[index].offset != data) {
+            state->vertex_attribs[index].offset = data;
+            state->vertex_dirty = 1;
+            state->va_off_gen++;
+        }
         return 0;
     }
 
@@ -370,8 +378,10 @@ int rsx_process_method(rsx_state* state, u32 method, u32 data)
      * decodes it in the grade pass; ignored, the scene came out ~10x darker. */
     if (method == 0x1FEC) {
         if (data != state->shader_packer) { static int n = 0;
-            if (n++ < 16) fprintf(stderr, "[RSX] shader_packer (sRGB output) = 0x%X%c", data, 10); }
-        state->shader_packer = data;
+            if (n++ < 16) fprintf(stderr, "[RSX] shader_packer (sRGB output) = 0x%X%c", data, 10);
+            state->shader_packer = data;
+            state->rs_gen++;
+        }
         return 0;
     }
     /* RSX_TRACE=<N>: trace the first N methods (bare "1" keeps the old 250).
@@ -380,6 +390,80 @@ int rsx_process_method(rsx_state* state, u32 method, u32 data)
     { static int _rt=-1; if(_rt<0){ const char* e=getenv("RSX_TRACE");
         _rt = e ? (atoi(e) > 1 ? atoi(e) : 250) : 0; }
       if(_rt){ static int _m=0; if(_m++<_rt) fprintf(stderr,"[rsxm] method=0x%04X data=0x%08X\n", method, data); } }
+
+    /* Fast dispatch for the 2 hottest per-draw methods (18k+ calls/frame each),
+     * avoiding 56+ sequential method comparisons before reaching them. */
+    if (method == NV4097_DRAW_ARRAYS) {
+        u32 first = data & 0xFFFFFF;
+        u32 count = ((data >> 24) & 0xFF) + 1;
+        { static int _d=0; if (_d++ < 32) fprintf(stderr, "[RSX] DRAW_ARRAYS prim=%u first=%u count=%u\n", state->primitive_type, first, count); }
+        { static int _sq=0, _e=-1; if (_e < 0) _e = getenv("SEQ_DBG") ? 1 : 0; if (_e && _sq++ < 500)
+            fprintf(stderr, "[SEQ] DRAW surf0=0x%X c256.x=%.4f c257.y=%.4f\n",
+                    state->surface_color_offset[0], state->vertex_constants[256][0],
+                    state->vertex_constants[257][1]); }
+        static int s_mvp = -1; if (s_mvp < 0) s_mvp = getenv("MVPDBG") ? 1 : 0;
+        if (s_mvp && state->surface_color_offset[0] == 0xCC0000) {
+            static int _once = 0;
+            if (!_once) { _once = 1;
+                for (int s = 0; s < RSX_MAX_VERTEX_CONSTANTS; s++) {
+                    float* v = state->vertex_constants[s];
+                    if (v[0]||v[1]||v[2]||v[3])
+                        fprintf(stderr, "[MVP] c[%3d] = %10.4f %10.4f %10.4f %10.4f\n",
+                                s, v[0], v[1], v[2], v[3]);
+                }
+            }
+        }
+        ps3_ms("rsx:draw_arrays");
+        if (s_backend && s_backend->draw_arrays)
+            s_backend->draw_arrays(s_backend->userdata, state->primitive_type, first, count);
+        return 0;
+    }
+    if (method == NV4097_SET_BEGIN_END) {
+        if (data == 0) {
+            state->in_begin_end = 0;
+            return 0;
+        }
+        state->primitive_type = data;
+        state->in_begin_end = 1;
+        state->begin_epoch++;
+        if (s_backend) {
+            if (state->surface_dirty && s_backend->set_render_target)
+                s_backend->set_render_target(s_backend->userdata, state);
+            if (state->viewport_dirty && s_backend->set_viewport)
+                s_backend->set_viewport(s_backend->userdata, state);
+            if (state->blend_dirty && s_backend->set_blend)
+                s_backend->set_blend(s_backend->userdata, state);
+            if ((state->depth_dirty || state->stencil_dirty) && s_backend->set_depth_stencil)
+                s_backend->set_depth_stencil(s_backend->userdata, state);
+            if (state->color_mask_dirty && s_backend->set_color_mask)
+                s_backend->set_color_mask(s_backend->userdata, state);
+            if (state->alpha_dirty && s_backend->set_alpha_test)
+                s_backend->set_alpha_test(s_backend->userdata, state);
+            if (state->shader_dirty && s_backend->set_shader)
+                s_backend->set_shader(s_backend->userdata, state);
+            if (state->vertex_dirty && s_backend->set_vertex_attribs)
+                s_backend->set_vertex_attribs(s_backend->userdata, state);
+            if (state->texture_dirty && s_backend->bind_texture) {
+                for (u32 i = 0; i < RSX_MAX_TEXTURES; i++) {
+                    if (state->textures[i].dirty) {
+                        s_backend->bind_texture(s_backend->userdata, i, &state->textures[i]);
+                        state->textures[i].dirty = 0;
+                    }
+                }
+            }
+            state->surface_dirty = 0;
+            state->viewport_dirty = 0;
+            state->blend_dirty = 0;
+            state->depth_dirty = 0;
+            state->stencil_dirty = 0;
+            state->color_mask_dirty = 0;
+            state->alpha_dirty = 0;
+            state->shader_dirty = 0;
+            state->vertex_dirty = 0;
+            state->texture_dirty = 0;
+        }
+        return 0;
+    }
     /* Back-end write label / semaphore (cellGcmSetWriteBackEndLabel): the RSX
      * writes a value to a report/label the CPU polls for CPU<->RSX sync (double
      * buffering). Real hardware DOES this; without it the game's frame-fence
@@ -390,7 +474,7 @@ int rsx_process_method(rsx_state* state, u32 method, u32 data)
      * value) for the sub-channel path. */
     /* NV4097_SET_FREQUENCY_DIVIDER_OPERATION: per-attribute modulo/divide mask
      * for the frequency divisor (instancing). Captured for read_vp_vertex. */
-    if (method == 0x00001FC0) { state->frequency_divider_op = data; return 0; }
+    if (method == 0x00001FC0) { state->frequency_divider_op = data; state->va_gen++; return 0; }
 
     { static u32 s_sem_off = 0;
       if (method == 0x1D6C) { s_sem_off = data; return 0; }
@@ -445,49 +529,57 @@ int rsx_process_method(rsx_state* state, u32 method, u32 data)
      * GL-convention projections (SDK gcm samples) get their near-camera
      * geometry clipped by D3D's 0<=z<=w rule (gcm/cube: missing polygons). */
     if (method >= 0x0A20 && method < 0x0A30) {
+        u32 idx = (method - 0x0A20) >> 2;
         u32 f = data; float v; memcpy(&v, &f, 4);
-        state->viewport_offset[(method - 0x0A20) >> 2] = v;
+        if (memcmp(&state->viewport_offset[idx], &v, 4) != 0) {
+            state->viewport_offset[idx] = v;
+            state->rs_gen++;
+        }
         return 0;
     }
     if (method >= 0x0A30 && method < 0x0A40) {
+        u32 idx = (method - 0x0A30) >> 2;
         u32 f = data; float v; memcpy(&v, &f, 4);
-        state->viewport_scale[(method - 0x0A30) >> 2] = v;
+        if (memcmp(&state->viewport_scale[idx], &v, 4) != 0) {
+            state->viewport_scale[idx] = v;
+            state->rs_gen++;
+        }
         return 0;
     }
 
     if (method == NV4097_SET_VIEWPORT_HORIZONTAL) {
-        state->viewport_x = data & 0xFFFF;
-        state->viewport_w = (data >> 16) & 0xFFFF;
+        RSX_SET(state->viewport_x, data & 0xFFFF);
+        RSX_SET(state->viewport_w, (data >> 16) & 0xFFFF);
         state->viewport_dirty = 1;
         return 0;
     }
     if (method == NV4097_SET_VIEWPORT_VERTICAL) {
-        state->viewport_y = data & 0xFFFF;
-        state->viewport_h = (data >> 16) & 0xFFFF;
+        RSX_SET(state->viewport_y, data & 0xFFFF);
+        RSX_SET(state->viewport_h, (data >> 16) & 0xFFFF);
         state->viewport_dirty = 1;
         return 0;
     }
 
     /* Color mask */
     if (method == NV4097_SET_COLOR_MASK) {
-        state->color_mask = data;
+        RSX_SET(state->color_mask, data);
         state->color_mask_dirty = 1;
         return 0;
     }
 
     /* Alpha test */
     if (method == NV4097_SET_ALPHA_TEST_ENABLE) {
-        state->alpha_test_enable = data ? 1 : 0;
+        RSX_SET(state->alpha_test_enable, data ? 1 : 0);
         state->alpha_dirty = 1;
         return 0;
     }
     if (method == NV4097_SET_ALPHA_FUNC) {
-        state->alpha_func = data;
+        RSX_SET(state->alpha_func, data);
         state->alpha_dirty = 1;
         return 0;
     }
     if (method == NV4097_SET_ALPHA_REF) {
-        state->alpha_ref = data;
+        RSX_SET(state->alpha_ref, data);
         state->alpha_dirty = 1;
         return 0;
     }
@@ -503,6 +595,7 @@ int rsx_process_method(rsx_state* state, u32 method, u32 data)
     }
     if (method == NV4097_CLEAR_SURFACE) {
         { static int _c=0; if (_c++ < 12) fprintf(stderr, "[RSX] CLEAR_SURFACE mask=0x%X color=0x%08X\n", data, state->color_clear_value); }
+        state->rs_gen++;
         if (s_backend && s_backend->clear) {
             float depth = (float)(state->zstencil_clear_value >> 8) / (float)0xFFFFFF;
             u8 stencil = state->zstencil_clear_value & 0xFF;
@@ -514,91 +607,91 @@ int rsx_process_method(rsx_state* state, u32 method, u32 data)
 
     /* Blend */
     if (method == NV4097_SET_BLEND_ENABLE) {
-        state->blend_enable = data ? 1 : 0;
+        RSX_SET(state->blend_enable, data ? 1 : 0);
         state->blend_dirty = 1;
         return 0;
     }
     if (method == NV4097_SET_BLEND_FUNC_SFACTOR) {
-        state->blend_sfactor = data;
+        RSX_SET(state->blend_sfactor, data);
         state->blend_dirty = 1;
         return 0;
     }
     if (method == NV4097_SET_BLEND_FUNC_DFACTOR) {
-        state->blend_dfactor = data;
+        RSX_SET(state->blend_dfactor, data);
         state->blend_dirty = 1;
         return 0;
     }
     if (method == NV4097_SET_BLEND_EQUATION) {
-        state->blend_equation = data;
+        RSX_SET(state->blend_equation, data);
         state->blend_dirty = 1;
         return 0;
     }
 
     /* Depth */
     if (method == NV4097_SET_DEPTH_TEST_ENABLE) {
-        state->depth_test_enable = data ? 1 : 0;
+        RSX_SET(state->depth_test_enable, data ? 1 : 0);
         state->depth_dirty = 1;
         return 0;
     }
     if (method == NV4097_SET_DEPTH_FUNC) {
-        state->depth_func = data;
+        RSX_SET(state->depth_func, data);
         state->depth_dirty = 1;
         return 0;
     }
     if (method == NV4097_SET_DEPTH_MASK) {
-        state->depth_mask = data ? 1 : 0;
+        RSX_SET(state->depth_mask, data ? 1 : 0);
         state->depth_dirty = 1;
         return 0;
     }
 
     /* Stencil */
     if (method == NV4097_SET_STENCIL_TEST_ENABLE) {
-        state->stencil_test_enable = data ? 1 : 0;
+        RSX_SET(state->stencil_test_enable, data ? 1 : 0);
         state->stencil_dirty = 1;
         return 0;
     }
     if (method == NV4097_SET_STENCIL_FUNC) {
-        state->stencil_func = data;
+        RSX_SET(state->stencil_func, data);
         state->stencil_dirty = 1;
         return 0;
     }
     if (method == NV4097_SET_STENCIL_FUNC_REF) {
-        state->stencil_ref = data;
+        RSX_SET(state->stencil_ref, data);
         state->stencil_dirty = 1;
         return 0;
     }
     if (method == NV4097_SET_STENCIL_FUNC_MASK) {
-        state->stencil_mask = data;
+        RSX_SET(state->stencil_mask, data);
         state->stencil_dirty = 1;
         return 0;
     }
     if (method == NV4097_SET_STENCIL_OP_FAIL) {
-        state->stencil_op_fail = data;
+        RSX_SET(state->stencil_op_fail, data);
         state->stencil_dirty = 1;
         return 0;
     }
     if (method == NV4097_SET_STENCIL_OP_ZFAIL) {
-        state->stencil_op_zfail = data;
+        RSX_SET(state->stencil_op_zfail, data);
         state->stencil_dirty = 1;
         return 0;
     }
     if (method == NV4097_SET_STENCIL_OP_ZPASS) {
-        state->stencil_op_zpass = data;
+        RSX_SET(state->stencil_op_zpass, data);
         state->stencil_dirty = 1;
         return 0;
     }
 
     /* Culling */
     if (method == NV4097_SET_CULL_FACE_ENABLE) {
-        state->cull_face_enable = data ? 1 : 0;
+        RSX_SET(state->cull_face_enable, data ? 1 : 0);
         return 0;
     }
     if (method == NV4097_SET_CULL_FACE) {
-        state->cull_face = data;
+        RSX_SET(state->cull_face, data);
         return 0;
     }
     if (method == NV4097_SET_FRONT_FACE) {
-        state->front_face = data;
+        RSX_SET(state->front_face, data);
         return 0;
     }
 
@@ -609,7 +702,7 @@ int rsx_process_method(rsx_state* state, u32 method, u32 data)
          *   [1:0]  location (0 = local, 1 = main)
          *   [31:2] offset (4-byte aligned)
          */
-        state->shader_program = data;
+        RSX_SET(state->shader_program, data);
         state->fragment_program_addr = data & ~0x3u;
         state->shader_dirty = 1;
         return 0;
@@ -624,7 +717,7 @@ int rsx_process_method(rsx_state* state, u32 method, u32 data)
     }
 
     if (method == NV4097_SET_TRANSFORM_PROGRAM_START) {
-        if (state->transform_program_start != data) state->vp_dirty = 1;
+        if (state->transform_program_start != data) { state->vp_dirty = 1; state->rs_gen++; }
         state->transform_program_start = data;
         state->shader_dirty = 1;
         return 0;
@@ -642,15 +735,16 @@ int rsx_process_method(rsx_state* state, u32 method, u32 data)
             if (memcmp(&state->vp_ucode[w], b, 4) != 0) {
                 memcpy(&state->vp_ucode[w], b, 4);
                 state->vp_ucode_gen++;
+                state->rs_gen++;
             }
             state->vp_ucode_write = w + 4;
-            if (w + 4 > state->vp_ucode_bytes) { state->vp_ucode_bytes = w + 4; state->vp_ucode_gen++; }
+            if (w + 4 > state->vp_ucode_bytes) { state->vp_ucode_bytes = w + 4; state->vp_ucode_gen++; state->rs_gen++; }
             state->vp_dirty = 1;
         }
         return 0;
     }
     if (method == NV4097_SET_VERTEX_ATTRIB_OUTPUT_MASK) {
-        state->vertex_attrib_output_mask = data;
+        RSX_SET(state->vertex_attrib_output_mask, data);
         return 0;
     }
     /* NV4097_SET_VERTEX_DATA4F_M (0x1C00): the constant/"current" value for each
@@ -668,6 +762,7 @@ int rsx_process_method(rsx_state* state, u32 method, u32 data)
         u32 lane = ((method - 0x1C00u) >> 2) & 3;   /* x/y/z/w   */
         float f; memcpy(&f, &data, 4);
         state->vertex_data4f[idx][lane] = f;
+        state->va_gen++;
         { static int _d = -1; if (_d < 0) _d = getenv("VDATA_DBG") ? 1 : 0;
           static int _n = 0;
           if (_d && _n < 400) { _n++;
@@ -808,7 +903,7 @@ int rsx_process_method(rsx_state* state, u32 method, u32 data)
     if (method == NV4097_SET_SHADER_CONTROL) {
         { static int _sc=0; if (_sc++ < 12 && getenv("RTT_DUMP"))
             fprintf(stderr, "[RSXSC] shader_control=0x%X\n", data); }
-        state->shader_control = data;
+        RSX_SET(state->shader_control, data);
         state->shader_dirty = 1;
         return 0;
     }
@@ -842,13 +937,13 @@ int rsx_process_method(rsx_state* state, u32 method, u32 data)
 
     /* Scissor */
     if (method == NV4097_SET_SCISSOR_HORIZONTAL) {
-        state->scissor_x = data & 0xFFFF;
-        state->scissor_w = (data >> 16) & 0xFFFF;
+        RSX_SET(state->scissor_x, data & 0xFFFF);
+        RSX_SET(state->scissor_w, (data >> 16) & 0xFFFF);
         return 0;
     }
     if (method == NV4097_SET_SCISSOR_VERTICAL) {
-        state->scissor_y = data & 0xFFFF;
-        state->scissor_h = (data >> 16) & 0xFFFF;
+        RSX_SET(state->scissor_y, data & 0xFFFF);
+        RSX_SET(state->scissor_h, (data >> 16) & 0xFFFF);
         return 0;
     }
 

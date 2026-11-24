@@ -47,17 +47,26 @@ void spu_lockline_lock(void)
     unsigned spins = 0;
     if (!_InterlockedExchange(&g_lockline, 1)) return;
     _InterlockedIncrement(&s_ll_contended);
-    LARGE_INTEGER t0; QueryPerformanceCounter(&t0);
+    static int s_ll_stat = -1;
+    if (s_ll_stat < 0) { const char* e = getenv("PS3_SPU_STAT"); s_ll_stat = (e && *e && *e != '0') ? 1 : 0; }
+    LARGE_INTEGER t0;
+    if (s_ll_stat) QueryPerformanceCounter(&t0);
     do {
         do {
             _mm_pause();
             if (++spins >= 4096) { spins = 0; _InterlockedIncrement(&s_ll_yields); SwitchToThread(); }
         } while (g_lockline);
     } while (_InterlockedExchange(&g_lockline, 1));
-    LARGE_INTEGER t1; QueryPerformanceCounter(&t1);
-    _InterlockedExchangeAdd64(&g_ll_wait_ticks, t1.QuadPart - t0.QuadPart);
+    if (s_ll_stat) {
+        LARGE_INTEGER t1; QueryPerformanceCounter(&t1);
+        _InterlockedExchangeAdd64(&g_ll_wait_ticks, t1.QuadPart - t0.QuadPart);
+    }
 }
-void spu_lockline_unlock(void) { _InterlockedExchange(&g_lockline, 0); }
+void spu_lockline_unlock(void)
+{
+    _WriteBarrier();
+    g_lockline = 0;
+}
 #else
 #include <stdatomic.h>
 static atomic_flag g_lockline = ATOMIC_FLAG_INIT;

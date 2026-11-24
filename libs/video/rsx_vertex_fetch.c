@@ -134,10 +134,16 @@ void rsx_fetch_plan_build(const rsx_state* st, rsx_fetch_plan* plan)
 {
     static int nofreq = -1;
     if (nofreq < 0) nofreq = getenv("VP_NOFREQ") ? 1 : 0;
+    plan->n_active = 0;
     for (int i = 0; i < 16; i++) {
         rsx_attr_plan* p = &plan->a[i];
         const rsx_vertex_attrib* a = &st->vertex_attribs[i];
         memcpy(p->cst, st->vertex_data4f[i], sizeof p->cst);
+        plan->desc_template[i * 8 + 0] = 0;
+        plan->desc_template[i * 8 + 1] = 0;
+        plan->desc_template[i * 8 + 2] = 0;
+        plan->desc_template[i * 8 + 3] = 0;
+        memcpy(&plan->desc_template[i * 8 + 4], p->cst, 16);
         p->active = a->enabled && a->stride != 0 && vm_base != NULL;
         p->type = a->type;
         p->n = a->size ? a->size : 4; if (p->n > 4) p->n = 4;
@@ -147,6 +153,13 @@ void rsx_fetch_plan_build(const rsx_state* st, rsx_fetch_plan* plan)
         p->main_mem = (a->offset & 0x80000000u) != 0;
         p->off0 = a->offset & 0x7FFFFFFFu;
         p->page = ~0u; p->page_base = NULL;
+        if (p->active) {
+            plan->active_idx[plan->n_active++] = (u8)i;
+            u32 eb;
+            switch (p->type) { case 1: case 3: case 5: eb = 2u * p->n; break; case 4: case 7: eb = p->n; break; case 6: eb = 4u; break; default: eb = 4u * p->n; break; }
+            plan->elem_bytes[i] = eb;
+            plan->ctrl_word[i] = 0x80000000u | (p->type & 15u) | ((p->n & 7u) << 4) | (p->modulo ? 0x80u : 0u);
+        }
     }
     /* RSX_VA_HIST=1: which 1 MB regions of guest memory the draws' vertex
      * arrays come from, every 5 s (draw count per region). */

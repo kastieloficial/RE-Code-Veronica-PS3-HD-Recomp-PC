@@ -1899,9 +1899,11 @@ void cellGcm_rsx_process_fifo(void)
 static void gcm_rsx_process_fifo_unlocked(void)
 {
     { static unsigned _n = 0; static unsigned long long _t0 = 0;
-      extern unsigned long long ps3_ms_now(void);
-      _n++;
-      if (getenv("GCM_RATE")) {
+      static int s_gcm_rate = -1;
+      if (s_gcm_rate < 0) s_gcm_rate = getenv("GCM_RATE") ? 1 : 0;
+      if (s_gcm_rate) {
+          extern unsigned long long ps3_ms_now(void);
+          _n++;
           unsigned long long now = ps3_ms_now();
           if (_t0 == 0) _t0 = now;
           if (now - _t0 >= 2000) {
@@ -1942,7 +1944,9 @@ static void gcm_rsx_process_fifo_unlocked(void)
      * once at init; if the title repoints gCellGcmCurrentContext at a buffer of
      * its own, every field below moves with it and the FIFO the runtime walks
      * stops being the one the title fills. Reported on change, not per tick. */
-    if (getenv("GCM_CTXDBG") && s_gcm_ctx_out_ea) {
+    static int s_gcm_ctxdbg = -1;
+    if (s_gcm_ctxdbg < 0) s_gcm_ctxdbg = getenv("GCM_CTXDBG") ? 1 : 0;
+    if (s_gcm_ctxdbg && s_gcm_ctx_out_ea) {
         static u32 last_ptr = 0xFFFFFFFFu, last_cur = 0xFFFFFFFFu;
         u32 ptr = vm_read32(s_gcm_ctx_out_ea);
         u32 cur = ptr ? vm_read32(ptr + 0x8) : 0;
@@ -1958,7 +1962,9 @@ static void gcm_rsx_process_fifo_unlocked(void)
     }
 
     u32 start_off = s_fifo_getoff;
-    if (getenv("GCM_DRAINDBG")) {
+    static int s_gcm_draindbg = -1;
+    if (s_gcm_draindbg < 0) s_gcm_draindbg = getenv("GCM_DRAINDBG") ? 1 : 0;
+    if (s_gcm_draindbg) {
         static int n = 0;
         if (n++ % 60 == 0)
             printf("[DRAIN] getoff=%08X put=%08X ref=%08X ctx.current=%08X\n",
@@ -1970,8 +1976,9 @@ static void gcm_rsx_process_fifo_unlocked(void)
      * present in 0..put. "The title waits for a fence we never published" has
      * two very different causes -- we missed the command, or it was never
      * submitted -- and only a direct scan of the ring separates them. */
-    { static int scanned = 0;
-      if (!scanned && getenv("GCM_SCANREF") && put >= 0x19F0) { scanned = 1;
+    { static int scanned = 0; static int s_scanref = -1;
+      if (s_scanref < 0) s_scanref = getenv("GCM_SCANREF") ? 1 : 0;
+      if (!scanned && s_scanref && put >= 0x19F0) { scanned = 1;
         unsigned found = 0;
         for (u32 io = 0; io + 8 <= put; io += 4) {
             u32 ea = gcm_io2ea(io); if (!ea) continue;
@@ -2204,7 +2211,9 @@ static void gcm_rsx_process_fifo_unlocked(void)
                     u32 m = (type == 0) ? method + i * 4 : method;
                     u32 v = vm_read32(dea);
                     u32 la = GCM_LABEL_GUEST_BASE + (s_sema_offset & 0xFFFFu);
-                    { static int sn = 0; if (getenv("GCM_RECDBG") && sn++ < 12)
+                    { static int sn = 0; static int s_recdbg_s = -1;
+                      if (s_recdbg_s < 0) s_recdbg_s = getenv("GCM_RECDBG") ? 1 : 0;
+                      if (s_recdbg_s && sn++ < 12)
                         fprintf(stderr, "[SEMA] m=0x%02X v=0x%08X off=0x%X\n", m, v, s_sema_offset); }
                     if (m == 0x64u)      s_sema_offset = v;
                     else if (m == 0x6Cu) vm_write32(la, v);
@@ -2221,6 +2230,145 @@ static void gcm_rsx_process_fifo_unlocked(void)
                 if (sem_blocked) break;
                 s_fifo_getoff += 4 + count * 4;
                 continue;
+            }
+            /* Fast path for normal 3D subchannel 0 blocks when no per-word debug/alt engines are active. */
+            { static int s_fast_subch0 = -1, s_fast_tconst = -1, s_fast_draw = -1;
+              extern volatile int g_rsx_cap_request;
+              if (s_fast_subch0 < 0) {
+                  s_fast_subch0 = (!getenv("GCM_SUBCH7") && !getenv("GCM_OBJDBG") && !getenv("GCM_SUBCH_GATE") &&
+                                   !getenv("GCM_VAL_WATCH") && !getenv("RSX_LIVE_FEED_DBG") &&
+                                   !rsx_live_draw_enabled() && !rsx_draw_engine_enabled()) ? 1 : 0;
+                  s_fast_tconst = (s_fast_subch0 && !getenv("TCONST_DBG") && !getenv("SEQ_DBG") &&
+                                   !getenv("RSX_TRACE") && !getenv("LOAD_DBG")) ? 1 : 0;
+                  s_fast_draw   = (s_fast_tconst && !getenv("MVPDBG") && !getenv("RSX_VTXDBG")) ? 1 : 0;
+              }
+              if (s_fast_subch0 && subch == 0 && count > 0) {
+                  const u32 io_first = s_fifo_getoff + 4u;
+                  const u32 io_last  = s_fifo_getoff + (count << 2);
+                  if ((io_first >> 20) == (io_last >> 20)) {
+                      const u32 base_ea = gcm_io2ea(io_first);
+                      if (base_ea) {
+                          if (s_fast_draw && !g_rsx_cap_request && method == NV4097_DRAW_ARRAYS && (type == 2 || count == 1u)) {
+                              rsx_backend* bk = rsx_get_backend();
+                              if (bk && bk->draw_arrays) {
+                                  for (u32 i = 0; i < count; i++) {
+                                      const u32 val = vm_read32(base_ea + (i << 2));
+                                      bk->draw_arrays(bk->userdata, s_state.primitive_type,
+                                                      val & 0xFFFFFFu, ((val >> 24) & 0xFFu) + 1u);
+                                  }
+                                  s_fifo_getoff += 4u + (count << 2);
+                                  continue;
+                              }
+                          }
+                          if (s_fast_draw && !g_rsx_cap_request && method == NV4097_SET_BEGIN_END && count == 1u) {
+                              const u32 val = vm_read32(base_ea);
+                              if (val == 0) {
+                                  s_state.in_begin_end = 0;
+                                  s_fifo_getoff += 8u;
+                                  continue;
+                              }
+                              if ((s_state.surface_dirty | s_state.viewport_dirty | s_state.blend_dirty |
+                                   s_state.depth_dirty | s_state.stencil_dirty | s_state.color_mask_dirty |
+                                   s_state.alpha_dirty | s_state.shader_dirty | s_state.vertex_dirty |
+                                   s_state.texture_dirty) == 0) {
+                                  s_state.primitive_type = val;
+                                  s_state.in_begin_end = 1;
+                                  s_state.begin_epoch++;
+                                  s_fifo_getoff += 8u;
+                                  continue;
+                              }
+                          }
+                          if (s_fast_tconst && type == 0 && method == NV4097_SET_TRANSFORM_CONSTANT_LOAD && count == 1u) {
+                              s_state.transform_constant_load = vm_read32(base_ea);
+                              s_fifo_getoff += 8u;
+                              continue;
+                          }
+                          if (s_fast_tconst && type == 0 && method >= NV4097_SET_VERTEX_DATA_ARRAY_OFFSET &&
+                              method + (count << 2) <= NV4097_SET_VERTEX_DATA_ARRAY_OFFSET + RSX_MAX_VERTEX_ATTRIBS * 4u) {
+                              const u32 idx = (method - NV4097_SET_VERTEX_DATA_ARRAY_OFFSET) >> 2;
+                              u32 changed = 0;
+                              for (u32 i = 0; i < count; i++) {
+                                  const u32 nv = vm_read32(base_ea + (i << 2));
+                                  if (s_state.vertex_attribs[idx + i].offset != nv) {
+                                      s_state.vertex_attribs[idx + i].offset = nv;
+                                      changed = 1;
+                                  }
+                              }
+                              if (changed) {
+                                  if (!s_fast_draw) s_state.vertex_dirty = 1;
+                                  s_state.va_off_gen++;
+                              }
+                              s_fifo_getoff += 4u + (count << 2);
+                              continue;
+                          }
+                          if (s_fast_tconst && type == 0 && method >= NV4097_SET_VERTEX_DATA_ARRAY_FORMAT &&
+                              method + (count << 2) <= NV4097_SET_VERTEX_DATA_ARRAY_FORMAT + RSX_MAX_VERTEX_ATTRIBS * 4u) {
+                              const u32 idx = (method - NV4097_SET_VERTEX_DATA_ARRAY_FORMAT) >> 2;
+                              u32 changed = 0;
+                              for (u32 i = 0; i < count; i++) {
+                                  const u32 d = vm_read32(base_ea + (i << 2));
+                                  rsx_vertex_attrib* a = &s_state.vertex_attribs[idx + i];
+                                  if (a->format != d) {
+                                      a->type      = d & 0xFu;
+                                      a->size      = (d >> 4) & 0xFu;
+                                      a->stride    = (d >> 8) & 0xFFu;
+                                      a->frequency = (d >> 16) & 0xFFFFu;
+                                      a->enabled   = (a->size != 0);
+                                      a->format    = d;
+                                      changed = 1;
+                                  }
+                              }
+                              if (changed) { s_state.vertex_dirty = 1; s_state.va_gen++; }
+                              s_fifo_getoff += 4u + (count << 2);
+                              continue;
+                          }
+                          if (s_fast_tconst && type == 0 && method == NV4097_SET_TRANSFORM_CONSTANT && count <= 64u) {
+                              const u32 load = s_state.transform_constant_load;
+                              u32 changed = 0;
+                              for (u32 i = 0; i < count; i++) {
+                                  const u32 slot = load + (i >> 2);
+                                  if (slot < RSX_MAX_VERTEX_CONSTANTS) {
+                                      const u32 val = vm_read32(base_ea + (i << 2));
+                                      u32* dst_u32 = (u32*)&s_state.vertex_constants[slot][i & 3u];
+                                      if (*dst_u32 != val) { *dst_u32 = val; changed = 1; }
+                                  }
+                              }
+                              if (changed) s_state.vc_gen++;
+                              if (load < RSX_MAX_VERTEX_CONSTANTS) {
+                                  u32 hi = load + ((count - 1u) >> 2);
+                                  if (hi >= RSX_MAX_VERTEX_CONSTANTS) hi = RSX_MAX_VERTEX_CONSTANTS - 1u;
+                                  if (!s_state.vertex_constants_dirty) {
+                                      s_state.vertex_constants_lo = load;
+                                      s_state.vertex_constants_hi = hi;
+                                      s_state.vertex_constants_dirty = 1;
+                                  } else {
+                                      if (load < s_state.vertex_constants_lo) s_state.vertex_constants_lo = load;
+                                      if (hi > s_state.vertex_constants_hi) s_state.vertex_constants_hi = hi;
+                                  }
+                              }
+                              s_fifo_getoff += 4u + (count << 2);
+                              continue;
+                          }
+                          const u32 step = (type == 0) ? 4u : 0u;
+                          u32 m = method;
+                          for (u32 i = 0; i < count; i++, m += step) {
+                              const u32 val = vm_read32(base_ea + (i << 2));
+                              rsx_process_method(&s_state, m, val);
+                              if (m == 0x50u) gcm_ref_push_at(g_rsx_last_reference, s_fifo_getoff);
+                              else if (m == 0x1800u) {
+                                  const u32 idx = (val & 0xFFFFFFu) / 16u;
+                                  if (idx < CELL_GCM_MAX_REPORT_COUNT) {
+                                      s_report_data[idx].timestamp = get_timestamp_ns();
+                                      s_report_data[idx].value = (val >> 24) == 1u ? 0xFFFFu : 0u;
+                                      gcm_report_store(idx);
+                                  }
+                              }
+                          }
+                          s_fifo_getoff += 4u + (count << 2);
+                          continue;
+                      }
+                  }
+              }
             }
             for (u32 i = 0; i < count; i++) {
                 u32 dea = gcm_io2ea(s_fifo_getoff + 4 + i * 4);
@@ -2435,7 +2583,7 @@ static void gcm_rsx_process_fifo_unlocked(void)
      * per tick (gcm_ref_push/gcm_ref_publish_one above) so every SET_REFERENCE
      * value stays observable to equality-waiters. The wrap recycle path polls
      * the drained EA. */
-    if (getenv("GCM_DRAINDBG")) {
+    if (s_gcm_draindbg) {
         static int n2 = 0;
         if (n2++ % 60 == 0)
             fprintf(stderr, "[DRAINEND] %s: %08X -> %08X (%u bytes), put=%08X\n",

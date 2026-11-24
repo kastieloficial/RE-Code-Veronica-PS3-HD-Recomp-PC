@@ -333,6 +333,7 @@ static void spu_getllar_poll_wait(spu_context* ctx, uint32_t ea, const uint8_t* 
         return;
     }
     if (++t_poll_n < SPU_POLL_N) return;
+    _InterlockedIncrement(&ctx->ch_waiters);
     AcquireSRWLockExclusive((SRWLOCK*)&ctx->ch_wait_lock);
     if (ctx->resv_valid && memcmp(mem, ctx->resv_line, MFC_ATOMIC_LINE) == 0) {
         _InterlockedIncrement64(&g_spu_poll_sleeps);
@@ -340,6 +341,7 @@ static void spu_getllar_poll_wait(spu_context* ctx, uint32_t ea, const uint8_t* 
                                   (SRWLOCK*)&ctx->ch_wait_lock, 1, 0);
     }
     ReleaseSRWLockExclusive((SRWLOCK*)&ctx->ch_wait_lock);
+    _InterlockedDecrement(&ctx->ch_waiters);
 }
 
 /* SPU_LL_HIST counters (racy; diagnostics only). */
@@ -1092,6 +1094,12 @@ static int spu_ch_ready(spu_context* ctx, uint32_t channel)
 void spu_ch_wake(spu_context* ctx)
 {
     if (!ctx) return;
+    /* Dekker check: spu_ch_wait increments ch_waiters with a full barrier
+     * BEFORE testing spu_ch_ready; producers update state BEFORE calling
+     * spu_ch_wake. A MemoryBarrier here guarantees we never miss a waiter
+     * while skipping SRWLock + CV overhead on already-running SPUs. */
+    MemoryBarrier();
+    if (!ctx->ch_waiters) return;
     /* Pass through the waiter's lock first: a waiter that checked its
      * predicate is then either still before the check (and sees the new
      * state) or already asleep (and gets this wake). Without it a wake could
@@ -1115,6 +1123,7 @@ static void spu_ch_wait(spu_context* ctx, uint32_t channel, const char* op)
 
     ctx->status = SPU_STATUS_WAITING_CHANNEL;
     yz_lockstep_block_begin(ctx);          /* release the run token before the OS wait */
+    _InterlockedIncrement(&ctx->ch_waiters);
     {
         unsigned long long start = GetTickCount64(), next_hb = 2000;
         while (!spu_ch_ready(ctx, channel)) {
@@ -1134,6 +1143,7 @@ static void spu_ch_wait(spu_context* ctx, uint32_t channel, const char* op)
             }
         }
     }
+    _InterlockedDecrement(&ctx->ch_waiters);
     yz_lockstep_block_end(ctx);            /* rejoin the rotation, reacquire the token */
     ctx->status = SPU_STATUS_RUNNING;
 }
