@@ -715,7 +715,10 @@ void CV_FD_FN_DOOR_DEMO(ppu_context* ctx)
 void CV_FD_FN_MONITOR(ppu_context* ctx)
 {
     const uint32_t sys = get_sys();
-    const bool enabled = fast_door_enabled() && sys && !is_attract_demo(sys);
+    /* Only accelerate room loads that were actually started by a door
+     * transition (g_prof.active). Save loads, title/new-game transitions,
+     * and non-door stage loads must run unmodified 1 step per frame. */
+    const bool enabled = fast_door_enabled() && g_prof.active && sys && !is_attract_demo(sys);
 
     if (!enabled) {
         CV_FD_ORIG_MONITOR(ctx);
@@ -723,7 +726,7 @@ void CV_FD_FN_MONITOR(ppu_context* ctx)
     }
 
     const uint8_t start_md0 = vm_read8(sys + kOffMnMd0);
-    if (g_prof.active && start_md0 == 4u) {
+    if (start_md0 == 4u) {
         g_prof.monitor_frames++;
         g_prof.record_md1(vm_read8(sys + kOffMnMd1), sys);
     }
@@ -767,6 +770,13 @@ void CV_FD_FN_MONITOR(ppu_context* ctx)
             break;
         }
 
+        /* Steps 12..15 (0x0C..0x0F) perform the Disc 1 <-> Disc 2 swap and
+         * require real per-frame ticks between steps; never collapse them. */
+        if ((before_md1 >= 12u && before_md1 <= 15u) ||
+            (after_md1  >= 12u && after_md1  <= 15u)) {
+            break;
+        }
+
         if (after_md1 == 11u && before_md1 != 11u && (vm_read32(sys + kOffSdmFlg) & 0x1u)) {
             CV_FD_FN_SND_MON(ctx);
         }
@@ -793,18 +803,27 @@ void CV_FD_FN_MONITOR(ppu_context* ctx)
 void CV_FD_FN_SND_MON(ppu_context* ctx)
 {
     const uint32_t sys = get_sys();
-    const bool enabled = fast_door_enabled() && sys && !is_attract_demo(sys);
+    const bool door_on = fast_door_enabled() && sys && !is_attract_demo(sys);
 
-    if (!enabled) {
-        CV_FD_ORIG_SND_MON(ctx);
-        return;
-    }
-
-    if (g_prof.fade_in_pending && fast_fade_enabled()) {
+    if (door_on && g_prof.fade_in_pending && fast_fade_enabled()) {
         if (vm_read32(sys + kOffCbFlg) & 0x2u) {
             snap_active_fade(sys);
             g_prof.fade_in_pending = false;
         }
+    }
+
+    /* Only collapse sound monitor passes during an active door transition,
+     * never during save loads or Disc 1 <-> Disc 2 bank swaps. */
+    if (!door_on || !g_prof.active) {
+        CV_FD_ORIG_SND_MON(ctx);
+        return;
+    }
+
+    const uint8_t cur_md0 = vm_read8(sys + kOffMnMd0);
+    const uint8_t cur_md1 = vm_read8(sys + kOffMnMd1);
+    if (cur_md0 == 4u && cur_md1 >= 12u && cur_md1 <= 15u) {
+        CV_FD_ORIG_SND_MON(ctx);
+        return;
     }
 
     for (int pass = 0; pass < 16; ++pass) {
