@@ -87,6 +87,11 @@ typedef struct {
 
 typedef struct {
     rsx_attr_plan a[16];
+    u32 desc_template[16 * 8]; /* prebuilt GPU vfetch descriptor (constants + zero headers) */
+    u32 elem_bytes[16];        /* precomputed byte width of one attribute element */
+    u32 ctrl_word[16];         /* precomputed GPU vfetch control word */
+    u8  active_idx[16];        /* indices of active attributes */
+    int n_active;              /* number of active attributes */
 } rsx_fetch_plan;
 
 void rsx_fetch_plan_build(const rsx_state* st, rsx_fetch_plan* plan);

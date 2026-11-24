@@ -358,6 +358,8 @@ typedef struct rsx_state {
     u32 vertex_constants_hi;
     u32 vc_gen;                 /* bumped whenever a vertex constant changes value */
     u32 va_gen;                 /* bumped whenever vertex_attribs / vertex_data4f / divider changes */
+    u32 rs_gen;                 /* bumped whenever any draw-record render state changes */
+    u8  vtex_any;               /* 1 once any vertex texture register has been written */
     int vertex_constants_dirty;
 
     /* Captured RSX vertex program microcode (NV40 ISA), filled by
