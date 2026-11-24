@@ -50,7 +50,7 @@ inline Selection selection_state(){
     return {vm_read32(CV_SCENE_INVENTORY+0x44),vm_read32(CV_SCENE_INVENTORY+0x54),
         character,inv_hash};
 }
-struct Frame {uint32_t system=0,object=0;Selection selection{};std::vector<Sprite> sprites;};
+struct Frame {uint32_t system=0,object=0;Selection selection{};std::map<DrawRole,uint32_t> role_counts;std::vector<Sprite> sprites;};
 inline Frame current,previous;
 inline bool borrowed=false;
 inline unsigned captures=0;
@@ -90,6 +90,7 @@ inline void capture() {
     Frame next;next.system=vm_read32(CV_SCENE_SYSTEM);next.object=vm_read32(CV_SCENE_RENDER);
     if(!range(next.object,0x100)){reset();return;}
     next.selection=selection_state();
+    next.role_counts=draw_counts;
     constexpr uint32_t counts[]={0xC4,0xD8,0xEC};
     unsigned vertices=0;
     for(unsigned group=0;group<3;group++) {
@@ -134,22 +135,36 @@ inline void capture() {
         std::sort(identities.begin(),identities.end(),[](const auto& a,const auto& b){return a.first<b.first;});
     }
     for(auto& s:current.sprites) {
+        DrawRole role{};std::copy(s.id.begin(),s.id.begin()+6,role.begin());
+        const auto cur_rc=current.role_counts.find(role),prev_rc=previous.role_counts.find(role);
+        if(cur_rc==current.role_counts.end()||prev_rc==previous.role_counts.end()||cur_rc->second!=prev_rc->second)continue;
         const auto found=std::lower_bound(identities.begin(),identities.end(),s.id,
             [](const auto& a,const DrawId& b){return a.first<b;});
         if(found==identities.end()||found->first!=s.id)continue;
         const auto& p=previous.sprites[found->second];
         if((p.key>>16)!=(s.key>>16)||p.count!=s.count||p.state!=s.state||p.tex!=s.tex)continue;
         bool valid=true,changed=p.rgba!=s.rgba;
+        double max_delta=0.0;
+        double pmin[2]={1e9,1e9},pmax[2]={-1e9,-1e9},smin[2]={1e9,1e9},smax[2]={-1e9,-1e9};
         for(unsigned v=0;v<s.count;v++) {
             for(unsigned k=0;k<2;k++) {
-                const double delta=real(s.xyzw[4*v+k])-real(p.xyzw[4*v+k]);
-                if(std::abs(delta)>128)valid=false;
-                if(std::abs(delta)>0.001)changed=true;
+                const double pv=real(p.xyzw[4*v+k]),sv=real(s.xyzw[4*v+k]);
+                const double delta=std::abs(sv-pv);
+                if(delta>44.0)valid=false;
+                if(delta>max_delta)max_delta=delta;
+                if(delta>0.001)changed=true;
+                if(pv<pmin[k])pmin[k]=pv;
+                if(pv>pmax[k])pmax[k]=pv;
+                if(sv<smin[k])smin[k]=sv;
+                if(sv>smax[k])smax[k]=sv;
             }
-            // Original draw identity permits scaling and panel deformation;
+            // Original draw identity permits smooth motion;
             // depth and homogeneous terms retain their original ownership.
             if(p.xyzw[4*v+2]!=s.xyzw[4*v+2]||p.xyzw[4*v+3]!=s.xyzw[4*v+3])valid=false;
         }
+        if(std::abs((smax[0]-smin[0])-(pmax[0]-pmin[0]))>24.0||
+           std::abs((smax[1]-smin[1])-(pmax[1]-pmin[1]))>24.0)valid=false;
+        if(p.rgba!=s.rgba&&max_delta>16.0)valid=false;
         if(valid){++matched;if(changed){s.previous=int(found->second);++moving;}}
     }
 #ifndef CV_DISTRIBUTION
