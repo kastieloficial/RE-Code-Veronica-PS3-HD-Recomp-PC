@@ -6832,7 +6832,9 @@ static void pl_tick(void)
         s_pl_started = 1;
         SYSTEM_INFO si; GetSystemInfo(&si);
         const int cores = (int)si.dwNumberOfProcessors;
-        int nt = s_pl_mode == 2 ? cores - 1 : cores / 4;   /* waiting, the game needs no CPU */
+        /* Keep at least 1 physical core (2 logical threads on 4+ thread CPUs)
+         * free and run below normal priority so the OS stays responsive. */
+        int nt = s_pl_mode == 2 ? (cores >= 4 ? cores - 2 : cores - 1) : cores / 4;
         if (nt < 1) nt = 1; if (nt > 12) nt = 12;
         { const char* e = getenv("SHADER_PRELOAD_PARALLEL"); if (e && e[0] == '0') nt = 1; }
         s_pl_t0 = perf_now();
@@ -6840,7 +6842,7 @@ static void pl_tick(void)
             InterlockedIncrement(&s_pl_threads_left);
             HANDLE th = CreateThread(NULL, 0, pl_worker, NULL, 0, NULL);
             if (!th) { InterlockedDecrement(&s_pl_threads_left); continue; }
-            SetThreadPriority(th, s_pl_mode == 2 ? THREAD_PRIORITY_NORMAL : THREAD_PRIORITY_LOWEST);
+            SetThreadPriority(th, s_pl_mode == 2 ? THREAD_PRIORITY_BELOW_NORMAL : THREAD_PRIORITY_LOWEST);
             ps3_host_thread_name(th, "shader:preload %d", i);
             CloseHandle(th);
         }

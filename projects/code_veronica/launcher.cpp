@@ -48,6 +48,7 @@
 #include "analog_bindings.h"
 #include "analog_i18n.h"
 #include "launcher_i18n.h"
+#include "cv_door_skip_i18n.h"
 #include "cv_original_language.h"
 #include "cv_native_language_overlay.h"
 #include "launcher_design_i18n.h"
@@ -276,6 +277,7 @@ struct Settings {
     int sharpness = 0;    /* FSR 1 RCAS, 0..100 percent in steps of 10; 0 off */
     bool enhancements[6] = {}; // opt-in; applied at the next game start
     bool patch[8] = {};    /* k_patches on/off */
+    int door_skip_mode = 0;/* 0 off, 1 classic, 2 fast, 3 supreme (mutually exclusive) */
     int layout = 2;        /* button icons: 0 PlayStation, 1 Xbox, 2 automatic, 3 keyboard, 4 Nintendo Switch */
     int rumble = 100;      /* vibration strength, percent (PAD_RUMBLE_SCALE): 0 off .. 200 */
     bool overlay = false;  /* the performance overlay (rsx_perf_overlay.h) */
@@ -584,6 +586,12 @@ Settings load_settings()
       set_lang_pick(pick); }
     for (int i = 0; i < NPATCHES; i++)
         s.patch[i] = _wtoi(ini_get(L"patches", widen(k_patches[i].id).c_str(), L"0").c_str()) != 0;
+    {
+        const std::wstring dm = ini_get(L"patches", L"door_skip_mode", L"");
+        if (!dm.empty()) s.door_skip_mode = std::clamp(_wtoi(dm.c_str()), 0, 3);
+        else s.door_skip_mode = s.patch[0] ? 1 : 0;   /* migrate legacy cv_door_skip=1 -> Classic */
+        s.patch[0] = (s.door_skip_mode > 0);
+    }
     if (s.mode < 0 || s.mode > 2) s.mode = 0;
     if (s.res < 0 || s.res > 4) s.res = 1;
     if (s.aa < 0 || s.aa > 2) s.aa = 0;
@@ -716,7 +724,8 @@ void save_settings(const Settings& s)
     ini_set(L"controles", L"vibracao", std::to_wstring(s.rumble));
     ini_set(L"launcher", L"idioma", g_lang_pick < 0 ? std::wstring(L"system") : widen(k_lang_id[g_lang_pick]));
     for (int i = 0; i < NPATCHES; i++)
-        ini_set(L"patches", widen(k_patches[i].id).c_str(), s.patch[i] ? L"1" : L"0");
+        ini_set(L"patches", widen(k_patches[i].id).c_str(), (i == 0 ? (s.door_skip_mode > 0) : s.patch[i]) ? L"1" : L"0");
+    ini_set(L"patches", L"door_skip_mode", std::to_wstring(std::clamp(s.door_skip_mode, 0, 3)));
     ini_set(L"testes",L"mapas",s.test_tools?L"1":L"0");
     ini_set(L"inventario",L"menu_itens",s.items_menu?L"1":L"0");
     ini_set(L"audio",L"musica",std::to_wstring(s.music_volume));
@@ -951,7 +960,7 @@ enum {
     ID_GAME_BROWSE = 500, ID_GAME_OPEN, ID_RAP_BROWSE, ID_RAP_OPEN, ID_SAVE_BROWSE, ID_SAVE_OPEN, ID_SAVE_DEFAULT,
     ID_LAYOUT_PS = 600, ID_LAYOUT_XB, ID_LAYOUT_AUTO, ID_LAYOUT_KB, ID_LAYOUT_SW, ID_RUMBLE,
     ID_ENHANCEMENT = 8000,
-    ID_KEY = 700, ID_BTN = 800, ID_RESTORE = 900, ID_PATCH = 1000,  /* + index (keys and buttons: action * slots + slot) */
+    ID_KEY = 700, ID_BTN = 800, ID_RESTORE = 900, ID_PATCH = 1000, ID_DOOR_MODE = 1020,  /* + index */
     ID_TEST_ENABLE=2500, ID_TEST_OPEN,
     ID_FOCUS_PAUSE=2550, ID_SHOT_OPEN,
     ID_SRT_BORDER=2560,
@@ -1093,7 +1102,7 @@ void section(Graphics& gr, const std::wstring& t, float x, float y, float w, con
 
 
 /* Release shown under the sidebar, beside the credit. Bump it per release. */
-const wchar_t* const k_launcher_version = L"v1.7.0";
+const wchar_t* const k_launcher_version = L"v2.0.0";
 extern "C" const wchar_t* cv_launcher_version(void) { return k_launcher_version; }   /* cv_discord.cpp */
 
 /* ---------------------------------------------------------------- updates
@@ -1837,6 +1846,41 @@ void draw_enhancement(Graphics& gr,float x,float& y,float w,int option,const Fon
                 enhancement_text(g_lang,option,false),enhancement_text(g_lang,option,true),body,fsm);
     y+=62;
 }
+/* Door skip 4-mode mutually-exclusive selector: Off / Classic / Fast / Supreme. */
+void door_skip_card(Graphics& gr, float x, float y, float w, const Font& body, const Font& fsm)
+{
+    const float h = 94.0f;
+    const int mode = std::clamp(g.s.door_skip_mode, 0, 3);
+    RectF card(x, y, w, h);
+    GraphicsPath* cp = round_rect(card, 6);
+    SolidBrush cb(C_PANEL); gr.FillPath(&cb, cp);
+    Pen cbd(mode > 0 ? C_RED : C_FIELD_BD, 1); gr.DrawPath(&cbd, cp); delete cp;
+
+    const Color foot_c(255, 120, 110, 104);
+    text(gr, T(S_PATCH_DOOR_T), x + 14, y + 6, body, C_TEXT, StringAlignmentNear, w - 260, 22);
+    text(gr, T(S_PATCH_DOOR_C), x + 14, y + 7, fsm, foot_c, StringAlignmentFar, w - 28, 20);
+
+    const float gap = 8.0f;
+    const float bw = (w - 28.0f - gap * 3.0f) / 4.0f;
+    for (int m = 0; m < 4; ++m) {
+        RectF r(x + 14.0f + m * (bw + gap), y + 32.0f, bw, 30.0f);
+        const bool sel = (mode == m);
+        const bool hot = (g.hover == ID_DOOR_MODE + m);
+        GraphicsPath* bp = round_rect(r, 4);
+        SolidBrush bb(sel ? (hot ? C_RED_HI : C_RED) : (hot ? C_HOVER : C_FIELD));
+        gr.FillPath(&bb, bp);
+        Pen bpen(sel ? C_RED_HI : C_FIELD_BD, 1);
+        gr.DrawPath(&bpen, bp);
+        delete bp;
+        text(gr, cv_door_skip_text::label(g_lang, m), r.X, r.Y, body,
+             (sel || hot) ? C_TEXT : C_DIM, StringAlignmentCenter, r.Width, r.Height);
+        hit(r.X, r.Y, r.Width, r.Height, ID_DOOR_MODE + m);
+    }
+
+    text(gr, cv_door_skip_text::desc(g_lang, mode), x + 14, y + 68, fsm, C_DIM,
+         StringAlignmentNear, w - 28, 20);
+}
+
 void draw_patches(Graphics& gr, const Font& head, const Font& body, const Font& fsm)
 {
     float x = SIDE + 32.0f, y = 34;
@@ -1845,9 +1889,14 @@ void draw_patches(Graphics& gr, const Font& head, const Font& body, const Font& 
     text(gr, T(S_PATCHES_HINT),
          x, y + 32, fsm, C_DIM, StringAlignmentNear, w, 20);
     y += 74;
-    /* the port's own patches: two lines each, the credit beside the title */
+    /* the port's own patches: door skip uses a mutually-exclusive 4-mode card */
     for (int i = 0; i < NPATCHES; i++) {
         if (is_cheat(i)) continue;   /* on the Cheats page */
+        if (i == 0) {
+            door_skip_card(gr, x, y, w, body, fsm);
+            y += 100;
+            continue;
+        }
         patch_card(gr, x, y, w, 50, g.s.patch[i], true, ID_PATCH + i, T(k_patches[i].title), T(k_patches[i].desc),
                    T(k_patches[i].credit), false, body, fsm);
         y += 56;
@@ -3078,7 +3127,10 @@ void apply_live(bool restore_menu = true)
     g_pad_shortcut_chords=1;
     cellpad_set_map(&g.s.btn[0][0], &g.s.key[0][0]);
     set_map_env();
+    g.s.patch[0] = (g.s.door_skip_mode > 0);
     for (int i = 0; i < NPATCHES; i++) ps3_patch_set(k_patches[i].id, g.s.patch[i]);
+    ps3_patch_set("cv_door_fast",    g.s.door_skip_mode >= 2 ? 1 : 0);
+    ps3_patch_set("cv_door_supreme", g.s.door_skip_mode >= 3 ? 1 : 0);
 }
 
 void show_menu()
@@ -3320,6 +3372,11 @@ void click(int id)
     else if(id==ID_GRAPHICS_FRAME_GEN&&!g.running&&frame_generation_allowed()){g.s.frame_generation=!g.s.frame_generation;if(g.s.frame_generation)g.s.vsync=0;changed();}
     else if(id==ID_GRAPHICS_VSYNC&&!(g.running&&g.s.frame_generation&&frame_generation_allowed())){g.s.vsync=!g.s.vsync;if(g.s.vsync&&!g.running)g.s.frame_generation=0;changed();}
     else if(id>=ID_ENHANCEMENT&&id<ID_ENHANCEMENT+int(E_COUNT)&&id!=ID_ENHANCEMENT+int(E_SMOOTH)&&(!g.running||id==ID_ENHANCEMENT+int(E_HIDE))){g.s.enhancements[id-ID_ENHANCEMENT]^=true;changed();}
+    else if (id >= ID_DOOR_MODE && id < ID_DOOR_MODE + 4) {
+        g.s.door_skip_mode = id - ID_DOOR_MODE;
+        g.s.patch[0] = (g.s.door_skip_mode > 0);
+        changed();
+    }
     else if (id >= ID_PATCH && id < ID_PATCH + NPATCHES) { g.s.patch[id - ID_PATCH] ^= true; changed(); }
     else if (id == ID_DD_ORIGINAL_LANGUAGE || id == ID_DD_MANUAL_RELOAD || id == ID_DD_COMBAT_HUD || id == ID_DD_GAME_TEXT || id == ID_DD_TROPHY_CORNER || id == ID_DD_TROPHY_FILTER || id == ID_DD_MODE || id == ID_DD_RES || id == ID_DD_AA || id == ID_DD_FPS || id == ID_DD_POSE_DEVICE || id == ID_DD_SHARP || id == ID_DD_LANG || id==ID_DD_SRT_ENEMIES || id==ID_DD_SRT_CORNER || id==ID_DD_SRT_LANGUAGE || id == ID_DD_OV_CORNER || id == ID_DD_OV_LAYOUT || id == ID_DD_OV_SIZE || id == ID_DD_OV_BG || id == ID_DD_SRT_INVPOS || id == ID_DD_SRT_WINDOW || id == ID_DD_SRT_BOSSBAR) {
         g.open_dd = id; g.dd_scroll = 0;
@@ -4085,9 +4142,12 @@ void start_game()
     rsx_d3d12_set_sharpness(s.sharpness);
     set_icon_env();
     set_rumble_env();
+    s.patch[0] = (s.door_skip_mode > 0);
     std::string pl;
     for (int i = 0; i < NPATCHES; i++)
         if (s.patch[i]) pl += (pl.empty() ? "" : ",") + std::string(k_patches[i].id);
+    if (s.door_skip_mode >= 2) pl += (pl.empty() ? "" : ",") + std::string("cv_door_fast");
+    if (s.door_skip_mode >= 3) pl += (pl.empty() ? "" : ",") + std::string("cv_door_supreme");
     set_env("PS3_PATCHES", pl);
     cv_cheats_set(s.patch[2],s.patch[3]);
     cv_item_menu_enable(s.items_menu);

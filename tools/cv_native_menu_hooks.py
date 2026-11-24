@@ -10,8 +10,8 @@ from pathlib import Path
 # The last two: the guest libc memset and memmove (cv_native_libc.cpp).
 HOOKS_BY_REGION = {
     "eu": ("0002A468", "0002F3D0", "001BD060", "0020140C", "0002B35C", "000333A0", "001D9370", "001D8090", "0050E538", "001D952C", "00033FD0", "007B6C38", "007AE7B0", "001E58FC", "00210914", "001AFAE8", "001B0CB0", "001B2A48", "007846D0", "0078575C", "00538AEC", "00539B0C", "001CF5D4", "00287750", "001D32F0", "001CE930", "004BAAC0", "0001D5D0", "00286E74", "0027EF90", "000124F4", "00549F7C", "001D2028"),
-    "us": ("0002A038", "0002EF60", "001BB5E0", "001FF46C", "0002AEEC", "00032FA0", "001D7550", "001D6270", "0050C578", "001D770C", "00033BD0", "007B4C78", "007AC7F0", "001E395C", "0020E974"),
-    "jp": ("0002A038", "0002EF38", "001BB688", "001FF7C0", "0002AEC4", "00032F80", "001D76D0", "001D63F0", "0050CE68", "001D788C", "00033B78", "007B5568", "007AD0E0", "001E3BBC", "0020F264"),
+    "us": ("0002A038", "0002EF60", "001BB5E0", "001FF46C", "0002AEEC", "00032FA0", "001D7550", "001D6270", "0050C578", "001D770C", "00033BD0", "007B4C78", "007AC7F0", "001E395C", "0020E974", "001AE078", "001AF240", "001B0FD8", "00782710", "0078379C", "00536B2C", "00537B4C", "001CD7B4", "00285790", "001D14D0", "001CCB10", "004B8B00", "0001D5D0", "00284EB4", "0027CFD0", "000124F4", "00547FBC", "001D0208"),
+    "jp": ("0002A038", "0002EF38", "001BB688", "001FF7C0", "0002AEC4", "00032F80", "001D76D0", "001D63F0", "0050CE68", "001D788C", "00033B78", "007B5568", "007AD0E0", "001E3BBC", "0020F264", "001AE120", "001AF2E8", "001B1080", "00783000", "0078408C", "0053741C", "0053843C", "001CD934", "00286080", "001D1650", "001CCC90", "004B93F0", "0001D5D0", "002857A4", "0027D8C0", "000124F4", "005488AC", "001D0388"),
 }
 HOOKS = HOOKS_BY_REGION["eu"]
 
@@ -148,18 +148,23 @@ def main(finalize=None):
     source = source[:first.start()] + '#include "cv_cheats_lift.h"\n' + source[first.start():]
     if battle_count:source=source.replace('#include "cv_cheats_lift.h"','#include "cv_cheats_lift.h"\n#include "cv_unlock_lift.h"')
     source,_=door_skip(source,args.region)
-    if args.region == "eu" and "loc_00539EB0:\n" in source and "cv_native_spu_inflate(" not in source:
+    _zloc = {
+        "eu": ("loc_00539EB0", "loc_00539F80", "loc_00539CE0"),
+        "us": ("loc_00537EF0", "loc_00537FC0", "loc_00537D20"),
+        "jp": ("loc_005387E0", "loc_005388B0", "loc_00538610"),
+    }.get(args.region)
+    if _zloc and (_zloc[0] + ":\n") in source and "cv_native_spu_inflate(" not in source:
         hook_code = (
-            "loc_00539EB0:\n"
+            f"{_zloc[0]}:\n"
             "        if (cv_native_spu_inflate(ctx)) {\n"
-            "            if (vm_read32(ctx->gpr[31] + 0xB8) == 1u) goto loc_00539F80;\n"
+            f"            if (vm_read32(ctx->gpr[31] + 0xB8) == 1u) goto {_zloc[1]};\n"
             "            uint32_t _prod = vm_read32(ctx->gpr[30] + 0x14) - vm_read32(ctx->gpr[1] + 0x70);\n"
             "            vm_write32(ctx->gpr[1] + 0x74, _prod);\n"
-            "            if (_prod >= (uint32_t)ctx->gpr[25]) goto loc_00539F80;\n"
-            "            goto loc_00539CE0;\n"
+            f"            if (_prod >= (uint32_t)ctx->gpr[25]) goto {_zloc[1]};\n"
+            f"            goto {_zloc[2]};\n"
             "        }\n"
         )
-        source = source.replace("loc_00539EB0:\n", hook_code, 1)
+        source = source.replace(_zloc[0] + ":\n", hook_code, 1)
         source = 'struct ppu_context;\nextern "C" int cv_native_spu_inflate(ppu_context*);\n' + source
     source,_=play_time(source,args.region)
     source=modern_controls(source,args.region)

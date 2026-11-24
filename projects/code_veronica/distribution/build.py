@@ -45,7 +45,8 @@ def main():
             if not obj.is_file() or obj.stat().st_mtime<saved.stat().st_mtime:raise RuntimeError(f'Stale lifted object: {obj}')
             objects.append(obj);provenance.append(dict(source=str(source),generated_sha256=sha(fresh),object=str(obj),object_sha256=sha(obj)))
         for source in sorted((PORT/'spu').glob('*/spu_recomp.c')):
-            obj=old/'CMakeFiles/MyGameRecomp.dir/spu'/source.parent.name/'spu_recomp.c.obj'
+            fast_obj=old/'CMakeFiles/MyGameRecomp.dir/spu_opt'/source.parent.name/'spu_recomp.c.obj'
+            obj=fast_obj if fast_obj.is_file() else (old/'CMakeFiles/MyGameRecomp.dir/spu'/source.parent.name/'spu_recomp.c.obj')
             if not obj.is_file() or obj.stat().st_mtime<source.stat().st_mtime:raise RuntimeError(f'Stale SPU object: {obj}')
             objects.append(obj);provenance.append(dict(source=str(source),source_sha256=sha(source),object=str(obj),object_sha256=sha(obj)))
         copied=[]

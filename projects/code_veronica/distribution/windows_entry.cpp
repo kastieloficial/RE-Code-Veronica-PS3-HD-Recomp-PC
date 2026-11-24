@@ -27,7 +27,8 @@ static void clear_developer_environment() {
         L"PS3_POLLTOP",L"PS3_SPU_STAT",L"PS3_FLIPTRACE",L"PS3_SHOT_BURST",L"SPU_FAULT_DIR",
         L"SPU_MFC_STAGE_FAST",L"PERF",L"PERF_THREADS",L"HITCHDBG",L"FRAME_BUDGET",L"SRT_LOG",
         L"CV_PROFILE_RENDER",L"CV_TIMER_PROBE",L"CV_SMOOTH_LOG",L"CV_STATS",
-        L"CV_TITLE_PROBE",L"CV_TITLE_DIFFICULTY",L"CV_DRAW_SPIKE"};
+        L"CV_TITLE_PROBE",L"CV_TITLE_DIFFICULTY",L"CV_DRAW_SPIKE",
+        L"CV_FAST_DOOR_LOG",L"CV_FRUSTUM_LOG",L"CV_FRUSTUM_CULL"};
     for(auto name:names)_wputenv_s(name,L"");
     // Remove developer probes without iterating a mutating CRT environment.
     wchar_t* block=GetEnvironmentStringsW();std::vector<std::wstring> probes;
@@ -72,9 +73,9 @@ int WINAPI wWinMain(HINSTANCE,HINSTANCE,PWSTR,int) {
     // Buffered informational output avoids flushing every startup/progress line.
     // Error output stays immediately visible in the session log.
     setvbuf(stdout,nullptr,_IOFBF,65536);setvbuf(stderr,nullptr,_IONBF,0);
-    fprintf(stderr,"[distribution] Code Veronica PC v1.7.0; GUI executable; developer captures disabled\n");
+    fprintf(stderr,"[distribution] Code Veronica PC v2.0.0; GUI executable; developer captures disabled\n");
     cv_support::startup(CV_TITLE_ID);
-    fprintf(stderr,"[SUPPORT-BUILD] v1.7.0; lightweight startup/crash report; no frame sampling\n");
+    fprintf(stderr,"[SUPPORT-BUILD] v2.0.0; lightweight startup/crash report; no frame sampling\n");
     const int result=main(__argc,__argv);
     fflush(stdout);fflush(stderr);
     if(result)MessageBoxW(nullptr,L"O jogo nao iniciou corretamente. Consulte run-log.txt.\nThe game did not start correctly. See run-log.txt.",L"Code Veronica",MB_OK|MB_ICONERROR);

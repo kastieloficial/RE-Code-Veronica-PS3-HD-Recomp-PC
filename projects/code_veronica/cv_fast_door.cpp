@@ -37,31 +37,145 @@
 #include <mutex>
 #include <thread>
 
-#if !defined(CV_REGION_JP) && !defined(CV_REGION_US)
+#if defined(CV_REGION_US)
+#define CV_FD_FN_DOOR_DEMO       func_001AE078
+#define CV_FD_ORIG_DOOR_DEMO     cv_original_001AE078
+#define CV_FD_FN_MONITOR         func_001AF240
+#define CV_FD_ORIG_MONITOR       cv_original_001AF240
+#define CV_FD_FN_SND_MON         func_001B0FD8
+#define CV_FD_ORIG_SND_MON       cv_original_001B0FD8
+#define CV_FD_FN_MT_READ         func_00782710
+#define CV_FD_ORIG_MT_READ       cv_original_00782710
+#define CV_FD_FN_MT_READ_ASYNC   func_0078379C
+#define CV_FD_ORIG_MT_READ_ASYNC cv_original_0078379C
+#define CV_FD_FN_MT_SEEK         func_00783934
+#define CV_FD_FN_ZLIB_CTOR       func_00536B2C
+#define CV_FD_ORIG_ZLIB_CTOR     cv_original_00536B2C
+#define CV_FD_FN_ZLIB_DTOR       func_00537B4C
+#define CV_FD_ORIG_ZLIB_DTOR     cv_original_00537B4C
+#define CV_FD_FN_CALC_POINT4     func_001CD7B4
+#define CV_FD_ORIG_CALC_POINT4   cv_original_001CD7B4
+#define CV_FD_FN_KWAY_SORT       func_00285790
+#define CV_FD_ORIG_KWAY_SORT     cv_original_00285790
+#define CV_FD_FN_VTX_XFORM       func_001D14D0
+#define CV_FD_ORIG_VTX_XFORM     cv_original_001D14D0
+#define CV_FD_FN_MULTI_MATRIX    func_001CCB10
+#define CV_FD_ORIG_MULTI_MATRIX  cv_original_001CCB10
+#define CV_FD_FN_VTX_PACKER      func_004B8B00
+#define CV_FD_ORIG_VTX_PACKER    cv_original_004B8B00
+#define CV_FD_FN_VB_BUILDER      func_0001D5D0
+#define CV_FD_ORIG_VB_BUILDER    cv_original_0001D5D0
+#define CV_FD_FN_MERGE_SORT2     func_00284EB4
+#define CV_FD_ORIG_MERGE_SORT2   cv_original_00284EB4
+#define CV_FD_FN_DRAW_DESC_ALLOC func_0027CFD0
+#define CV_FD_ORIG_DRAW_DESC_ALLOC cv_original_0027CFD0
+#define CV_FD_FN_BUMP_ALLOC      func_000124F4
+#define CV_FD_ORIG_BUMP_ALLOC    cv_original_000124F4
+#define CV_FD_FN_TREE_TRAV       func_00547FBC
+#define CV_FD_ORIG_TREE_TRAV     cv_original_00547FBC
+#define CV_FD_FN_DRAW_MODEL      func_001D0208
+#define CV_FD_ORIG_DRAW_MODEL    cv_original_001D0208
+#elif defined(CV_REGION_JP)
+#define CV_FD_FN_DOOR_DEMO       func_001AE120
+#define CV_FD_ORIG_DOOR_DEMO     cv_original_001AE120
+#define CV_FD_FN_MONITOR         func_001AF2E8
+#define CV_FD_ORIG_MONITOR       cv_original_001AF2E8
+#define CV_FD_FN_SND_MON         func_001B1080
+#define CV_FD_ORIG_SND_MON       cv_original_001B1080
+#define CV_FD_FN_MT_READ         func_00783000
+#define CV_FD_ORIG_MT_READ       cv_original_00783000
+#define CV_FD_FN_MT_READ_ASYNC   func_0078408C
+#define CV_FD_ORIG_MT_READ_ASYNC cv_original_0078408C
+#define CV_FD_FN_MT_SEEK         func_00784224
+#define CV_FD_FN_ZLIB_CTOR       func_0053741C
+#define CV_FD_ORIG_ZLIB_CTOR     cv_original_0053741C
+#define CV_FD_FN_ZLIB_DTOR       func_0053843C
+#define CV_FD_ORIG_ZLIB_DTOR     cv_original_0053843C
+#define CV_FD_FN_CALC_POINT4     func_001CD934
+#define CV_FD_ORIG_CALC_POINT4   cv_original_001CD934
+#define CV_FD_FN_KWAY_SORT       func_00286080
+#define CV_FD_ORIG_KWAY_SORT     cv_original_00286080
+#define CV_FD_FN_VTX_XFORM       func_001D1650
+#define CV_FD_ORIG_VTX_XFORM     cv_original_001D1650
+#define CV_FD_FN_MULTI_MATRIX    func_001CCC90
+#define CV_FD_ORIG_MULTI_MATRIX  cv_original_001CCC90
+#define CV_FD_FN_VTX_PACKER      func_004B93F0
+#define CV_FD_ORIG_VTX_PACKER    cv_original_004B93F0
+#define CV_FD_FN_VB_BUILDER      func_0001D5D0
+#define CV_FD_ORIG_VB_BUILDER    cv_original_0001D5D0
+#define CV_FD_FN_MERGE_SORT2     func_002857A4
+#define CV_FD_ORIG_MERGE_SORT2   cv_original_002857A4
+#define CV_FD_FN_DRAW_DESC_ALLOC func_0027D8C0
+#define CV_FD_ORIG_DRAW_DESC_ALLOC cv_original_0027D8C0
+#define CV_FD_FN_BUMP_ALLOC      func_000124F4
+#define CV_FD_ORIG_BUMP_ALLOC    cv_original_000124F4
+#define CV_FD_FN_TREE_TRAV       func_005488AC
+#define CV_FD_ORIG_TREE_TRAV     cv_original_005488AC
+#define CV_FD_FN_DRAW_MODEL      func_001D0388
+#define CV_FD_ORIG_DRAW_MODEL    cv_original_001D0388
+#else /* EU */
+#define CV_FD_FN_DOOR_DEMO       func_001AFAE8
+#define CV_FD_ORIG_DOOR_DEMO     cv_original_001AFAE8
+#define CV_FD_FN_MONITOR         func_001B0CB0
+#define CV_FD_ORIG_MONITOR       cv_original_001B0CB0
+#define CV_FD_FN_SND_MON         func_001B2A48
+#define CV_FD_ORIG_SND_MON       cv_original_001B2A48
+#define CV_FD_FN_MT_READ         func_007846D0
+#define CV_FD_ORIG_MT_READ       cv_original_007846D0
+#define CV_FD_FN_MT_READ_ASYNC   func_0078575C
+#define CV_FD_ORIG_MT_READ_ASYNC cv_original_0078575C
+#define CV_FD_FN_MT_SEEK         func_007858F4
+#define CV_FD_FN_ZLIB_CTOR       func_00538AEC
+#define CV_FD_ORIG_ZLIB_CTOR     cv_original_00538AEC
+#define CV_FD_FN_ZLIB_DTOR       func_00539B0C
+#define CV_FD_ORIG_ZLIB_DTOR     cv_original_00539B0C
+#define CV_FD_FN_CALC_POINT4     func_001CF5D4
+#define CV_FD_ORIG_CALC_POINT4   cv_original_001CF5D4
+#define CV_FD_FN_KWAY_SORT       func_00287750
+#define CV_FD_ORIG_KWAY_SORT     cv_original_00287750
+#define CV_FD_FN_VTX_XFORM       func_001D32F0
+#define CV_FD_ORIG_VTX_XFORM     cv_original_001D32F0
+#define CV_FD_FN_MULTI_MATRIX    func_001CE930
+#define CV_FD_ORIG_MULTI_MATRIX  cv_original_001CE930
+#define CV_FD_FN_VTX_PACKER      func_004BAAC0
+#define CV_FD_ORIG_VTX_PACKER    cv_original_004BAAC0
+#define CV_FD_FN_VB_BUILDER      func_0001D5D0
+#define CV_FD_ORIG_VB_BUILDER    cv_original_0001D5D0
+#define CV_FD_FN_MERGE_SORT2     func_00286E74
+#define CV_FD_ORIG_MERGE_SORT2   cv_original_00286E74
+#define CV_FD_FN_DRAW_DESC_ALLOC func_0027EF90
+#define CV_FD_ORIG_DRAW_DESC_ALLOC cv_original_0027EF90
+#define CV_FD_FN_BUMP_ALLOC      func_000124F4
+#define CV_FD_ORIG_BUMP_ALLOC    cv_original_000124F4
+#define CV_FD_FN_TREE_TRAV       func_00549F7C
+#define CV_FD_ORIG_TREE_TRAV     cv_original_00549F7C
+#define CV_FD_FN_DRAW_MODEL      func_001D2028
+#define CV_FD_ORIG_DRAW_MODEL    cv_original_001D2028
+#endif
 
-void cv_original_001AFAE8(ppu_context* ctx); /* bhSysCallDoordemo */
-void cv_original_001B0CB0(ppu_context* ctx); /* bhSysCallMonitor */
-void cv_original_001B2A48(ppu_context* ctx); /* bhSysCallSndMonitor */
-void cv_original_007846D0(ppu_context* ctx); /* MtFile::read (sync/async) */
-void cv_original_0078575C(ppu_context* ctx); /* MtFile::readAsync */
-void cv_original_00538AEC(ppu_context* ctx); /* decodeProc zlib stream ctor */
-void cv_original_00539B0C(ppu_context* ctx); /* decodeProc zlib stream dtor */
-void cv_original_001CF5D4(ppu_context* ctx); /* njCalcPoint4 (mat4 * vec3) */
-void cv_original_00287750(ppu_context* ctx); /* K-way draw-call merge sort */
-void cv_original_001D32F0(ppu_context* ctx); /* vertex + normal + bbox transform */
-void cv_original_001CE930(ppu_context* ctx); /* njMultiMatrix (affine 3x4) */
-void cv_original_004BAAC0(ppu_context* ctx); /* vertex attribute packer (14 formats) */
-void cv_original_0001D5D0(ppu_context* ctx); /* vertex buffer builder (strips/lists) */
-void cv_original_00286E74(ppu_context* ctx); /* 2-way bottom-up merge sort (8B pairs) */
-void cv_original_0027EF90(ppu_context* ctx); /* vertex buffer + draw desc allocator */
-void cv_original_000124F4(ppu_context* ctx); /* atomic scratch bump allocator */
-void cv_original_00549F7C(ppu_context* ctx); /* recursive tree traversal */
-void cv_original_001D2028(ppu_context* ctx); /* njCnkDrawModel */
-void cv_ui_original_enqueue(ppu_context* ctx); /* UI/draw command vector push_back */
-void func_007858F4(ppu_context* ctx);        /* MtFile::seek(obj, off, origin) */
-void CV_FN_STOP_BANK(ppu_context* ctx);      /* (sound_mgr, bank_id) */
+void CV_FD_ORIG_DOOR_DEMO(ppu_context* ctx);      /* bhSysCallDoordemo */
+void CV_FD_ORIG_MONITOR(ppu_context* ctx);        /* bhSysCallMonitor */
+void CV_FD_ORIG_SND_MON(ppu_context* ctx);        /* bhSysCallSndMonitor */
+void CV_FD_ORIG_MT_READ(ppu_context* ctx);        /* MtFile::read (sync/async) */
+void CV_FD_ORIG_MT_READ_ASYNC(ppu_context* ctx);  /* MtFile::readAsync */
+void CV_FD_ORIG_ZLIB_CTOR(ppu_context* ctx);      /* decodeProc zlib stream ctor */
+void CV_FD_ORIG_ZLIB_DTOR(ppu_context* ctx);      /* decodeProc zlib stream dtor */
+void CV_FD_ORIG_CALC_POINT4(ppu_context* ctx);    /* njCalcPoint4 (mat4 * vec3) */
+void CV_FD_ORIG_KWAY_SORT(ppu_context* ctx);      /* K-way draw-call merge sort */
+void CV_FD_ORIG_VTX_XFORM(ppu_context* ctx);      /* vertex + normal + bbox transform */
+void CV_FD_ORIG_MULTI_MATRIX(ppu_context* ctx);   /* njMultiMatrix (affine 3x4) */
+void CV_FD_ORIG_VTX_PACKER(ppu_context* ctx);     /* vertex attribute packer (14 formats) */
+void CV_FD_ORIG_VB_BUILDER(ppu_context* ctx);     /* vertex buffer builder (strips/lists) */
+void CV_FD_ORIG_MERGE_SORT2(ppu_context* ctx);    /* 2-way bottom-up merge sort (8B pairs) */
+void CV_FD_ORIG_DRAW_DESC_ALLOC(ppu_context* ctx);/* vertex buffer + draw desc allocator */
+void CV_FD_ORIG_BUMP_ALLOC(ppu_context* ctx);     /* atomic scratch bump allocator */
+void CV_FD_ORIG_TREE_TRAV(ppu_context* ctx);      /* recursive tree traversal */
+void CV_FD_ORIG_DRAW_MODEL(ppu_context* ctx);     /* njCnkDrawModel */
+void cv_ui_original_enqueue(ppu_context* ctx);    /* UI/draw command vector push_back */
+void CV_FD_FN_MT_SEEK(ppu_context* ctx);          /* MtFile::seek(obj, off, origin) */
+void CV_FN_STOP_BANK(ppu_context* ctx);           /* (sound_mgr, bank_id) */
 
-void func_001B2A48(ppu_context* ctx);
+void CV_FD_FN_SND_MON(ppu_context* ctx);
 
 extern "C" uint8_t* vm_base;
 extern "C" void ps3_indirect_call(ppu_context* ctx);
@@ -74,8 +188,88 @@ static void cv_frustum_record_32f0(uint32_t count, bool all_offscreen);
 
 namespace {
 
-constexpr uint32_t kSysPtrAddr   = 0x00A89BD0u; /* EU: (0xA9 << 16) - 0x6430 */
-constexpr uint32_t kFileStatAddr = 0x00AD3E6Cu; /* EU: GetReadFileStatus() */
+#if defined(CV_REGION_US)
+constexpr uint32_t kSysPtrAddr   = 0x00A79BD0u;
+constexpr uint32_t kScratchMgr   = 0x00A73C68u;
+constexpr uint32_t kMatPtr       = 0x00AAEA44u;
+constexpr uint32_t kAspectX      = 0x00AAEA74u;
+constexpr uint32_t kAspectY      = 0x00AAEA78u;
+constexpr uint32_t kLastModel    = 0x00AAEAACu;
+constexpr uint32_t kCtxObj       = 0x00AAEAB0u;
+constexpr uint32_t kFileStatAddr = 0x00AC3B6Cu;
+constexpr uint32_t kProjD        = 0x00ACC810u;
+constexpr uint32_t kCullOn       = 0x00ADCB70u;
+constexpr uint32_t kNoCull       = 0x00ADCB78u;
+constexpr uint32_t kTrackBbox    = 0x00ADCBA0u;
+constexpr uint32_t kBboxCnt      = 0x00ADCBA4u;
+constexpr uint32_t kBboxMin      = 0x00ADCBB0u;
+constexpr uint32_t kBboxMax      = 0x00ADCBC0u;
+constexpr uint32_t kGlobalObj    = 0x00AEBADCu;
+constexpr uint32_t kAllocObj     = 0x00B30CCCu;
+constexpr uint32_t kDefCol       = 0x00BA10ECu;
+constexpr uint32_t kDefUv        = 0x00BA93ECu;
+constexpr uint32_t kDefNrm       = 0x00BA9550u;
+constexpr uint32_t kZNear        = 0x00CA7050u;
+constexpr uint32_t kZFar         = 0x00CA7054u;
+constexpr uint32_t kClipX        = 0x00CA7058u;
+constexpr uint32_t kClipY        = 0x00CA705Cu;
+constexpr uint32_t kVtxPackTab   = 0x004B8AB8u;
+constexpr uint32_t kNrmScale     = 0x0001D5CCu;
+#elif defined(CV_REGION_JP)
+constexpr uint32_t kSysPtrAddr   = 0x00A79C34u;
+constexpr uint32_t kScratchMgr   = 0x00A73C68u;
+constexpr uint32_t kMatPtr       = 0x00AAEB00u;
+constexpr uint32_t kAspectX      = 0x00AAEB30u;
+constexpr uint32_t kAspectY      = 0x00AAEB34u;
+constexpr uint32_t kLastModel    = 0x00AAEB68u;
+constexpr uint32_t kCtxObj       = 0x00AAEB6Cu;
+constexpr uint32_t kFileStatAddr = 0x00AC3BECu;
+constexpr uint32_t kProjD        = 0x00ACC890u;
+constexpr uint32_t kCullOn       = 0x00ADCBF0u;
+constexpr uint32_t kNoCull       = 0x00ADCBF8u;
+constexpr uint32_t kTrackBbox    = 0x00ADCC20u;
+constexpr uint32_t kBboxCnt      = 0x00ADCC24u;
+constexpr uint32_t kBboxMin      = 0x00ADCC30u;
+constexpr uint32_t kBboxMax      = 0x00ADCC40u;
+constexpr uint32_t kGlobalObj    = 0x00AEBB5Cu;
+constexpr uint32_t kAllocObj     = 0x00B30D4Cu;
+constexpr uint32_t kDefCol       = 0x00BA116Cu;
+constexpr uint32_t kDefUv        = 0x00BA946Cu;
+constexpr uint32_t kDefNrm       = 0x00BA95D0u;
+constexpr uint32_t kZNear        = 0x00CA70D0u;
+constexpr uint32_t kZFar         = 0x00CA70D4u;
+constexpr uint32_t kClipX        = 0x00CA70D8u;
+constexpr uint32_t kClipY        = 0x00CA70DCu;
+constexpr uint32_t kVtxPackTab   = 0x004B93A8u;
+constexpr uint32_t kNrmScale     = 0x0001D5CCu;
+#else /* EU */
+constexpr uint32_t kSysPtrAddr   = 0x00A89BD0u;
+constexpr uint32_t kScratchMgr   = 0x00A83C68u;
+constexpr uint32_t kMatPtr       = 0x00ABED90u;
+constexpr uint32_t kAspectX      = 0x00ABEDC0u;
+constexpr uint32_t kAspectY      = 0x00ABEDC4u;
+constexpr uint32_t kLastModel    = 0x00ABEDF8u;
+constexpr uint32_t kCtxObj       = 0x00ABEDFCu;
+constexpr uint32_t kFileStatAddr = 0x00AD3E6Cu;
+constexpr uint32_t kProjD        = 0x00ADCB10u;
+constexpr uint32_t kCullOn       = 0x00AECE70u;
+constexpr uint32_t kNoCull       = 0x00AECE78u;
+constexpr uint32_t kTrackBbox    = 0x00AECEA0u;
+constexpr uint32_t kBboxCnt      = 0x00AECEA4u;
+constexpr uint32_t kBboxMin      = 0x00AECEB0u;
+constexpr uint32_t kBboxMax      = 0x00AECEC0u;
+constexpr uint32_t kGlobalObj    = 0x00AFBDDCu;
+constexpr uint32_t kAllocObj     = 0x00B40FCCu;
+constexpr uint32_t kDefCol       = 0x00BB13ECu;
+constexpr uint32_t kDefUv        = 0x00BB96ECu;
+constexpr uint32_t kDefNrm       = 0x00BB9850u;
+constexpr uint32_t kZNear        = 0x00CB7350u;
+constexpr uint32_t kZFar         = 0x00CB7354u;
+constexpr uint32_t kClipX        = 0x00CB7358u;
+constexpr uint32_t kClipY        = 0x00CB735Cu;
+constexpr uint32_t kVtxPackTab   = 0x004BAA78u;
+constexpr uint32_t kNrmScale     = 0x0001D5CCu;
+#endif
 constexpr uint32_t kOffSsFlg     = 0x00050u;    /* bit 0x400000 = attract demo */
 constexpr uint32_t kOffTsFlg     = 0x00068u;    /* bit 0x800 = door ready */
 constexpr uint32_t kOffCbFlg     = 0x00074u;    /* bit 0x2 = screen fade active */
@@ -162,22 +356,37 @@ bool env_flag(const char* name, bool default_val)
     return v[0] != '0';
 }
 
+int env_tri(const char* name)
+{
+    const char* v = std::getenv(name);
+    if (!v || !*v) return -1;
+    return v[0] != '0' ? 1 : 0;
+}
+
 bool fast_door_enabled()
 {
-    static int cached_env = -1;
-    if (cached_env < 0) cached_env = env_flag("CV_FAST_DOOR", true) ? 1 : 0;
-    if (!cached_env) return false;
+    static int cached_env = -2;
+    if (cached_env == -2) cached_env = env_tri("CV_FAST_DOOR");
+    if (cached_env == 0) return false;
 
     static volatile unsigned char* door_flag = nullptr;
+    static volatile unsigned char* fast_flag = nullptr;
     if (!door_flag) door_flag = ps3_patch_flag("cv_door_skip");
-    return door_flag && (*door_flag != 0);
+    if (!fast_flag) fast_flag = ps3_patch_flag("cv_door_fast");
+    if (!door_flag || *door_flag == 0) return false;
+    if (cached_env == 1) return true;
+    return fast_flag && (*fast_flag != 0);
 }
 
 bool fast_fade_enabled()
 {
-    static int cached = -1;
-    if (cached < 0) cached = env_flag("CV_FAST_DOOR_FADE", false) ? 1 : 0;
-    return cached != 0;
+    static int cached_env = -2;
+    if (cached_env == -2) cached_env = env_tri("CV_FAST_DOOR_FADE");
+    if (cached_env >= 0) return cached_env != 0;
+
+    static volatile unsigned char* sup_flag = nullptr;
+    if (!sup_flag) sup_flag = ps3_patch_flag("cv_door_supreme");
+    return sup_flag && (*sup_flag != 0);
 }
 
 bool fast_sync_read_enabled()
@@ -270,9 +479,13 @@ static inline void write_bef32_fast(uint8_t* p, float f)
 
 bool fast_log_enabled()
 {
+#ifdef CV_DISTRIBUTION
+    return false;
+#else
     static int cached = -1;
-    if (cached < 0) cached = env_flag("CV_FAST_DOOR_LOG", true) ? 1 : 0;
+    if (cached < 0) cached = env_flag("CV_FAST_DOOR_LOG", false) ? 1 : 0;
     return cached != 0;
+#endif
 }
 
 uint32_t get_sys()
@@ -305,18 +518,13 @@ void snap_active_fade(uint32_t sys)
 
 void log_line(const char* line)
 {
+#ifdef CV_DISTRIBUTION
+    (void)line;
+#else
     if (!fast_log_enabled()) return;
-    static bool header_written = false;
     std::fprintf(stderr, "%s\n", line);
     std::fflush(stderr);
-    if (FILE* f = std::fopen("D:\\ps3recomp-fast-door\\door-profile.txt", "a")) {
-        if (!header_written) {
-            std::fprintf(f, "--- NEW SESSION (v5b: stop bank 9 + sync read + native x64 zlib fixed) ---\n");
-            header_written = true;
-        }
-        std::fprintf(f, "%s\n", line);
-        std::fclose(f);
-    }
+#endif
 }
 
 std::atomic<int> g_door_read_calls{0};
@@ -470,13 +678,13 @@ DoorProfiler g_prof;
 } // namespace
 
 /* Hook 1: bhSysCallDoordemo (EU 0x001AFAE8) */
-void func_001AFAE8(ppu_context* ctx)
+void CV_FD_FN_DOOR_DEMO(ppu_context* ctx)
 {
     const uint32_t sys = get_sys();
     const bool enabled = fast_door_enabled() && sys && !is_attract_demo(sys);
 
     if (!enabled) {
-        cv_original_001AFAE8(ctx);
+        CV_FD_ORIG_DOOR_DEMO(ctx);
         return;
     }
 
@@ -496,21 +704,21 @@ void func_001AFAE8(ppu_context* ctx)
         snap_active_fade(sys);
     }
 
-    cv_original_001AFAE8(ctx);
+    CV_FD_ORIG_DOOR_DEMO(ctx);
 
     if (mode0 == 10u && vm_read8(sys + kOffDoorMode0) == 11u) {
-        cv_original_001AFAE8(ctx);
+        CV_FD_ORIG_DOOR_DEMO(ctx);
     }
 }
 
 /* Hook 2: bhSysCallMonitor (EU 0x001B0CB0) */
-void func_001B0CB0(ppu_context* ctx)
+void CV_FD_FN_MONITOR(ppu_context* ctx)
 {
     const uint32_t sys = get_sys();
     const bool enabled = fast_door_enabled() && sys && !is_attract_demo(sys);
 
     if (!enabled) {
-        cv_original_001B0CB0(ctx);
+        CV_FD_ORIG_MONITOR(ctx);
         return;
     }
 
@@ -542,7 +750,7 @@ void func_001B0CB0(ppu_context* ctx)
             }
         }
 
-        cv_original_001B0CB0(ctx);
+        CV_FD_ORIG_MONITOR(ctx);
 
         const uint8_t after_md0 = vm_read8(sys + kOffMnMd0);
         const uint8_t after_md1 = vm_read8(sys + kOffMnMd1);
@@ -560,7 +768,7 @@ void func_001B0CB0(ppu_context* ctx)
         }
 
         if (after_md1 == 11u && before_md1 != 11u && (vm_read32(sys + kOffSdmFlg) & 0x1u)) {
-            func_001B2A48(ctx);
+            CV_FD_FN_SND_MON(ctx);
         }
 
         if (after_md0 == before_md0 && after_md1 == before_md1) {
@@ -582,13 +790,13 @@ void func_001B0CB0(ppu_context* ctx)
 }
 
 /* Hook 3: bhSysCallSndMonitor (EU 0x001B2A48) */
-void func_001B2A48(ppu_context* ctx)
+void CV_FD_FN_SND_MON(ppu_context* ctx)
 {
     const uint32_t sys = get_sys();
     const bool enabled = fast_door_enabled() && sys && !is_attract_demo(sys);
 
     if (!enabled) {
-        cv_original_001B2A48(ctx);
+        CV_FD_ORIG_SND_MON(ctx);
         return;
     }
 
@@ -603,7 +811,7 @@ void func_001B2A48(ppu_context* ctx)
         const uint32_t before_flg  = vm_read32(sys + kOffSdmFlg);
         const uint32_t before_mode = vm_read32(sys + kOffSdmMode);
 
-        cv_original_001B2A48(ctx);
+        CV_FD_ORIG_SND_MON(ctx);
 
         const uint32_t after_flg  = vm_read32(sys + kOffSdmFlg);
         const uint32_t after_mode = vm_read32(sys + kOffSdmMode);
@@ -618,61 +826,64 @@ void func_001B2A48(ppu_context* ctx)
 }
 
 /* Hook 4a: MtFile::read (EU 0x007846D0) */
-void func_007846D0(ppu_context* ctx)
+void CV_FD_FN_MT_READ(ppu_context* ctx)
 {
     const uint32_t obj = (uint32_t)ctx->gpr[3];
     if (!fast_sync_read_enabled() || !obj) {
-        cv_original_007846D0(ctx);
+        CV_FD_ORIG_MT_READ(ctx);
         return;
     }
 
-    const auto t0 = std::chrono::steady_clock::now();
+    const bool do_log = fast_log_enabled();
+    const auto t0 = do_log ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     const uint32_t flags = vm_read32(obj + 0x8);
     if ((flags & 4u) && vm_read8(obj + 0x42C) == 0) {
         const uint32_t pos = vm_read32(obj + 0x10);
         vm_write32(obj + 0x8, flags & ~4u);
         {
             GuestCall seek_call(ctx);
-            seek_call.run(func_007858F4, obj, pos, 1u);
+            seek_call.run(CV_FD_FN_MT_SEEK, obj, pos, 1u);
         }
-        cv_original_007846D0(ctx);
+        CV_FD_ORIG_MT_READ(ctx);
         vm_write32(obj + 0x8, flags);
         vm_write32(obj + 0x424, (uint32_t)ctx->gpr[3]);
         vm_write8(obj + 0x42C, 0u);
     } else {
-        cv_original_007846D0(ctx);
+        CV_FD_ORIG_MT_READ(ctx);
     }
 
-    const auto dt = std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::steady_clock::now() - t0).count();
-    g_door_read_calls.fetch_add(1, std::memory_order_relaxed);
-    g_door_read_us.fetch_add(dt, std::memory_order_relaxed);
+    if (do_log) {
+        const auto dt = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - t0).count();
+        g_door_read_calls.fetch_add(1, std::memory_order_relaxed);
+        g_door_read_us.fetch_add(dt, std::memory_order_relaxed);
+    }
 }
 
 /* Hook 4b: MtFile::readAsync (EU 0x0078575C) */
-void func_0078575C(ppu_context* ctx)
+void CV_FD_FN_MT_READ_ASYNC(ppu_context* ctx)
 {
-    cv_original_0078575C(ctx);
+    CV_FD_ORIG_MT_READ_ASYNC(ctx);
 }
 
 /* Hook 5a: decodeProc zlib stream ctor (EU 0x00538AEC) */
-void func_00538AEC(ppu_context* ctx)
+void CV_FD_FN_ZLIB_CTOR(ppu_context* ctx)
 {
     const uint32_t stream_addr = (uint32_t)ctx->gpr[3];
-    cv_original_00538AEC(ctx);
+    CV_FD_ORIG_ZLIB_CTOR(ctx);
     if (native_zlib_enabled() && stream_addr) {
         zlib_slot_create(stream_addr);
     }
 }
 
 /* Hook 5b: decodeProc zlib stream dtor (EU 0x00539B0C) */
-void func_00539B0C(ppu_context* ctx)
+void CV_FD_FN_ZLIB_DTOR(ppu_context* ctx)
 {
     const uint32_t stream_addr = (uint32_t)ctx->gpr[3];
     if (stream_addr) {
         zlib_slot_destroy(stream_addr);
     }
-    cv_original_00539B0C(ctx);
+    CV_FD_ORIG_ZLIB_DTOR(ctx);
 }
 
 /* Hook 5c: native x64 zlib inflate replacing SPU job at loc_00539EB0 */
@@ -685,7 +896,8 @@ extern "C" int cv_native_spu_inflate(ppu_context* ctx)
     NativeZlibSlot* slot = zlib_slot_find(stream_addr);
     if (!slot) return 0;
 
-    const auto t0 = std::chrono::steady_clock::now();
+    const bool do_log = fast_log_enabled();
+    const auto t0 = do_log ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
 
     const uint32_t next_in   = vm_read32(z_addr + 0x00);
     const uint32_t avail_in  = vm_read32(z_addr + 0x04);
@@ -734,18 +946,20 @@ extern "C" int cv_native_spu_inflate(ppu_context* ctx)
     vm_write32(z_addr + 0x14, total_out + out_used);
     vm_write32(stream_addr + 0xB8, (uint32_t)rc);
 
-    const auto dt = std::chrono::duration_cast<std::chrono::microseconds>(
-        std::chrono::steady_clock::now() - t0).count();
-    g_door_inflate_calls.fetch_add(1, std::memory_order_relaxed);
-    g_door_inflate_us.fetch_add(dt, std::memory_order_relaxed);
+    if (do_log) {
+        const auto dt = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - t0).count();
+        g_door_inflate_calls.fetch_add(1, std::memory_order_relaxed);
+        g_door_inflate_us.fetch_add(dt, std::memory_order_relaxed);
+    }
     return 1;
 }
 
 /* Hook 6: njCalcPoint4 (EU 0x001CF5D4) -- hot leaf mat4x4 * vec3 -> vec4 */
-void func_001CF5D4(ppu_context* ctx)
+void CV_FD_FN_CALC_POINT4(ppu_context* ctx)
 {
     if (!native_hot_enabled() || !vm_base) {
-        cv_original_001CF5D4(ctx);
+        CV_FD_ORIG_CALC_POINT4(ctx);
         return;
     }
 
@@ -753,7 +967,7 @@ void func_001CF5D4(ppu_context* ctx)
     const uint32_t src = (uint32_t)ctx->gpr[4];
     const uint32_t dst = (uint32_t)ctx->gpr[5];
     if (!mat) {
-        mat = read_be32_fast(vm_base + 0x00ABED90u); /* (0xAC << 16) - 0x1270 */
+        mat = read_be32_fast(vm_base + kMatPtr); /* (0xAC << 16) - 0x1270 */
     }
 
     const uint8_t* s = vm_base + src;
@@ -776,10 +990,10 @@ void func_001CF5D4(ppu_context* ctx)
 }
 
 /* Hook 7: K-way draw-call merge sort (EU 0x00287750) -- hot leaf on 1000+ draw rooms */
-void func_00287750(ppu_context* ctx)
+void CV_FD_FN_KWAY_SORT(ppu_context* ctx)
 {
     if (!native_hot_enabled() || !vm_base) {
-        cv_original_00287750(ctx);
+        CV_FD_ORIG_KWAY_SORT(ctx);
         return;
     }
 
@@ -790,7 +1004,7 @@ void func_00287750(ppu_context* ctx)
 
     if (count == 0) return;
     if (count > 32) {
-        cv_original_00287750(ctx);
+        CV_FD_ORIG_KWAY_SORT(ctx);
         return;
     }
 
@@ -834,17 +1048,17 @@ void func_00287750(ppu_context* ctx)
 }
 
 /* Hook 8: njMultiMatrix affine 3x4 (EU 0x001CE930) -- 3.8% of guest CPU */
-void func_001CE930(ppu_context* ctx)
+void CV_FD_FN_MULTI_MATRIX(ppu_context* ctx)
 {
     if (!native_hot_enabled() || !vm_base) {
-        cv_original_001CE930(ctx);
+        CV_FD_ORIG_MULTI_MATRIX(ctx);
         return;
     }
 
     uint32_t dst_addr = (uint32_t)ctx->gpr[3];
     const uint32_t src_addr = (uint32_t)ctx->gpr[4];
     if (!dst_addr) {
-        dst_addr = read_be32_fast(vm_base + 0x00ABED90u);
+        dst_addr = read_be32_fast(vm_base + kMatPtr);
     }
 
     uint8_t* a = vm_base + dst_addr;
@@ -880,7 +1094,7 @@ void func_001CE930(ppu_context* ctx)
 /* Hook 15 helper: atomic scratch bump allocator (EU 0x000124F4) -- 3.3% of guest CPU */
 static inline uint32_t cv_alloc_scratch_000124F4(uint32_t pool_idx, uint32_t size)
 {
-    const uint32_t mgr = read_be32_fast(vm_base + 0x00A83C68u); /* (0xA8<<16) + 0x3C68 */
+    const uint32_t mgr = read_be32_fast(vm_base + kScratchMgr); /* (0xA8<<16) + 0x3C68 */
     if (!mgr) return 0u;
 
     const uint32_t pool    = mgr + pool_idx * 24u;
@@ -908,26 +1122,26 @@ static inline uint32_t cv_alloc_scratch_000124F4(uint32_t pool_idx, uint32_t siz
     return base + old_cur;
 }
 
-void func_000124F4(ppu_context* ctx)
+void CV_FD_FN_BUMP_ALLOC(ppu_context* ctx)
 {
     if (!native_hot_enabled() || !vm_base) {
-        cv_original_000124F4(ctx);
+        CV_FD_ORIG_BUMP_ALLOC(ctx);
         return;
     }
     ctx->gpr[3] = cv_alloc_scratch_000124F4((uint32_t)ctx->gpr[3], (uint32_t)ctx->gpr[4]);
 }
 
 /* Hook 9: vertex + normal + bbox transform loop (EU 0x001D32F0) -- 6.6% of guest CPU */
-void func_001D32F0(ppu_context* ctx)
+void CV_FD_FN_VTX_XFORM(ppu_context* ctx)
 {
     if (!native_hot_enabled() || !vm_base) {
-        cv_original_001D32F0(ctx);
+        CV_FD_ORIG_VTX_XFORM(ctx);
         return;
     }
 
     const uint32_t mesh = (uint32_t)ctx->gpr[3];
     const uint32_t count = vm_read16(mesh + 0x6);
-    const uint32_t ctx_obj = read_be32_fast(vm_base + 0x00ABEDFCu); /* (0xAC << 16) - 0x1204 */
+    const uint32_t ctx_obj = read_be32_fast(vm_base + kCtxObj); /* (0xAC << 16) - 0x1204 */
     if (!ctx_obj) {
         ctx->gpr[3] = mesh + 0x40u + (count << 5);
         return;
@@ -947,7 +1161,7 @@ void func_001D32F0(ppu_context* ctx)
 
     if (count != 0) {
         uint8_t def_col_be[4];
-        std::memcpy(def_col_be, vm_base + 0x00BB13ECu, 4);
+        std::memcpy(def_col_be, vm_base + kDefCol, 4);
         uint8_t* col_p = vm_base + col_buf;
         for (uint32_t i = 0; i < count; ++i) {
             std::memcpy(col_p + i * 4u, def_col_be, 4);
@@ -957,35 +1171,35 @@ void func_001D32F0(ppu_context* ctx)
     vm_write8(ctx_obj + 0x18, 0u);
 
     if (count != 0) {
-        const uint32_t mat_addr = read_be32_fast(vm_base + 0x00ABED90u);
+        const uint32_t mat_addr = read_be32_fast(vm_base + kMatPtr);
         const uint8_t* m = vm_base + mat_addr;
         const float m00 = read_bef32_fast(m + 0x00), m01 = read_bef32_fast(m + 0x04), m02 = read_bef32_fast(m + 0x08);
         const float m10 = read_bef32_fast(m + 0x10), m11 = read_bef32_fast(m + 0x14), m12 = read_bef32_fast(m + 0x18);
         const float m20 = read_bef32_fast(m + 0x20), m21 = read_bef32_fast(m + 0x24), m22 = read_bef32_fast(m + 0x28);
         const float m30 = read_bef32_fast(m + 0x30), m31 = read_bef32_fast(m + 0x34), m32 = read_bef32_fast(m + 0x38);
 
-        const bool track_bbox = (read_be32_fast(vm_base + 0x00AECEA0u) == 1u);
+        const bool track_bbox = (read_be32_fast(vm_base + kTrackBbox) == 1u);
         float bmin[4] = {}, bmax[4] = {};
         uint32_t bcnt = 0;
         if (track_bbox) {
             for (int k = 0; k < 4; ++k) {
-                bmin[k] = read_bef32_fast(vm_base + 0x00AECEB0u + k * 4u);
-                bmax[k] = read_bef32_fast(vm_base + 0x00AECEC0u + k * 4u);
+                bmin[k] = read_bef32_fast(vm_base + kBboxMin + k * 4u);
+                bmax[k] = read_bef32_fast(vm_base + kBboxMax + k * 4u);
             }
-            bcnt = read_be32_fast(vm_base + 0x00AECEA4u);
+            bcnt = read_be32_fast(vm_base + kBboxCnt);
         }
 
         const uint8_t* vsrc = vm_base + mesh + 0x40u;
         uint8_t* pdst = vm_base + pos_buf;
         uint8_t* ndst = vm_base + norm_buf;
 
-        const bool flog = frustum_log_enabled() && (read_be32_fast(vm_base + 0x00AECE78u) == 0u);
+        const bool flog = frustum_log_enabled() && (read_be32_fast(vm_base + kNoCull) == 0u);
         uint32_t out_and = flog ? 0x3Fu : 0u;
-        const float f_zn = flog ? read_bef32_fast(vm_base + 0x00CB7350u) : 0.0f;
-        const float f_zf = flog ? read_bef32_fast(vm_base + 0x00CB7354u) : 0.0f;
-        const float f_cx = flog ? read_bef32_fast(vm_base + 0x00CB7358u) * 1.15f : 0.0f;
-        const float f_cy = flog ? read_bef32_fast(vm_base + 0x00CB735Cu) * 1.15f : 0.0f;
-        const float f_pd = flog ? read_bef32_fast(vm_base + 0x00ADCB10u) : 0.0f;
+        const float f_zn = flog ? read_bef32_fast(vm_base + kZNear) : 0.0f;
+        const float f_zf = flog ? read_bef32_fast(vm_base + kZFar) : 0.0f;
+        const float f_cx = flog ? read_bef32_fast(vm_base + kClipX) * 1.15f : 0.0f;
+        const float f_cy = flog ? read_bef32_fast(vm_base + kClipY) * 1.15f : 0.0f;
+        const float f_pd = flog ? read_bef32_fast(vm_base + kProjD) : 0.0f;
 
         for (uint32_t i = 0; i < count; ++i) {
             const uint8_t* v = vsrc + i * 0x20u;
@@ -1050,10 +1264,10 @@ void func_001D32F0(ppu_context* ctx)
 
         if (track_bbox) {
             for (int k = 0; k < 4; ++k) {
-                write_bef32_fast(vm_base + 0x00AECEB0u + k * 4u, bmin[k]);
-                write_bef32_fast(vm_base + 0x00AECEC0u + k * 4u, bmax[k]);
+                write_bef32_fast(vm_base + kBboxMin + k * 4u, bmin[k]);
+                write_bef32_fast(vm_base + kBboxMax + k * 4u, bmax[k]);
             }
-            vm_write32(0x00AECEA4u, bcnt);
+            vm_write32(kBboxCnt, bcnt);
         }
     }
 
@@ -1101,10 +1315,10 @@ void cv_fast_enqueue_00015AFC(ppu_context* ctx)
 }
 
 /* Hook 11: vertex buffer + draw descriptor fast allocator (EU 0x0027EF90) -- 4.0% of guest CPU */
-void func_0027EF90(ppu_context* ctx)
+void CV_FD_FN_DRAW_DESC_ALLOC(ppu_context* ctx)
 {
     if (!native_hot_enabled() || !vm_base) {
-        cv_original_0027EF90(ctx);
+        CV_FD_ORIG_DRAW_DESC_ALLOC(ctx);
         return;
     }
 
@@ -1121,19 +1335,19 @@ void func_0027EF90(ppu_context* ctx)
     const uint32_t vcur  = read_be32_fast(vm_base + obj + 0x1Cu);
     const uint32_t vend  = read_be32_fast(vm_base + obj + 0x24u);
     if (vcur + bytes > vend || vcur == 0u) {
-        cv_original_0027EF90(ctx);
+        CV_FD_ORIG_DRAW_DESC_ALLOC(ctx);
         return;
     }
 
     if ((uint32_t)vm_base[obj + 0x74u] != stride) {
-        cv_original_0027EF90(ctx);
+        CV_FD_ORIG_DRAW_DESC_ALLOC(ctx);
         return;
     }
 
     const uint32_t dcur = read_be32_fast(vm_base + obj + 0x14u);
     const uint32_t dend = read_be32_fast(vm_base + obj + 0x18u);
     if (dcur + 0x20u > dend) {
-        cv_original_0027EF90(ctx);
+        CV_FD_ORIG_DRAW_DESC_ALLOC(ctx);
         return;
     }
 
@@ -1180,10 +1394,10 @@ static inline uint32_t be_key_from_pair64(uint64_t entry)
 #endif
 }
 
-void func_00286E74(ppu_context* ctx)
+void CV_FD_FN_MERGE_SORT2(ppu_context* ctx)
 {
     if (!native_hot_enabled() || !vm_base) {
-        cv_original_00286E74(ctx);
+        CV_FD_ORIG_MERGE_SORT2(ctx);
         return;
     }
 
@@ -1292,7 +1506,7 @@ static inline uint32_t cv_pack_vertex_attr_impl(uint8_t* dst_base, uint32_t desc
     const uint32_t count   = (desc >> 14) & 0x7Fu;
     const uint32_t sbase   = (desc >> 10) & 0x0Fu;
     uint8_t* dst = dst_base + dst_off;
-    const uint8_t* ctab = vm_base + 0x004BAA78u; /* (0x4C << 16) - 21896 */
+    const uint8_t* ctab = vm_base + kVtxPackTab; /* (0x4C << 16) - 21896 */
 
     switch (fmt) {
     case 1: /* Float32 */
@@ -1470,10 +1684,10 @@ static inline uint32_t cv_pack_vertex_attr_impl(uint8_t* dst_base, uint32_t desc
     }
 }
 
-void func_004BAAC0(ppu_context* ctx)
+void CV_FD_FN_VTX_PACKER(ppu_context* ctx)
 {
     if (!native_hot_enabled() || !vm_base) {
-        cv_original_004BAAC0(ctx);
+        CV_FD_ORIG_VTX_PACKER(ctx);
         return;
     }
 
@@ -1488,11 +1702,11 @@ void func_004BAAC0(ppu_context* ctx)
         [src_ptr](uint32_t idx) -> float { return read_bef32_fast(src_ptr + idx * 4u); });
 }
 
-/* Hook 14: Vertex buffer builder (EU 0x0001D5D0) -- 4.3% of guest CPU, inlines func_004BAAC0 */
-void func_0001D5D0(ppu_context* ctx)
+/* Hook 14: Vertex buffer builder (EU 0x0001D5D0) -- 4.3% of guest CPU, inlines CV_FD_FN_VTX_PACKER */
+void CV_FD_FN_VB_BUILDER(ppu_context* ctx)
 {
     if (!native_hot_enabled() || !vm_base) {
-        cv_original_0001D5D0(ctx);
+        CV_FD_ORIG_VB_BUILDER(ctx);
         return;
     }
 
@@ -1502,7 +1716,7 @@ void func_0001D5D0(ppu_context* ctx)
     /* 1. Free existing vertex buffer if present */
     const uint32_t old_buf = read_be32_fast(vm_base + mesh + 0x34u);
     if (old_buf != 0u) {
-        const uint32_t alloc = read_be32_fast(vm_base + 0x00B40FCCu + 0x20u);
+        const uint32_t alloc = read_be32_fast(vm_base + kAllocObj + 0x20u);
         const uint32_t vt    = read_be32_fast(vm_base + alloc);
         const uint32_t fn    = read_be32_fast(vm_base + read_be32_fast(vm_base + vt + 0x28u));
         GuestCall call(ctx);
@@ -1512,7 +1726,7 @@ void func_0001D5D0(ppu_context* ctx)
 
     /* 2. Compute total vertex buffer size */
     const uint32_t num_groups  = read_be32_fast(vm_base + mesh + 0x04u);
-    const uint32_t global_obj  = read_be32_fast(vm_base + 0x00AFBDDCu); /* (0xB0<<16) - 0x4224 */
+    const uint32_t global_obj  = read_be32_fast(vm_base + kGlobalObj); /* (0xB0<<16) - 0x4224 */
     const uint32_t vfmt        = read_be32_fast(vm_base + global_obj + 0x208u);
     const uint32_t vtx_stride  = read_be32_fast(vm_base + vfmt + 0x20u);
     const bool     has_normals = (read_be32_fast(vm_base + geom_hdr + 0x10u) != 0u);
@@ -1531,7 +1745,7 @@ void func_0001D5D0(ppu_context* ctx)
     /* 3. Allocate new 16-byte-aligned vertex buffer */
     uint32_t dst_vbuf = 0u;
     {
-        const uint32_t alloc = read_be32_fast(vm_base + 0x00B40FCCu + 0x20u);
+        const uint32_t alloc = read_be32_fast(vm_base + kAllocObj + 0x20u);
         const uint32_t vt    = read_be32_fast(vm_base + alloc);
         const uint32_t fn    = read_be32_fast(vm_base + read_be32_fast(vm_base + vt + 0x1Cu));
         GuestCall call(ctx);
@@ -1548,12 +1762,12 @@ void func_0001D5D0(ppu_context* ctx)
 
     const uint32_t pos_base = read_be32_fast(vm_base + geom_hdr + 0x00u);
     const uint32_t nrm_base = read_be32_fast(vm_base + geom_hdr + 0x08u);
-    const uint8_t* def_nrm_p = vm_base + 0x00BB9850u; /* (0xBC<<16) - 26544 */
+    const uint8_t* def_nrm_p = vm_base + kDefNrm; /* (0xBC<<16) - 26544 */
     const float def_nrm[4] = {
         read_bef32_fast(def_nrm_p + 0x0u), read_bef32_fast(def_nrm_p + 0x4u),
         read_bef32_fast(def_nrm_p + 0x8u), read_bef32_fast(def_nrm_p + 0xCu)
     };
-    const uint8_t* def_uv_p = vm_base + 0x00BB96ECu; /* (0xBC<<16) - 26900 */
+    const uint8_t* def_uv_p = vm_base + kDefUv; /* (0xBC<<16) - 26900 */
     const float def_uv[2] = {
         read_bef32_fast(def_uv_p + 0x0u), read_bef32_fast(def_uv_p + 0x4u)
     };
@@ -1616,7 +1830,7 @@ void func_0001D5D0(ppu_context* ctx)
         }
     } else {
         /* Direct vertex list */
-        const float nrm_scale = read_bef32_fast(vm_base + 0x0001D5CCu); /* (0x2<<16) - 10804 */
+        const float nrm_scale = read_bef32_fast(vm_base + kNrmScale); /* (0x2<<16) - 10804 */
         for (uint32_t g = 0; g < num_groups; ++g) {
             const uint32_t grp_addr = groups_base + g * 0x10u;
             const uint32_t n_verts  = read_be32_fast(vm_base + grp_addr + 0x0u);
@@ -1709,10 +1923,10 @@ static uint32_t cv_tree_traverse_00549F7C(uint32_t tree_base, uint32_t node_val,
     return out_ptr;
 }
 
-void func_00549F7C(ppu_context* ctx)
+void CV_FD_FN_TREE_TRAV(ppu_context* ctx)
 {
     if (!native_hot_enabled() || !vm_base) {
-        cv_original_00549F7C(ctx);
+        CV_FD_ORIG_TREE_TRAV(ctx);
         return;
     }
 
@@ -1730,20 +1944,28 @@ void func_00549F7C(ppu_context* ctx)
  * ========================================================================= */
 static bool frustum_log_enabled()
 {
+#ifdef CV_DISTRIBUTION
+    return false;
+#else
     static const bool en = []() {
         const char* v = std::getenv("CV_FRUSTUM_LOG");
         return v && v[0] && std::strcmp(v, "0") != 0;
     }();
     return en;
+#endif
 }
 
 static bool frustum_cull_enabled()
 {
+#ifdef CV_DISTRIBUTION
+    return false;
+#else
     static const bool en = []() {
         const char* v = std::getenv("CV_FRUSTUM_CULL");
         return v && v[0] && std::strcmp(v, "0") != 0;
     }();
     return en;
+#endif
 }
 
 struct FrustumStats {
@@ -1797,37 +2019,37 @@ static bool sphere_outside_frustum_15(float cx, float cy, float cz, float r,
     return false;
 }
 
-void func_001D2028(ppu_context* ctx)
+void CV_FD_FN_DRAW_MODEL(ppu_context* ctx)
 {
     const bool do_log  = frustum_log_enabled();
     const bool do_cull = frustum_cull_enabled();
     if ((!do_log && !do_cull) || !vm_base) {
-        cv_original_001D2028(ctx);
+        CV_FD_ORIG_DRAW_MODEL(ctx);
         return;
     }
 
     const uint32_t model = (uint32_t)ctx->gpr[3];
     if (!model) {
-        cv_original_001D2028(ctx);
+        CV_FD_ORIG_DRAW_MODEL(ctx);
         return;
     }
 
-    const uint32_t cull_on = read_be32_fast(vm_base + 0x00AECE70u);
-    const uint32_t no_cull = read_be32_fast(vm_base + 0x00AECE78u);
-    const uint32_t bbox_on = read_be32_fast(vm_base + 0x00AECEA0u);
+    const uint32_t cull_on = read_be32_fast(vm_base + kCullOn);
+    const uint32_t no_cull = read_be32_fast(vm_base + kNoCull);
+    const uint32_t bbox_on = read_be32_fast(vm_base + kTrackBbox);
     const float r          = read_bef32_fast(vm_base + model + 0x14u);
 
-    const float z_near = read_bef32_fast(vm_base + 0x00CB7350u);
-    const float z_far  = read_bef32_fast(vm_base + 0x00CB7354u);
-    const float clip_x = read_bef32_fast(vm_base + 0x00CB7358u);
-    const float clip_y = read_bef32_fast(vm_base + 0x00CB735Cu);
-    const float proj_d = read_bef32_fast(vm_base + 0x00ADCB10u);
-    const float ax     = read_bef32_fast(vm_base + 0x00ABEDC0u);
-    const float ay     = read_bef32_fast(vm_base + 0x00ABEDC4u);
+    const float z_near = read_bef32_fast(vm_base + kZNear);
+    const float z_far  = read_bef32_fast(vm_base + kZFar);
+    const float clip_x = read_bef32_fast(vm_base + kClipX);
+    const float clip_y = read_bef32_fast(vm_base + kClipY);
+    const float proj_d = read_bef32_fast(vm_base + kProjD);
+    const float ax     = read_bef32_fast(vm_base + kAspectX);
+    const float ay     = read_bef32_fast(vm_base + kAspectY);
 
     bool outside = false;
     if (no_cull == 0u && bbox_on == 0u && r > 0.0f) {
-        const uint32_t mat_addr = read_be32_fast(vm_base + 0x00ABED90u);
+        const uint32_t mat_addr = read_be32_fast(vm_base + kMatPtr);
         if (mat_addr) {
             const uint8_t* m = vm_base + mat_addr;
             const float x = read_bef32_fast(vm_base + model + 0x08u);
@@ -1841,7 +2063,7 @@ void func_001D2028(ppu_context* ctx)
     }
 
     if (do_cull && outside) {
-        write_be32_fast(vm_base + 0x00ABEDF8u, model);
+        write_be32_fast(vm_base + kLastModel, model);
         ctx->gpr[3] = 0;
         if (do_log) {
             g_fstats.calls++;
@@ -1850,7 +2072,7 @@ void func_001D2028(ppu_context* ctx)
         return;
     }
 
-    cv_original_001D2028(ctx);
+    CV_FD_ORIG_DRAW_MODEL(ctx);
 
     if (do_log) {
         g_fstats.calls++;
@@ -1890,5 +2112,3 @@ void func_001D2028(ppu_context* ctx)
         }
     }
 }
-
-#endif /* EU */

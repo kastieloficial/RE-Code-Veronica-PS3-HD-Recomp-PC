@@ -579,26 +579,135 @@ static void pfd_path(const char* save_path, char* out, size_t n)
 #endif
 }
 
+static u16 sfo_rd16_le(const u8* p) { return (u16)p[0] | ((u16)p[1] << 8); }
+static u32 sfo_rd32_le(const u8* p) { return (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24); }
+
+/* Parse an RPCS3/PS3 binary PARAM.SFO (\0PSF). If `out_param` is non-NULL,
+ * fills TITLE/SUB_TITLE/DETAIL/ATTRIBUTE/SAVEDATA_LIST_PARAM. If `secure_name`
+ * is non-NULL, returns 1 when key "*<secure_name>" has non-zero u32 value
+ * (RPCS3's SECUREFILE marker). Returns -1 if the file is not a binary PSF. */
+static int sfo_parse_binary(const char* save_path, CellSaveDataSystemFileParam* out_param,
+                            const char* secure_name)
+{
+    char sfo_path[1024];
+    snprintf(sfo_path, sizeof(sfo_path), "%s/PARAM.SFO", save_path);
+#ifdef _WIN32
+    for (char* p = sfo_path; *p; p++) if (*p == '/') *p = '\\';
+#endif
+    FILE* fp = save_fopen(sfo_path, "rb");
+    if (!fp) return -1;
+    u8 hdr[20];
+    if (fread(hdr, 1, 20, fp) != 20 || hdr[0] != 0x00 || hdr[1] != 'P' || hdr[2] != 'S' || hdr[3] != 'F') {
+        fclose(fp);
+        return -1;
+    }
+    if (fseek(fp, 0, SEEK_END) != 0) { fclose(fp); return -1; }
+    long fsz = ftell(fp);
+    if (fsz < 20 || fsz > 1024 * 1024 || fseek(fp, 0, SEEK_SET) != 0) { fclose(fp); return -1; }
+    u8* buf = (u8*)malloc((size_t)fsz);
+    if (!buf) { fclose(fp); return -1; }
+    if (fread(buf, 1, (size_t)fsz, fp) != (size_t)fsz) { free(buf); fclose(fp); return -1; }
+    fclose(fp);
+
+    const u32 key_off = sfo_rd32_le(buf + 8);
+    const u32 dat_off = sfo_rd32_le(buf + 12);
+    const u32 count   = sfo_rd32_le(buf + 16);
+    const u32 total   = (u32)fsz;
+    int secure_found = 0;
+
+    for (u32 i = 0; i < count; i++) {
+        const u32 eoff = 20u + i * 16u;
+        if (eoff + 16u > total) break;
+        const u32 ko  = sfo_rd16_le(buf + eoff + 0);
+        const u16 fmt = sfo_rd16_le(buf + eoff + 2);
+        const u32 len = sfo_rd32_le(buf + eoff + 4);
+        const u32 doff = sfo_rd32_le(buf + eoff + 12);
+        if (key_off + ko >= total || dat_off + doff > total) continue;
+        u32 avail = total - (dat_off + doff);
+        u32 vlen = (len < avail) ? len : avail;
+        const char* k = (const char*)(buf + key_off + ko);
+        /* Ensure key is NUL-terminated inside buffer */
+        if (!memchr(k, '\0', total - (key_off + ko))) continue;
+        const u8* v = buf + dat_off + doff;
+
+        if (secure_name && k[0] == '*' && strcmp(k + 1, secure_name) == 0) {
+            if (fmt == 0x0404 && vlen >= 4 && sfo_rd32_le(v) != 0)
+                secure_found = 1;
+        }
+        if (out_param) {
+            if (strcmp(k, "TITLE") == 0 && (fmt == 0x0204 || fmt == 0x0004)) {
+                size_t n = vlen < CELL_SAVEDATA_SYSP_TITLE_SIZE - 1 ? vlen : CELL_SAVEDATA_SYSP_TITLE_SIZE - 1;
+                memcpy(out_param->title, v, n); out_param->title[n] = '\0';
+            } else if (strcmp(k, "SUB_TITLE") == 0 && (fmt == 0x0204 || fmt == 0x0004)) {
+                size_t n = vlen < CELL_SAVEDATA_SYSP_SUBTITLE_SIZE - 1 ? vlen : CELL_SAVEDATA_SYSP_SUBTITLE_SIZE - 1;
+                memcpy(out_param->subTitle, v, n); out_param->subTitle[n] = '\0';
+            } else if (strcmp(k, "DETAIL") == 0 && (fmt == 0x0204 || fmt == 0x0004)) {
+                size_t n = vlen < CELL_SAVEDATA_SYSP_DETAIL_SIZE - 1 ? vlen : CELL_SAVEDATA_SYSP_DETAIL_SIZE - 1;
+                memcpy(out_param->detail, v, n); out_param->detail[n] = '\0';
+            } else if (strcmp(k, "ATTRIBUTE") == 0 && fmt == 0x0404 && vlen >= 4) {
+                out_param->attribute = sfo_rd32_le(v);
+            } else if ((strcmp(k, "SAVEDATA_LIST_PARAM") == 0 || strcmp(k, "LIST_PARAM") == 0) &&
+                       (fmt == 0x0204 || fmt == 0x0004)) {
+                size_t n = vlen < CELL_SAVEDATA_SYSP_LPARAM_SIZE - 1 ? vlen : CELL_SAVEDATA_SYSP_LPARAM_SIZE - 1;
+                memcpy(out_param->listParam, v, n); out_param->listParam[n] = '\0';
+            }
+        }
+    }
+    free(buf);
+    return secure_found;
+}
+
+static int pfd_is_binary(FILE* fp)
+{
+    u8 sig[8];
+    if (fread(sig, 1, 8, fp) == 8 &&
+        sig[0] == 0 && sig[1] == 0 && sig[2] == 0 && sig[3] == 0 &&
+        sig[4] == 'P' && sig[5] == 'F' && sig[6] == 'D' && sig[7] == 'B') {
+        return 1;
+    }
+    rewind(fp);
+    return 0;
+}
+
 static int pfd_has(const char* save_path, const char* name)
 {
     char path[1024], line[64];
     pfd_path(save_path, path, sizeof(path));
     FILE* fp = save_fopen(path, "rb");
-    if (!fp) return 0;
-    int found = 0;
-    while (!found && fgets(line, sizeof(line), fp)) {
-        line[strcspn(line, "\r\n")] = 0;
-        found = !strcmp(line, name);
+    if (fp) {
+        if (!pfd_is_binary(fp)) {
+            int found = 0;
+            while (!found && fgets(line, sizeof(line), fp)) {
+                line[strcspn(line, "\r\n")] = 0;
+                found = !strcmp(line, name);
+            }
+            fclose(fp);
+            return found;
+        }
+        fclose(fp);
     }
-    fclose(fp);
-    return found;
+    /* RPCS3 / decrypted PS3 saves mark SECUREFILE entries as "*<name> = 1" in binary PARAM.SFO. */
+    int r = sfo_parse_binary(save_path, NULL, name);
+    return (r > 0) ? 1 : 0;
 }
 
 static void pfd_add(const char* save_path, const char* name)
 {
-    if (pfd_has(save_path, name)) return;
     char path[1024];
     pfd_path(save_path, path, sizeof(path));
+    /* If a binary PS3 PARAM.PFD was present from an imported save, replace it
+     * with our plain-text index on re-save instead of appending text to binary. */
+    FILE* chk = save_fopen(path, "rb");
+    if (chk) {
+        int bin = pfd_is_binary(chk);
+        fclose(chk);
+        if (bin) {
+            FILE* fw = save_fopen(path, "wb");
+            if (fw) { fprintf(fw, "%s\n", name); fclose(fw); }
+            return;
+        }
+    }
+    if (pfd_has(save_path, name)) return;
     FILE* fp = save_fopen(path, "ab");
     if (fp) { fprintf(fp, "%s\n", name); fclose(fp); }
 }
@@ -816,11 +925,14 @@ static void write_param_sfo(const char* save_path, const CellSaveDataSystemFileP
     fclose(fp);
 }
 
-/* Read simplified PARAM.SFO */
+/* Read PARAM.SFO (both RPCS3/PS3 binary \0PSF and simplified text format) */
 static void read_param_sfo(const char* save_path, CellSaveDataSystemFileParam* param)
 {
     if (!param) return;
     memset(param, 0, sizeof(CellSaveDataSystemFileParam));
+
+    /* Try standard PS3/RPCS3 binary PSF format first. */
+    if (sfo_parse_binary(save_path, param, NULL) >= 0) return;
 
     char sfo_path[1024];
     snprintf(sfo_path, sizeof(sfo_path), "%s/PARAM.SFO", save_path);

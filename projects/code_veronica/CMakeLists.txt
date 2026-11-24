@@ -396,22 +396,22 @@ endif()
 # draws a plain banner and the exe keeps the default icon.
 if(WIN32)
     set(CV_MENU_SOURCE native_pc_menu.cpp)
+    # Native zlib 1.3.2 (used by cv_fast_door.cpp inflate and appearance tools).
+    add_library(cv_appearance_zlib STATIC
+        "${PS3RECOMP_DIR}/third_party/zlib/adler32.c"
+        "${PS3RECOMP_DIR}/third_party/zlib/compress.c"
+        "${PS3RECOMP_DIR}/third_party/zlib/crc32.c"
+        "${PS3RECOMP_DIR}/third_party/zlib/deflate.c"
+        "${PS3RECOMP_DIR}/third_party/zlib/inffast.c"
+        "${PS3RECOMP_DIR}/third_party/zlib/inflate.c"
+        "${PS3RECOMP_DIR}/third_party/zlib/inftrees.c"
+        "${PS3RECOMP_DIR}/third_party/zlib/trees.c"
+        "${PS3RECOMP_DIR}/third_party/zlib/zutil.c")
+    target_include_directories(cv_appearance_zlib PUBLIC "${PS3RECOMP_DIR}/third_party/zlib")
+    target_compile_definitions(cv_appearance_zlib PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_link_libraries(${PROJECT_NAME} PRIVATE cv_appearance_zlib)
     if(CV_APPEARANCE OR CV_CHARACTERS)
         set(CV_MENU_SOURCE cv_appearance_menu.cpp)
-        # Only the encoder is used; decoding remains in the bounded ARC reader.
-        add_library(cv_appearance_zlib STATIC
-            "${PS3RECOMP_DIR}/third_party/zlib/adler32.c"
-            "${PS3RECOMP_DIR}/third_party/zlib/compress.c"
-            "${PS3RECOMP_DIR}/third_party/zlib/crc32.c"
-            "${PS3RECOMP_DIR}/third_party/zlib/deflate.c"
-            "${PS3RECOMP_DIR}/third_party/zlib/inffast.c"
-            "${PS3RECOMP_DIR}/third_party/zlib/inflate.c"
-            "${PS3RECOMP_DIR}/third_party/zlib/inftrees.c"
-            "${PS3RECOMP_DIR}/third_party/zlib/trees.c"
-            "${PS3RECOMP_DIR}/third_party/zlib/zutil.c")
-        target_include_directories(cv_appearance_zlib PUBLIC "${PS3RECOMP_DIR}/third_party/zlib")
-        target_compile_definitions(cv_appearance_zlib PRIVATE _CRT_SECURE_NO_WARNINGS)
-        target_link_libraries(${PROJECT_NAME} PRIVATE cv_appearance_zlib)
         add_executable(code_veronica_appearance_prepare_tests EXCLUDE_FROM_ALL
             tests/test_appearance_prepare.cpp cv_appearance_prepare.cpp
             cv_appearance_assets.cpp cv_appearance_mesh.cpp
