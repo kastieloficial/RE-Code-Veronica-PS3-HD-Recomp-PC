@@ -2232,13 +2232,15 @@ static void gcm_rsx_process_fifo_unlocked(void)
                 continue;
             }
             /* Fast path for normal 3D subchannel 0 blocks when no per-word debug/alt engines are active. */
-            { static int s_fast_subch0 = -1, s_fast_tconst = -1;
+            { static int s_fast_subch0 = -1, s_fast_tconst = -1, s_fast_draw = -1;
+              extern volatile int g_rsx_cap_request;
               if (s_fast_subch0 < 0) {
                   s_fast_subch0 = (!getenv("GCM_SUBCH7") && !getenv("GCM_OBJDBG") && !getenv("GCM_SUBCH_GATE") &&
                                    !getenv("GCM_VAL_WATCH") && !getenv("RSX_LIVE_FEED_DBG") &&
                                    !rsx_live_draw_enabled() && !rsx_draw_engine_enabled()) ? 1 : 0;
                   s_fast_tconst = (s_fast_subch0 && !getenv("TCONST_DBG") && !getenv("SEQ_DBG") &&
                                    !getenv("RSX_TRACE") && !getenv("LOAD_DBG")) ? 1 : 0;
+                  s_fast_draw   = (s_fast_tconst && !getenv("MVPDBG")) ? 1 : 0;
               }
               if (s_fast_subch0 && subch == 0 && count > 0) {
                   const u32 io_first = s_fifo_getoff + 4u;
@@ -2246,6 +2248,36 @@ static void gcm_rsx_process_fifo_unlocked(void)
                   if ((io_first >> 20) == (io_last >> 20)) {
                       const u32 base_ea = gcm_io2ea(io_first);
                       if (base_ea) {
+                          if (s_fast_draw && !g_rsx_cap_request && method == NV4097_DRAW_ARRAYS && (type == 2 || count == 1u)) {
+                              rsx_backend* bk = rsx_get_backend();
+                              if (bk && bk->draw_arrays) {
+                                  for (u32 i = 0; i < count; i++) {
+                                      const u32 val = vm_read32(base_ea + (i << 2));
+                                      bk->draw_arrays(bk->userdata, s_state.primitive_type,
+                                                      val & 0xFFFFFFu, ((val >> 24) & 0xFFu) + 1u);
+                                  }
+                                  s_fifo_getoff += 4u + (count << 2);
+                                  continue;
+                              }
+                          }
+                          if (s_fast_draw && !g_rsx_cap_request && method == NV4097_SET_BEGIN_END && count == 1u) {
+                              const u32 val = vm_read32(base_ea);
+                              if (val == 0) {
+                                  s_state.in_begin_end = 0;
+                                  s_fifo_getoff += 8u;
+                                  continue;
+                              }
+                              if ((s_state.surface_dirty | s_state.viewport_dirty | s_state.blend_dirty |
+                                   s_state.depth_dirty | s_state.stencil_dirty | s_state.color_mask_dirty |
+                                   s_state.alpha_dirty | s_state.shader_dirty | s_state.vertex_dirty |
+                                   s_state.texture_dirty) == 0) {
+                                  s_state.primitive_type = val;
+                                  s_state.in_begin_end = 1;
+                                  s_state.begin_epoch++;
+                                  s_fifo_getoff += 8u;
+                                  continue;
+                              }
+                          }
                           if (s_fast_tconst && type == 0 && method == NV4097_SET_TRANSFORM_CONSTANT_LOAD && count == 1u) {
                               s_state.transform_constant_load = vm_read32(base_ea);
                               s_fifo_getoff += 8u;
@@ -2262,8 +2294,7 @@ static void gcm_rsx_process_fifo_unlocked(void)
                                       changed = 1;
                                   }
                               }
-                              s_state.vertex_dirty = 1;
-                              if (changed) s_state.va_gen++;
+                              if (changed) { s_state.vertex_dirty = 1; s_state.va_gen++; }
                               s_fifo_getoff += 4u + (count << 2);
                               continue;
                           }
@@ -2284,8 +2315,7 @@ static void gcm_rsx_process_fifo_unlocked(void)
                                       changed = 1;
                                   }
                               }
-                              s_state.vertex_dirty = 1;
-                              if (changed) s_state.va_gen++;
+                              if (changed) { s_state.vertex_dirty = 1; s_state.va_gen++; }
                               s_fifo_getoff += 4u + (count << 2);
                               continue;
                           }

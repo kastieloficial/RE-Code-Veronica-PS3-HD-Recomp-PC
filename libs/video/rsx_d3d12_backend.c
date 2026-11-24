@@ -4429,6 +4429,9 @@ static u32 s_vtex_fast_off[RSX_MAX_VERTEX_TEXTURES], s_vtex_fast_fmt[RSX_MAX_VER
 static u32 s_vtex_fast_rect[RSX_MAX_VERTEX_TEXTURES], s_vtex_fast_ctrl3[RSX_MAX_VERTEX_TEXTURES];
 static u32 s_vtex_fast_ctrl0[RSX_MAX_VERTEX_TEXTURES];
 static struct { u32 fmt, w, h, row_bytes, data_off, hash; } s_vtex_fast_out[RSX_MAX_VERTEX_TEXTURES];
+typedef struct { u32 ea, len, span, fmt, w, h, row_bytes, hash; } VTexPrev;
+static VTexPrev s_vtex_prev[16];
+static u32 s_vtex_prev_n = 0;
 
 static void vtex_record(D3D12DrawRecord* dr, const rsx_state* st)
 {
@@ -4488,6 +4491,7 @@ static void vtex_record(D3D12DrawRecord* dr, const rsx_state* st)
             { static int ep = -1; if (ep < 0) { const char* e = getenv("VTEX_EPOCH"); ep = (e && *e == '0') ? 0 : 1; }
               if (ep && q->epoch == g_gcm_drain_epoch) { reuse = i; s_vtex_skip++; break; } }
             if (!vm_range_written(ea, span)) { reuse = i; s_vtex_skip++; q->epoch = g_gcm_drain_epoch; break; }
+            if (q->data_off == 0xFFFFFFFFu) { vm_range_watch_reset(ea, span); reuse = -2; break; }
             vm_range_watch_reset(ea, span);   /* before reading: later writes stay visible */
             const u8* a = s_vtex_arena + q->data_off;
             int same = 1;
@@ -4497,6 +4501,26 @@ static void vtex_record(D3D12DrawRecord* dr, const rsx_state* st)
                 same = !memcmp(a + (size_t)y * row, src + (size_t)y * pitch, row);
             reuse = same ? i : -2;   /* only the latest copy counts */
             if (same) q->epoch = g_gcm_drain_epoch;
+        }
+        /* Cross-frame zero-copy shortcut: if the exact guest range was uploaded
+         * last frame (still resident in VTEX_CACHE=256) and Windows write-watch
+         * confirms zero pages were modified since, skip the 2 MB copy + hash. */
+        if (reuse == -1 && s_ww_ok == 1 && s_vtex_prev_n > 0 && s_vtex_prev_n <= 16) {
+            for (u32 pi = 0; pi < s_vtex_prev_n; pi++) {
+                const VTexPrev* p = &s_vtex_prev[pi];
+                if (p->ea == ea && p->len == len && p->span == span &&
+                    p->fmt == fmt && p->w == w && p->h == h && p->row_bytes == row) {
+                    if (!vm_range_written(ea, span)) {
+                        if (s_vtex_nsnap == 16) { memmove(s_vtex_snap, s_vtex_snap + 1, 15 * sizeof(VTexSnap)); s_vtex_nsnap = 15; }
+                        s_vtex_snap[s_vtex_nsnap].ea = ea; s_vtex_snap[s_vtex_nsnap].len = len;
+                        s_vtex_snap[s_vtex_nsnap].data_off = 0xFFFFFFFFu; s_vtex_snap[s_vtex_nsnap].hash = p->hash;
+                        s_vtex_snap[s_vtex_nsnap].epoch = g_gcm_drain_epoch;
+                        reuse = (int)s_vtex_nsnap++;
+                        s_vtex_skip++;
+                    }
+                    break;
+                }
+            }
         }
         if (reuse >= 0) {
             dr->vtx[u].fmt = fmt; dr->vtx[u].w = w; dr->vtx[u].h = h;
@@ -4517,14 +4541,35 @@ static void vtex_record(D3D12DrawRecord* dr, const rsx_state* st)
         s_vtex_copy_bytes += len;
         if (pitch == row) memcpy(dst, src, len);
         else for (u32 y = 0; y < h; y++) memcpy(dst + (size_t)y * row, src + (size_t)y * pitch, row);
-        u64 hh = 1469598103934665603ull;   /* FNV-1a over 8-byte words */
-        for (u32 i = 0; i + 8 <= len; i += 8) { u64 v; memcpy(&v, dst + i, 8); hh ^= v; hh *= 1099511628211ull; }
+        /* 4-way parallel unrolled FNV-1a breaks serial mul latency on 2 MB buffers. */
+        u64 h0 = 1469598103934665603ull, h1 = 0x9E3779B97F4A7C15ull,
+            h2 = 0xBF58476D1CE4E5B9ull, h3 = 0x94D049BB133111EBull;
+        u32 i = 0;
+        for (; i + 32 <= len; i += 32) {
+            u64 v0, v1, v2, v3;
+            memcpy(&v0, dst + i,      8); h0 = (h0 ^ v0) * 1099511628211ull;
+            memcpy(&v1, dst + i + 8,  8); h1 = (h1 ^ v1) * 1099511628211ull;
+            memcpy(&v2, dst + i + 16, 8); h2 = (h2 ^ v2) * 1099511628211ull;
+            memcpy(&v3, dst + i + 24, 8); h3 = (h3 ^ v3) * 1099511628211ull;
+        }
+        u64 hh = h0 ^ (h1 * 0x100000001B3ull) ^ (h2 * 0x517CC1B727220A95ull) ^ (h3 * 0x9E3779B97F4A7C15ull);
+        for (; i + 8 <= len; i += 8) { u64 v; memcpy(&v, dst + i, 8); hh = (hh ^ v) * 1099511628211ull; }
         u32 hash = (u32)(hh ^ (hh >> 32)) ^ fmt ^ (w << 16) ^ h;
         if (s_vtex_nsnap == 16) { memmove(s_vtex_snap, s_vtex_snap + 1, 15 * sizeof(VTexSnap)); s_vtex_nsnap = 15; }
         s_vtex_snap[s_vtex_nsnap].ea = ea; s_vtex_snap[s_vtex_nsnap].len = len;
         s_vtex_snap[s_vtex_nsnap].data_off = s_vtex_arena_used; s_vtex_snap[s_vtex_nsnap].hash = hash;
         s_vtex_snap[s_vtex_nsnap].epoch = g_gcm_drain_epoch;
         s_vtex_nsnap++;
+        /* Record in cross-frame table (overwrite matching ea or append). */
+        { u32 pi = 0;
+          for (; pi < s_vtex_prev_n; pi++) if (s_vtex_prev[pi].ea == ea && s_vtex_prev[pi].len == len) break;
+          if (pi == s_vtex_prev_n) {
+              if (s_vtex_prev_n == 16) { memmove(s_vtex_prev, s_vtex_prev + 1, 15 * sizeof(VTexPrev)); s_vtex_prev_n = 15; }
+              pi = s_vtex_prev_n++;
+          }
+          s_vtex_prev[pi].ea = ea; s_vtex_prev[pi].len = len; s_vtex_prev[pi].span = span;
+          s_vtex_prev[pi].fmt = fmt; s_vtex_prev[pi].w = w; s_vtex_prev[pi].h = h;
+          s_vtex_prev[pi].row_bytes = row; s_vtex_prev[pi].hash = hash; }
         dr->vtx[u].fmt = fmt; dr->vtx[u].w = w; dr->vtx[u].h = h;
         dr->vtx[u].hash = hash;
         dr->vtx[u].row_bytes = row; dr->vtx[u].data_off = s_vtex_arena_used;
@@ -8641,7 +8686,7 @@ static int s_srv_last_win = -1;
 typedef struct { SrvReq rq[FP_TEX_UNITS]; int win; } SrvWinCacheEntry;
 static SrvWinCacheEntry s_srv_ring[16];
 static int s_srv_ring_n = 0, s_srv_ring_last = 0;
-static u64 s_srv_reused = 0, s_srv_written = 0, s_em_merged = 0;
+static u64 s_srv_reused = 0, s_srv_written = 0, s_em_merged = 0, s_vf_batched = 0, s_vf_flushes_win = 0;
 static void srv_req_ex(SrvReq* r, ID3D12Resource* res, DXGI_FORMAT fmt, UINT mapping, int cube)
 {
     r->res = res; r->fmt = (u32)fmt; r->map = mapping; r->cube = (u32)cube; r->pad = 0;
@@ -8901,6 +8946,11 @@ static ID3D12Resource* vtex_get(const D3D12DrawRecord* dr, u32 u)
     }
     int slot = same_i >= 0 ? same_i : free_i >= 0 ? free_i : old_i;
     if (slot < 0) return NULL;                       /* every entry bound this frame */
+    if (dr->vtx[u].data_off == 0xFFFFFFFFu) {
+        static int _zm = 0;
+        if (_zm++ < 4) fprintf(stderr, "[VTEX-ZCOPY-MISS] hash=0x%08X %ux%u fmt=0x%02X%c", hash, w, h, dr->vtx[u].fmt, 10);
+        return NULL;
+    }
     VTexEntry* e = &s_vtex_cache[slot];
     ID3D12Resource* tex = NULL;
     D3D12_RESOURCE_DESC td = {0};
@@ -13208,11 +13258,12 @@ static void render_frame_impl(void)
               fprintf(stderr, "[PERF-VCB] vertex constants: %u banks written, %u reused"
                               " | vertices: %llu converted, %llu reused"
                               " | texture windows: %llu written, %llu reused"
-                              " | early-merged: %llu%c",
+                              " | early-merged: %llu | vf: %llu flushes, %llu batched%c",
                       s_vcb_copied, s_vcb_reused, s_vmemo_miss, s_vmemo_hits,
-                      s_srv_written, s_srv_reused, (unsigned long long)s_em_merged, 10);
+                      s_srv_written, s_srv_reused, (unsigned long long)s_em_merged,
+                      (unsigned long long)s_vf_flushes_win, (unsigned long long)s_vf_batched, 10);
               s_vcb_copied = 0; s_vcb_reused = 0; s_vmemo_miss = 0; s_vmemo_hits = 0;
-              s_srv_written = 0; s_srv_reused = 0; s_em_merged = 0;
+              s_srv_written = 0; s_srv_reused = 0; s_em_merged = 0; s_vf_flushes_win = 0; s_vf_batched = 0;
               { LONG hh = InterlockedExchange(&s_shc_hits, 0), mm = InterlockedExchange(&s_shc_miss, 0);
                 LONG pl = InterlockedExchange(&s_plib_loaded, 0);
                 LONG ab = InterlockedExchange(&s_fp_async_built, 0), as = InterlockedExchange(&s_fp_async_skips, 0);
@@ -14572,7 +14623,40 @@ static void vp_fetch_begin(const rsx_state* state)
 #define VF_RANGE_MAX (4u << 20)   /* larger ranges: converted here instead */
 static int s_vf_cur = -1;
 static const rsx_state* s_vf_state;
+static u32 s_vf_epoch = 0;
 static u32 s_vf_vmin, s_vf_vmax, s_vf_rmin, s_vf_rmax;
+static int vf_batch_on(void)
+{
+    static int on = -1;
+    if (on < 0) { const char* e = getenv("CV_VF_BATCH"); on = !(e && e[0] == '0' && !e[1]); }
+    return on;
+}
+/* Draw-level descriptor coalescing for non-indexed draws: reuse the open
+ * descriptor when va_gen/state/drain-epoch match and the new draw's guest
+ * vertex range is within 64 vertices of the open range (total span <= 4096),
+ * avoiding thousands of 512-byte WC descriptor writes and small copies/frame. */
+static void vf_prepare_range(const rsx_state* state, u32 v_lo, u32 v_hi)
+{
+    extern volatile u32 g_gcm_drain_epoch;
+    if (s_vf_cur >= 0) {
+        const u32 nmin = (v_lo < s_vf_vmin) ? v_lo : s_vf_vmin;
+        const u32 nmax = (v_hi > s_vf_vmax) ? v_hi : s_vf_vmax;
+        if (!vf_batch_on() || s_vf_state != state || s_vf_epoch != g_gcm_drain_epoch ||
+            v_lo > s_vf_vmax + 64u || s_vf_vmin > v_hi + 64u || (nmax - nmin) > 4096u) {
+            vf_flush();
+        } else {
+            s_vf_batched++;
+        }
+    }
+    if (s_vf_cur < 0) {
+        if (s_vf_ndesc >= VF_DESC_MAX) {
+            static int w = 0; if (w++ < 4) fprintf(stderr, "[VFETCH] descriptor table full%c", 10);
+            s_vf_ndesc = VF_DESC_MAX - 1;
+        }
+        s_vf_cur = (int)s_vf_ndesc++; s_vf_state = state; s_vf_epoch = g_gcm_drain_epoch;
+        s_vf_vmin = s_vf_rmin = ~0u; s_vf_vmax = s_vf_rmax = 0;
+    }
+}
 static u8* vf_parity_base(void) { return s_vf_mapped + (u64)s_d3d.vp_parity * vf_parity_bytes(); }
 static void pose_note_raw_vertex(const rsx_state* state,VPSlot* dst,u32 vi);
 static u32 s_vf_nflush, s_vf_nfall, s_vf_nchecked, s_vf_maxdesc, s_vf_maxarena;
@@ -14596,13 +14680,14 @@ static void vf_note(const rsx_state* state, VPSlot* dst, u32 vi)
         memcpy(dst, &vi, 4);   /* a local copy (quads): vp_put places it */
         return;
     }
-    if (s_vf_cur >= 0 && s_vf_state != state) vf_flush();
+    extern volatile u32 g_gcm_drain_epoch;
+    if (s_vf_cur >= 0 && (s_vf_state != state || s_vf_epoch != g_gcm_drain_epoch)) vf_flush();
     if (s_vf_cur < 0) {
         if (s_vf_ndesc >= VF_DESC_MAX) {
             static int w = 0; if (w++ < 4) fprintf(stderr, "[VFETCH] descriptor table full%c", 10);
             s_vf_ndesc = VF_DESC_MAX - 1;
         }
-        s_vf_cur = (int)s_vf_ndesc++; s_vf_state = state;
+        s_vf_cur = (int)s_vf_ndesc++; s_vf_state = state; s_vf_epoch = g_gcm_drain_epoch;
         s_vf_vmin = s_vf_rmin = ~0u; s_vf_vmax = s_vf_rmax = 0;
     }
     const u32 r = (u32)(((u8*)dst - vb) / VP_VERT_STRIDE);
@@ -14737,7 +14822,7 @@ static void vf_flush(void)
     if (s_vf_cur < 0) return;
     const int cur = s_vf_cur; s_vf_cur = -1;
     const rsx_state* st = s_vf_state;
-    s_vf_nflush++;
+    s_vf_nflush++; s_vf_flushes_win++;
     rsx_fetch_plan local;
     rsx_fetch_plan* plan = &s_vplan;
     if (s_vplan_state != st) { rsx_fetch_plan_build(st, &local); plan = &local; }
@@ -15026,12 +15111,7 @@ static u32 upload_tris_vp(const rsx_state* state, u32 first, u32 count)
     { double _tv = perf_on() ? perf_now() : 0.0;
       if (s_vf_mapped && !vf_pose_enabled() && count > 0) {
           const u32 v_lo = first, v_hi = first + count - 1;
-          if (s_vf_cur >= 0 && s_vf_state != state) vf_flush();
-          if (s_vf_cur < 0) {
-              if (s_vf_ndesc >= VF_DESC_MAX) { s_vf_ndesc = VF_DESC_MAX - 1; }
-              s_vf_cur = (int)s_vf_ndesc++; s_vf_state = state;
-              s_vf_vmin = s_vf_rmin = ~0u; s_vf_vmax = s_vf_rmax = 0;
-          }
+          vf_prepare_range(state, v_lo, v_hi);
           const u32 r0 = s_d3d.vp_vb_offset / VP_VERT_STRIDE;
           const u32 cur_u = (u32)s_vf_cur;
           u32* rec = (u32*)vf_parity_base() + (u64)r0 * 2;
@@ -15111,12 +15191,7 @@ static u32 upload_strip_vp_from(const rsx_state* state, u32 first, u32 count, in
     if (s_vf_mapped && !vf_pose_enabled() && t_begin < tris) {
         const u32 v_lo = fan ? first : (first + t_begin);
         const u32 v_hi = first + tris + 1;
-        if (s_vf_cur >= 0 && s_vf_state != state) vf_flush();
-        if (s_vf_cur < 0) {
-            if (s_vf_ndesc >= VF_DESC_MAX) { s_vf_ndesc = VF_DESC_MAX - 1; }
-            s_vf_cur = (int)s_vf_ndesc++; s_vf_state = state;
-            s_vf_vmin = s_vf_rmin = ~0u; s_vf_vmax = s_vf_rmax = 0;
-        }
+        vf_prepare_range(state, v_lo, v_hi);
         const u32 r0 = s_d3d.vp_vb_offset / VP_VERT_STRIDE;
         const u32 cur_u = (u32)s_vf_cur;
         u32* rec = (u32*)vf_parity_base() + (u64)r0 * 2;
@@ -15593,7 +15668,13 @@ static void early_merge_note(const rsx_state* st)
 static void d3d12_draw_arrays_impl(void* ud, u32 primitive, u32 first, u32 count);
 static void d3d12_draw_arrays(void* ud, u32 primitive, u32 first, u32 count)
 {
-    ps3_tl_begin(9); d3d12_draw_arrays_impl(ud, primitive, first, count); vf_flush(); ps3_tl_end(9);
+    ps3_tl_begin(9);
+    d3d12_draw_arrays_impl(ud, primitive, first, count);
+    if (!vf_batch_on() || (primitive != RSX_PRIMITIVE_TRIANGLES &&
+                           primitive != RSX_PRIMITIVE_TRIANGLE_STRIP &&
+                           primitive != RSX_PRIMITIVE_TRIANGLE_FAN))
+        vf_flush();
+    ps3_tl_end(9);
 }
 static void d3d12_draw_arrays_impl(void* ud, u32 primitive, u32 first, u32 count)
 {
@@ -15629,6 +15710,7 @@ static void d3d12_draw_arrays_impl(void* ud, u32 primitive, u32 first, u32 count
          * VP's MVP transform, so the cube was drawn in object space and clipped
          * off-screen. Untextured VP draws now render via the colour PSO. */
         if (s_d3d.vp_vb_mapped && s_d3d.vp_root_sig) {
+            vf_flush();
             u32 rec = s_d3d.vp_vb_offset;
             ps3_tl_begin(8);
             u32 emitted = upload_quads_vp(s_d3d.current_rsx_state, first, count);
@@ -15914,7 +15996,7 @@ static void d3d12_draw_arrays_impl(void* ud, u32 primitive, u32 first, u32 count
 static void d3d12_draw_indexed_impl(void* ud, u32 primitive, u32 first, u32 count);
 static void d3d12_draw_indexed(void* ud, u32 primitive, u32 first, u32 count)
 {
-    ps3_tl_begin(9); d3d12_draw_indexed_impl(ud, primitive, first, count); vf_flush(); ps3_tl_end(9);
+    ps3_tl_begin(9); vf_flush(); d3d12_draw_indexed_impl(ud, primitive, first, count); vf_flush(); ps3_tl_end(9);
 }
 static void d3d12_draw_indexed_impl(void* ud, u32 primitive, u32 first, u32 count)
 {
