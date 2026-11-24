@@ -586,7 +586,7 @@ void build(const cv_srt_state& st,const Config& cfg,uint32_t width,uint32_t heig
         c.text(cfg.words[13],16,5,logical_width-32,14,c.cream,false,false,false,34);
     } else {
         if(cfg.name) {const float photo=c.character(st.character,18,y)?32.f:0.f;c.text(character_name(st.character),18+photo,y,268-photo,17,c.cream,true,false,false,24);c.line(18,y+25,286,y+25,Color(255,67,39,35));y+=28;}
-        static const uint32_t colors[]={0xff79bb91,0xffd7bd66,0xffdc914e,0xffe36461,0xffbf8bea,0xffb0a5bf,0xffb65955};
+        static const uint32_t colors[]={0xff79bb91,0xffd7bd66,0xffdc914e,0xffe36461,0xffc41a94,0xffc41a94,0xffb65955};
         const int condition=std::clamp(st.condition,0,6);const Color state_color(colors[condition]);
         if(cfg.health) {
             const float ratio=st.maximum>0?float(st.hp)/st.maximum:0;
@@ -595,7 +595,7 @@ void build(const cv_srt_state& st,const Config& cfg,uint32_t width,uint32_t heig
             c.text(number(st.hp)+L" / "+number(st.maximum),80,y,137,24,c.cream,false,true,true,28);
             c.text(number(pct)+L"%",222,y,64,17,state_color,false,true,false,28);
             c.bar(18,y+32,268,11,ratio,state_color);
-            const int word=condition==SRT_FINE?7:condition<=SRT_WARNING?8:condition==SRT_DANGER?9:condition==SRT_POISON?10:condition==SRT_GAS?11:12;
+            const int word=condition==SRT_FINE?7:condition<=SRT_WARNING?8:condition==SRT_DANGER?9:(condition==SRT_POISON||condition==SRT_GAS)?10:12;
             c.text(upper(cfg.words[word]),196,y+57,90,14,state_color,true,false,false,34,false,false,false,true);
             ecg_y=y+72;ecg_color=state_color.GetValue();
             for(int row=-1;row<=1;row++)c.line(18,y+72+row*12.f,184,y+72+row*12.f,Color(35,110,120,110),.5f);
