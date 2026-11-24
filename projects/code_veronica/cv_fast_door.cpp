@@ -29,6 +29,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -54,6 +55,7 @@ void cv_original_00286E74(ppu_context* ctx); /* 2-way bottom-up merge sort (8B p
 void cv_original_0027EF90(ppu_context* ctx); /* vertex buffer + draw desc allocator */
 void cv_original_000124F4(ppu_context* ctx); /* atomic scratch bump allocator */
 void cv_original_00549F7C(ppu_context* ctx); /* recursive tree traversal */
+void cv_original_001D2028(ppu_context* ctx); /* njCnkDrawModel */
 void cv_ui_original_enqueue(ppu_context* ctx); /* UI/draw command vector push_back */
 void func_007858F4(ppu_context* ctx);        /* MtFile::seek(obj, off, origin) */
 void CV_FN_STOP_BANK(ppu_context* ctx);      /* (sound_mgr, bank_id) */
@@ -65,6 +67,9 @@ extern "C" void ps3_indirect_call(ppu_context* ctx);
 extern "C" PPU_THREAD_LOCAL ppu_context* g_active_ctx;
 extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 extern "C" volatile unsigned char* ps3_patch_flag(const char* name);
+
+static bool frustum_log_enabled();
+static void cv_frustum_record_32f0(uint32_t count, bool all_offscreen);
 
 namespace {
 
@@ -957,6 +962,14 @@ void func_001D32F0(ppu_context* ctx)
         uint8_t* pdst = vm_base + pos_buf;
         uint8_t* ndst = vm_base + norm_buf;
 
+        const bool flog = frustum_log_enabled() && (read_be32_fast(vm_base + 0x00AECE78u) == 0u);
+        uint32_t out_and = flog ? 0x3Fu : 0u;
+        const float f_zn = flog ? read_bef32_fast(vm_base + 0x00CB7350u) : 0.0f;
+        const float f_zf = flog ? read_bef32_fast(vm_base + 0x00CB7354u) : 0.0f;
+        const float f_cx = flog ? read_bef32_fast(vm_base + 0x00CB7358u) * 1.15f : 0.0f;
+        const float f_cy = flog ? read_bef32_fast(vm_base + 0x00CB735Cu) * 1.15f : 0.0f;
+        const float f_pd = flog ? read_bef32_fast(vm_base + 0x00ADCB10u) : 0.0f;
+
         for (uint32_t i = 0; i < count; ++i) {
             const uint8_t* v = vsrc + i * 0x20u;
             const float x = read_bef32_fast(v + 0x00);
@@ -966,6 +979,22 @@ void func_001D32F0(ppu_context* ctx)
             const float px = m00 * x + m10 * y + m20 * z + m30;
             const float py = m01 * x + m11 * y + m21 * z + m31;
             const float pz = m02 * x + m12 * y + m22 * z + m32;
+
+            if (out_and) {
+                uint32_t oc = 0u;
+                if (pz < f_zn) oc |= 1u;
+                if (pz > f_zf) oc |= 2u;
+                if (std::fabs(pz) >= 1e-4f) {
+                    const float inv_z = std::fabs(f_pd / pz);
+                    const float sx = px * inv_z;
+                    const float sy = py * inv_z;
+                    if (sx < -f_cx) oc |= 4u;
+                    if (sx >  f_cx) oc |= 8u;
+                    if (sy < -f_cy) oc |= 16u;
+                    if (sy >  f_cy) oc |= 32u;
+                }
+                out_and &= oc;
+            }
 
             uint8_t* po = pdst + i * 0x10u;
             write_bef32_fast(po + 0x0, px);
@@ -996,6 +1025,10 @@ void func_001D32F0(ppu_context* ctx)
             write_bef32_fast(no + 0x0, tnx);
             write_bef32_fast(no + 0x4, tny);
             write_bef32_fast(no + 0x8, tnz);
+        }
+
+        if (flog) {
+            cv_frustum_record_32f0(count, out_and != 0u);
         }
 
         if (track_bbox) {
@@ -1673,6 +1706,172 @@ void func_00549F7C(ppu_context* ctx)
     const uint32_t tree_base = read_be32_fast(vm_base + obj + 0x48u);
 
     ctx->gpr[3] = cv_tree_traverse_00549F7C(tree_base, node_val, entries, out_ptr);
+}
+
+/* =========================================================================
+ * Hook 15: Frustum Culling Telemetry + Safe Culling (EU 0x001D2028 njCnkDrawModel)
+ * ========================================================================= */
+static bool frustum_log_enabled()
+{
+    static const bool en = []() {
+        const char* v = std::getenv("CV_FRUSTUM_LOG");
+        return v && v[0] && std::strcmp(v, "0") != 0;
+    }();
+    return en;
+}
+
+static bool frustum_cull_enabled()
+{
+    static const bool en = []() {
+        const char* v = std::getenv("CV_FRUSTUM_CULL");
+        return v && v[0] && std::strcmp(v, "0") != 0;
+    }();
+    return en;
+}
+
+struct FrustumStats {
+    uint64_t calls = 0;
+    uint64_t game_culled = 0;
+    uint64_t our_culled = 0;
+    uint64_t flag_off = 0;
+    uint64_t no_cull = 0;
+    uint64_t bbox_on = 0;
+    uint64_t r_zero = 0;
+    uint64_t would_cull_15 = 0;
+    uint64_t v32f0_calls = 0;
+    uint64_t v32f0_offscreen = 0;
+    uint64_t v32f0_verts = 0;
+    uint64_t v32f0_offscreen_verts = 0;
+    std::chrono::steady_clock::time_point last_log = std::chrono::steady_clock::now();
+};
+static FrustumStats g_fstats;
+
+static void cv_frustum_record_32f0(uint32_t count, bool all_offscreen)
+{
+    g_fstats.v32f0_calls++;
+    g_fstats.v32f0_verts += count;
+    if (all_offscreen) {
+        g_fstats.v32f0_offscreen++;
+        g_fstats.v32f0_offscreen_verts += count;
+    }
+}
+
+static bool sphere_outside_frustum_15(float cx, float cy, float cz, float r,
+                                      float z_near, float z_far,
+                                      float clip_x, float clip_y,
+                                      float proj_d, float ax, float ay)
+{
+    if (!(r > 0.0f) || std::isnan(cx) || std::isnan(cy) || std::isnan(cz) || std::isnan(r))
+        return false;
+    const float rp = r * 1.15f;
+    if (cz + rp < z_near) return true;
+    if (z_far < cz - rp)  return true;
+    if (std::fabs(cz) < 1e-4f) return false;
+    const float inv_z = std::fabs(proj_d / cz);
+    const float sx = cx * inv_z;
+    const float sr = rp * inv_z;
+    const float cx_lim = clip_x * 1.15f;
+    if (sx + sr * ax < -cx_lim) return true;
+    if (cx_lim < sx - sr * ax)  return true;
+    const float sy = cy * inv_z;
+    const float cy_lim = clip_y * 1.15f;
+    if (sy + sr * ay < -cy_lim) return true;
+    if (cy_lim < sy - sr * ay)  return true;
+    return false;
+}
+
+void func_001D2028(ppu_context* ctx)
+{
+    const bool do_log  = frustum_log_enabled();
+    const bool do_cull = frustum_cull_enabled();
+    if ((!do_log && !do_cull) || !vm_base) {
+        cv_original_001D2028(ctx);
+        return;
+    }
+
+    const uint32_t model = (uint32_t)ctx->gpr[3];
+    if (!model) {
+        cv_original_001D2028(ctx);
+        return;
+    }
+
+    const uint32_t cull_on = read_be32_fast(vm_base + 0x00AECE70u);
+    const uint32_t no_cull = read_be32_fast(vm_base + 0x00AECE78u);
+    const uint32_t bbox_on = read_be32_fast(vm_base + 0x00AECEA0u);
+    const float r          = read_bef32_fast(vm_base + model + 0x14u);
+
+    const float z_near = read_bef32_fast(vm_base + 0x00CB7350u);
+    const float z_far  = read_bef32_fast(vm_base + 0x00CB7354u);
+    const float clip_x = read_bef32_fast(vm_base + 0x00CB7358u);
+    const float clip_y = read_bef32_fast(vm_base + 0x00CB735Cu);
+    const float proj_d = read_bef32_fast(vm_base + 0x00ADCB10u);
+    const float ax     = read_bef32_fast(vm_base + 0x00ABEDC0u);
+    const float ay     = read_bef32_fast(vm_base + 0x00ABEDC4u);
+
+    bool outside = false;
+    if (no_cull == 0u && bbox_on == 0u && r > 0.0f) {
+        const uint32_t mat_addr = read_be32_fast(vm_base + 0x00ABED90u);
+        if (mat_addr) {
+            const uint8_t* m = vm_base + mat_addr;
+            const float x = read_bef32_fast(vm_base + model + 0x08u);
+            const float y = read_bef32_fast(vm_base + model + 0x0Cu);
+            const float z = read_bef32_fast(vm_base + model + 0x10u);
+            const float cx = read_bef32_fast(m + 0x00) * x + read_bef32_fast(m + 0x10) * y + read_bef32_fast(m + 0x20) * z + read_bef32_fast(m + 0x30);
+            const float cy = read_bef32_fast(m + 0x04) * x + read_bef32_fast(m + 0x14) * y + read_bef32_fast(m + 0x24) * z + read_bef32_fast(m + 0x34);
+            const float cz = read_bef32_fast(m + 0x08) * x + read_bef32_fast(m + 0x18) * y + read_bef32_fast(m + 0x28) * z + read_bef32_fast(m + 0x38);
+            outside = sphere_outside_frustum_15(cx, cy, cz, r, z_near, z_far, clip_x, clip_y, proj_d, ax, ay);
+        }
+    }
+
+    if (do_cull && outside) {
+        write_be32_fast(vm_base + 0x00ABEDF8u, model);
+        ctx->gpr[3] = 0;
+        if (do_log) {
+            g_fstats.calls++;
+            g_fstats.our_culled++;
+        }
+        return;
+    }
+
+    cv_original_001D2028(ctx);
+
+    if (do_log) {
+        g_fstats.calls++;
+        if (ctx->gpr[3] == 0) g_fstats.game_culled++;
+        if (cull_on == 0u)    g_fstats.flag_off++;
+        if (no_cull != 0u)    g_fstats.no_cull++;
+        if (bbox_on != 0u)    g_fstats.bbox_on++;
+        if (!(r > 0.0f))      g_fstats.r_zero++;
+        if (outside && ctx->gpr[3] != 0) g_fstats.would_cull_15++;
+
+        if ((g_fstats.calls & 0xFFu) == 0u) {
+            auto now = std::chrono::steady_clock::now();
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - g_fstats.last_log).count();
+            if (ms >= 2000) {
+                std::fprintf(stderr,
+                    "[FRUSTUM] 1D2028 calls=%llu game_cull=%llu our_cull=%llu would_cull15=%llu "
+                    "flag_off=%llu no_cull=%llu bbox=%llu r0=%llu | "
+                    "32F0 calls=%llu off=%llu verts=%llu off_v=%llu | "
+                    "zn=%.2f zf=%.1f cx=%.1f cy=%.1f pd=%.1f ax=%.2f ay=%.2f\n",
+                    (unsigned long long)g_fstats.calls,
+                    (unsigned long long)g_fstats.game_culled,
+                    (unsigned long long)g_fstats.our_culled,
+                    (unsigned long long)g_fstats.would_cull_15,
+                    (unsigned long long)g_fstats.flag_off,
+                    (unsigned long long)g_fstats.no_cull,
+                    (unsigned long long)g_fstats.bbox_on,
+                    (unsigned long long)g_fstats.r_zero,
+                    (unsigned long long)g_fstats.v32f0_calls,
+                    (unsigned long long)g_fstats.v32f0_offscreen,
+                    (unsigned long long)g_fstats.v32f0_verts,
+                    (unsigned long long)g_fstats.v32f0_offscreen_verts,
+                    z_near, z_far, clip_x, clip_y, proj_d, ax, ay);
+                std::fflush(stderr);
+                g_fstats = FrustumStats{};
+                g_fstats.last_log = now;
+            }
+        }
+    }
 }
 
 #endif /* EU */

@@ -11165,7 +11165,7 @@ static int prepass_gate(void){
     static int env=-1;
     if(env<0){env=0;const char*e=getenv("CV_PREP_REUSE2");
         static const char*const dbg[]={"TEX_BUDGET","RTT_VIEWRT","EMPTYTEX","SCREEN_AS_TEX","TEX_DUMP","TEX_BINDDBG","RT_NOGAMMA"};
-        if(e&&e[0]=='0'&&!e[1])env=1;else for(unsigned i=0;i<sizeof dbg/sizeof *dbg;i++)if(getenv(dbg[i]))env=2;}
+        if(e&&e[0]=='0'&&!e[1])env=1;else for(unsigned i=0;i<sizeof dbg/sizeof *dbg;i++){const char*dv=getenv(dbg[i]);if(dv&&dv[0]&&!(dv[0]=='0'&&!dv[1]))env=2;}}
     if(env)return env;
     if(!prep_reuse_on())return 3;
     if(!s_pose_on&&opt30_mode()>=0)return 4;
