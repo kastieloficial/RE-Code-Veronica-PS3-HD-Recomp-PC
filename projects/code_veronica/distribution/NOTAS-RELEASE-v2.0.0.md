@@ -1,0 +1,31 @@
+# v2.0.0 — Major CPU Performance Overhaul, Fast Door Skip, RPCS3 Saves & 6,182 Shaders / Grande Salto de Desempenho, Fast Door Skip, Saves do RPCS3 e 6.182 Shaders
+
+## English
+
+- **Major CPU performance overhaul (40 native x64 engine hooks).** Rewrote the 40 hottest PPU engine functions directly in native x64 C++ (particle/effect/translucent mesh drawer, 64B→32B vertex packer, render-state builder, depth-sort key & merge, frustum culling, matrix/vector transforms, `MtHeapAllocator` alloc/free/coalesce, draw-command destructors, texture/material hash table lookup with direct dispatch, sprite/strip emitters, bump allocator, and file/zlib paths). In heavy scenes such as the **Antarctica Helipad Nosferatu boss fight** (blizzard + poison gas + gunfire, 400+ draws at 1440p), minimum FPS rose from ~36 FPS to ~47+ FPS with ~55–58 FPS average, while standard scenes hold a locked 60 FPS with much lower CPU usage. Applies to both **Campaign (Claire & Chris)** and **Battle Mode** across **EU, US and JP**.
+- **Instant Fast Door Skip & 4-Mode Launcher UI (13 languages).** Added fast door transitions with strict guards so active doors accelerate cleanly without interfering with the Disc 1 → Disc 2 swap sequence. Updated the Launcher with 4 clear modes across all 13 supported languages.
+- **RPCS3 save support & F6/F7 menu improvements.** Added RPCS3 save support and safe **Delete Save** in the F7 Archives menu. Fixed controller/keyboard chord leaks, optimized F6 Inventory and F7 Archives rendering (cached backdrop, HD icons and shadows, 32bpp PARGB DIB, 60 Hz pad polling).
+- **60 FPS native interpolation fixes & optimizations.**
+  - Fixed the **Game Over (`YOU DIED / Retry? Yes / No`)** screen turning solid gray on instant-death falls (such as being knocked off the helipad by Nosferatu) by guarding Game Over and room/disc-swap 2D prompts.
+  - Eliminated redundant double scene rebuilds in heavy scenes for steadier frame pacing.
+  - Hardened 2D **Inventory / Item Box** UI interpolation so background slots and ammo digits no longer glitch or shift when scrolling the Item Box or equipping items, while keeping smooth 60 FPS menus.
+- **Combat HUD & SRT poison status fix.** Nosferatu's poison status now displays the official localized **Poison** label across all 13 languages and uses the game's official vibrant magenta-purple color (`#C41A94`) in both the Combat HUD and SRT. The Combat HUD also hides automatically on the Game Over screen.
+- **More shaders compiled before play:** **6,182** unique pipeline combinations (up from 5,802 in v1.7.0; **+380 new shaders** captured across a full playthrough), reducing mid-gameplay shader compilation stutters.
+- Everything from v1.7.0 is retained. Applies to **EU, US and JP** (unified AVX2 + SSE4.1 executables; clean distribution build with developer diagnostics stripped).
+
+Downloads: extract the complete **CodeVeronica-PC-v2.0.0.zip** and open **Code Veronica.exe**. Keep `bin/` and `assets/` alongside it. **Veronica-PKG-Extractor-v1.0.1.zip** is supplied separately and is unchanged. Supply your own original PS3 game files; no original game archives, 3D models, saves or personal settings are included.
+
+## Português
+
+- **Grande salto de desempenho na CPU (40 hooks nativos em x64).** Reescrevemos as 40 funções mais pesadas da engine do PS3 diretamente em C++ nativo x64 (renderizador de partículas/efeitos/malhas translúcidas, empacotador de vértices 64B→32B, construtor de render-state, cálculo e ordenação de profundidade, frustum culling, transformações de matriz/vetor, `MtHeapAllocator`, destrutores de comandos de desenho, busca em tabela hash de texturas/materiais com despacho direto, emissores de sprites/strips, bump allocator e leitura/descompressão). Em cenas pesadas como a **luta contra o Nosferatu no heliporto da Antártida** (nevasca + gás + tiros, 400+ draws em 1440p), o FPS mínimo subiu de ~36 FPS para ~47+ FPS com média de ~55–58 FPS, enquanto o resto do jogo roda cravado em 60 FPS com bem menos uso de CPU. Vale para a **Campanha (Claire e Chris)** e para o **Battle Mode**, em **EU, US e JP**.
+- **Fast Door Skip instantâneo e Launcher com 4 modos (13 idiomas).** Transições de porta super rápidas com proteções para nunca interferir na troca do Disco 1 → Disco 2. Launcher atualizado com 4 modos nos 13 idiomas suportados.
+- **Suporte a saves do RPCS3 e melhorias nos menus F6/F7.** Suporte a saves do RPCS3 e opção segura de **Apagar Save** no menu Arquivos (F7). Corrigidos vazamentos de botões/atalhos nos menus e otimizada a renderização do F6 (Inventário) e F7 (Arquivos) com cache de fundo, ícones HD com sombra e leitura do controle a 60 Hz.
+- **Correções e otimizações na interpolação nativa de 60 FPS.**
+  - Corrigida a tela de **Game Over (`YOU DIED / Retry? Yes / No`)** que ficava toda cinza em mortes instantâneas por queda (como ao ser jogado do heliporto pelo Nosferatu).
+  - Eliminada a reconstrução dupla redundante de cena em trechos pesados, deixando o frame pacing mais estável.
+  - Corrigido o bug visual na interpolação 2D do **Inventário / Item Box** (retângulos de fundo e números de munição deslocados ao rolar o Item Box ou equipar itens), mantendo os menus suaves a 60 FPS.
+- **Correção do status Envenenado no HUD de Combate e SRT.** O veneno do Nosferatu agora exibe o texto oficial **Envenenado / Poison** (nos 13 idiomas, em vez de "Gás") com a cor roxo-magenta oficial do jogo (`#C41A94`) tanto no HUD de Combate quanto no SRT. O HUD de Combate também se esconde automaticamente na tela de Game Over.
+- **Mais shaders compilados antes de jogar:** **6.182** combinações únicas (eram 5.802 na v1.7.0; **+380 shaders novos** capturados numa zerada completa), reduzindo ainda mais engasgos durante o jogo.
+- Tudo da v1.7.0 continua. Vale para **EU, US e JP** (executáveis unificados AVX2 + SSE4.1; build limpa de distribuição, sem logs pesados de diagnóstico).
+
+Downloads: extraia o **CodeVeronica-PC-v2.0.0.zip** completo e abra **Code Veronica.exe**, mantendo `bin/` e `assets/` ao lado. **Veronica-PKG-Extractor-v1.0.1.zip** acompanha em arquivo separado, sem alterações. Forneça seus arquivos originais do jogo PS3; nenhum arquivo original do jogo, modelo 3D, save ou configuração pessoal acompanha o pacote.
