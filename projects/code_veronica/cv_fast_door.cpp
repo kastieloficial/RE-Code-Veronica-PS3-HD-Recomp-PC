@@ -113,6 +113,17 @@
 #define CV_FD_ORIG_PACK_VTX64    cv_original_007BE738
 #define CV_FD_FN_DRAW_EFFECT     func_00016E10
 #define CV_FD_ORIG_DRAW_EFFECT   cv_original_00016E10
+#define CV_FD_FN_SYNC_PARAM      func_000102AC
+#define CV_FD_ORIG_SYNC_PARAM    cv_original_000102AC
+#define CV_FD_FN_DRAW_EFF_LIST   func_00017EB4
+#define CV_FD_ORIG_DRAW_EFF_LIST cv_original_00017EB4
+#define CV_FD_FN_HASH_FIND       func_002680BC
+#define CV_FD_ORIG_HASH_FIND     cv_original_002680BC
+#define CV_FD_FN_HASH_GET        func_00267DC4
+#define CV_FD_ORIG_HASH_GET      cv_original_00267DC4
+#define CV_FD_FN_UPLOAD_MESH     func_00019A94
+#define CV_FD_ORIG_UPLOAD_MESH   cv_original_00019A94
+#define CV_FD_FN_DRAW_EFF_ALT    func_0001CD40
 #define CV_FD_FN_HEAP_COALESCE   func_0084059C
 #define CV_FD_FN_GET_MAT         func_00283E9C
 #define CV_FD_FN_DEPTH_FALLBACK  func_004B7548
@@ -202,6 +213,17 @@
 #define CV_FD_ORIG_PACK_VTX64    cv_original_007BF028
 #define CV_FD_FN_DRAW_EFFECT     func_00016E10
 #define CV_FD_ORIG_DRAW_EFFECT   cv_original_00016E10
+#define CV_FD_FN_SYNC_PARAM      func_000102AC
+#define CV_FD_ORIG_SYNC_PARAM    cv_original_000102AC
+#define CV_FD_FN_DRAW_EFF_LIST   func_00017EB4
+#define CV_FD_ORIG_DRAW_EFF_LIST cv_original_00017EB4
+#define CV_FD_FN_HASH_FIND       func_002689AC
+#define CV_FD_ORIG_HASH_FIND     cv_original_002689AC
+#define CV_FD_FN_HASH_GET        func_002686B4
+#define CV_FD_ORIG_HASH_GET      cv_original_002686B4
+#define CV_FD_FN_UPLOAD_MESH     func_00019A94
+#define CV_FD_ORIG_UPLOAD_MESH   cv_original_00019A94
+#define CV_FD_FN_DRAW_EFF_ALT    func_0001CD40
 #define CV_FD_FN_HEAP_COALESCE   func_00840E8C
 #define CV_FD_FN_GET_MAT         func_0028478C
 #define CV_FD_FN_DEPTH_FALLBACK  func_004B7E38
@@ -291,6 +313,17 @@
 #define CV_FD_ORIG_PACK_VTX64    cv_original_007C06F8
 #define CV_FD_FN_DRAW_EFFECT     func_00016E10
 #define CV_FD_ORIG_DRAW_EFFECT   cv_original_00016E10
+#define CV_FD_FN_SYNC_PARAM      func_000102AC
+#define CV_FD_ORIG_SYNC_PARAM    cv_original_000102AC
+#define CV_FD_FN_DRAW_EFF_LIST   func_00017EB4
+#define CV_FD_ORIG_DRAW_EFF_LIST cv_original_00017EB4
+#define CV_FD_FN_HASH_FIND       func_0026A08C
+#define CV_FD_ORIG_HASH_FIND     cv_original_0026A08C
+#define CV_FD_FN_HASH_GET        func_00269D94
+#define CV_FD_ORIG_HASH_GET      cv_original_00269D94
+#define CV_FD_FN_UPLOAD_MESH     func_00019A94
+#define CV_FD_ORIG_UPLOAD_MESH   cv_original_00019A94
+#define CV_FD_FN_DRAW_EFF_ALT    func_0001CD40
 #define CV_FD_FN_HEAP_COALESCE   func_0084255C
 #define CV_FD_FN_GET_MAT         func_00285E5C
 #define CV_FD_FN_DEPTH_FALLBACK  func_004B9508
@@ -343,6 +376,13 @@ void CV_FD_ORIG_TEX_LOOKUP(ppu_context* ctx);     /* texture/material descriptor
 void CV_FD_ORIG_RENDER_STATE(ppu_context* ctx);   /* render-state/blend bitfield builder */
 void CV_FD_ORIG_PACK_VTX64(ppu_context* ctx);     /* 64B->32B vertex packer + draw enqueue */
 void CV_FD_ORIG_DRAW_EFFECT(ppu_context* ctx);    /* effect/particle/translucent mesh drawer */
+void CV_FD_ORIG_SYNC_PARAM(ppu_context* ctx);     /* 4B global param sync */
+void CV_FD_ORIG_DRAW_EFF_LIST(ppu_context* ctx);  /* effect list dispatcher */
+void CV_FD_ORIG_HASH_FIND(ppu_context* ctx);      /* open-addressing hash table find */
+void CV_FD_ORIG_HASH_GET(ppu_context* ctx);       /* hash table get value by key */
+void CV_FD_ORIG_UPLOAD_MESH(ppu_context* ctx);    /* mesh vertex buffer upload */
+void CV_FD_FN_DRAW_EFF_ALT(ppu_context* ctx);
+void CV_FD_FN_DRAW_DESC_ALLOC(ppu_context* ctx);
 void CV_FD_FN_DRAWELEM_DTOR(ppu_context* ctx);
 void CV_FD_FN_HEAP_FREE(ppu_context* ctx);
 void CV_FD_FN_HEAP_ALLOC_INNER(ppu_context* ctx);
@@ -437,6 +477,10 @@ constexpr uint32_t k16E10TypeDesc = 0x00AE806Cu;
 constexpr uint32_t k16E10CtxPtr  = 0x00AB782Cu;
 constexpr uint32_t k16E10Mat2    = 0x00BAE540u;
 constexpr uint32_t k16E10BboxMin = 0x00BA9570u;
+constexpr uint32_t kSyncParamSrc = 0x00AC2940u;
+constexpr uint32_t kSyncParamDst = 0x00A73BB0u;
+constexpr uint32_t kHashFindAddr = 0x002680BCu;
+constexpr uint32_t kHashGetAddr  = 0x00267DC4u;
 #elif defined(CV_REGION_JP)
 constexpr uint32_t kSysPtrAddr   = 0x00A79C34u;
 constexpr uint32_t kScratchMgr   = 0x00A73C68u;
@@ -494,6 +538,10 @@ constexpr uint32_t k16E10TypeDesc = 0x00AE80ECu;
 constexpr uint32_t k16E10CtxPtr  = 0x00AB78ECu;
 constexpr uint32_t k16E10Mat2    = 0x00BAE5C0u;
 constexpr uint32_t k16E10BboxMin = 0x00BA95F0u;
+constexpr uint32_t kSyncParamSrc = 0x00AC2A00u;
+constexpr uint32_t kSyncParamDst = 0x00A73BB0u;
+constexpr uint32_t kHashFindAddr = 0x002689ACu;
+constexpr uint32_t kHashGetAddr  = 0x002686B4u;
 #else /* EU */
 constexpr uint32_t kSysPtrAddr   = 0x00A89BD0u;
 constexpr uint32_t kScratchMgr   = 0x00A83C68u;
@@ -551,6 +599,10 @@ constexpr uint32_t k16E10TypeDesc = 0x00AF836Cu;
 constexpr uint32_t k16E10CtxPtr  = 0x00AC7B7Cu;
 constexpr uint32_t k16E10Mat2    = 0x00BBE840u;
 constexpr uint32_t k16E10BboxMin = 0x00BB9870u;
+constexpr uint32_t kSyncParamSrc = 0x00AD2C90u;
+constexpr uint32_t kSyncParamDst = 0x00A83BB0u;
+constexpr uint32_t kHashFindAddr = 0x0026A08Cu;
+constexpr uint32_t kHashGetAddr  = 0x00269D94u;
 #endif
 constexpr uint32_t kOffSsFlg     = 0x00050u;    /* bit 0x400000 = attract demo */
 constexpr uint32_t kOffTsFlg     = 0x00068u;    /* bit 0x800 = door ready */
@@ -3662,6 +3714,35 @@ void CV_FD_FN_DEPTH_KEY(ppu_context* ctx)
     ctx->gpr[3] = (int64_t)res;
 }
 
+static inline int32_t cv_hash_find_inline(uint32_t map, uint32_t key)
+{
+    const uint32_t cap = read_be32_fast(vm_base + map + 4u);
+    if (cap == 0u) return -1;
+    uint32_t h = ((key >> 4) | key) ^ key;
+    const uint32_t table = read_be32_fast(vm_base + map + 8u);
+    for (uint32_t i = 0; i < cap; ++i, ++h) {
+        const uint32_t slot = h % cap;
+        const uint8_t* const ent = vm_base + table + slot * 20u;
+        if (ent[0] != 0u && read_be32_fast(ent + 4u) == key) {
+            return (int32_t)slot;
+        }
+    }
+    return -1;
+}
+
+static inline uint32_t cv_hash_get_inline(ppu_context* ctx, uint32_t map, uint32_t key)
+{
+    if (key == 0u) return 0u;
+    const uint32_t vt = read_be32_fast(vm_base + map);
+    const uint32_t fn = read_be32_fast(vm_base + read_be32_fast(vm_base + vt + 0x14u));
+    const int32_t slot = (fn == kHashFindAddr)
+        ? cv_hash_find_inline(map, key)
+        : (fn ? (int32_t)cv_call_indirect_u32(ctx, fn, map, key) : -1);
+    if (slot <= -1) return 0u;
+    const uint32_t table = read_be32_fast(vm_base + map + 8u);
+    return read_be32_fast(vm_base + table + (uint32_t)slot * 20u + 8u);
+}
+
 /* Hook 32: Texture/material descriptor lookup (EU/US/JP 0x0001638C) */
 void CV_FD_FN_TEX_LOOKUP(ppu_context* ctx)
 {
@@ -3686,6 +3767,7 @@ void CV_FD_FN_TEX_LOOKUP(ppu_context* ctx)
         const uint32_t mgr = read_be32_fast(vm_base + kTexMgrPtr) + 0x24u;
         const uint32_t vt  = read_be32_fast(vm_base + mgr);
         const uint32_t fn  = read_be32_fast(vm_base + read_be32_fast(vm_base + vt + 8u));
+        if (fn == kHashGetAddr) return cv_hash_get_inline(ctx, mgr, key);
         return fn ? cv_call_indirect_u32(ctx, fn, mgr, key) : 0u;
     };
 
@@ -4561,6 +4643,108 @@ void CV_FD_FN_DRAW_EFFECT(ppu_context* ctx)
                                          0u, (uint32_t)depth, 0u, 0u);
                 }
             }
+        }
+    }
+}
+
+/* Hook 36: 4-byte global parameter sync (EU/US/JP 0x000102AC) */
+void CV_FD_FN_SYNC_PARAM(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        CV_FD_ORIG_SYNC_PARAM(ctx);
+        return;
+    }
+    std::memcpy(vm_base + kSyncParamDst, vm_base + kSyncParamSrc, 4u);
+}
+
+/* Hook 37: Effect list dispatcher (EU/US/JP 0x00017EB4) */
+void CV_FD_FN_DRAW_EFF_LIST(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        CV_FD_ORIG_DRAW_EFF_LIST(ctx);
+        return;
+    }
+
+    const uint32_t self    = (uint32_t)ctx->gpr[3];
+    const uint32_t arg4    = (uint32_t)ctx->gpr[4];
+    const uint32_t arg5    = (uint32_t)ctx->gpr[5];
+    const uint32_t mat_ptr = (uint32_t)ctx->gpr[6];
+    const uint32_t list    = (uint32_t)ctx->gpr[7];
+
+    const uint32_t cnt = read_be32_fast(vm_base + list + 4u);
+    if (cnt == 0u) return;
+
+    for (uint32_t i = 0; i < cnt; ++i) {
+        const uint32_t arr  = read_be32_fast(vm_base + list + 0x10u);
+        const uint32_t item = read_be32_fast(vm_base + arr + i * 4u);
+        if (item == 0u) continue;
+        const uint32_t flags8 = read_be32_fast(vm_base + item + 0x44u) & 0xFFFF0000u;
+        if (flags8 == 0x80000000u || flags8 == 0x40000000u) {
+            if ((read_be16_fast(vm_base + arg4 + 0x19Au) & 0x0Cu) == 0u) {
+                ctx->gpr[3] = self;
+                ctx->gpr[4] = arg4;
+                ctx->gpr[5] = arg5;
+                ctx->gpr[6] = mat_ptr;
+                ctx->gpr[7] = item;
+                ctx->gpr[8] = flags8;
+                CV_FD_FN_DRAW_EFFECT(ctx);
+            }
+        } else {
+            cv_call_direct_u32_8(ctx, CV_FD_FN_DRAW_EFF_ALT, self, arg4, arg5, mat_ptr, item, flags8, 0u, 0u);
+        }
+    }
+}
+
+/* Hook 38: Open-addressing hash table find (US 0x002680BC / EU 0x0026A08C / JP 0x002689AC) */
+void CV_FD_FN_HASH_FIND(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        CV_FD_ORIG_HASH_FIND(ctx);
+        return;
+    }
+    ctx->gpr[3] = (int64_t)cv_hash_find_inline((uint32_t)ctx->gpr[3], (uint32_t)ctx->gpr[4]);
+}
+
+/* Hook 39: Hash table get value by key (US 0x00267DC4 / EU 0x00269D94 / JP 0x002686B4) */
+void CV_FD_FN_HASH_GET(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        CV_FD_ORIG_HASH_GET(ctx);
+        return;
+    }
+    ctx->gpr[3] = cv_hash_get_inline(ctx, (uint32_t)ctx->gpr[3], (uint32_t)ctx->gpr[4]);
+}
+
+/* Hook 40: Mesh vertex buffer upload (EU/US/JP 0x00019A94) */
+void CV_FD_FN_UPLOAD_MESH(ppu_context* ctx)
+{
+    if (!native_hot_enabled() || !vm_base) {
+        CV_FD_ORIG_UPLOAD_MESH(ctx);
+        return;
+    }
+
+    const uint32_t arg4 = (uint32_t)ctx->gpr[4];
+    const uint32_t mesh = (uint32_t)ctx->gpr[5];
+
+    uint32_t src = read_be32_fast(vm_base + mesh + 0x34u);
+    if (src == 0u) return;
+
+    const uint32_t cnt = read_be32_fast(vm_base + mesh + 4u);
+    for (uint32_t i = 0; i < cnt; ++i) {
+        const uint32_t cur_cnt = read_be32_fast(vm_base + mesh + 4u);
+        uint32_t vcnt = (cur_cnt > i)
+            ? read_be32_fast(vm_base + read_be32_fast(vm_base + mesh + 0x28u) + i * 0x10u)
+            : 0u;
+        if (read_be32_fast(vm_base + mesh + 0x3Cu) == 3u) {
+            vcnt = vcnt * 3u - 6u;
+        }
+        const uint32_t g      = read_be32_fast(vm_base + kGlobalObj);
+        const uint32_t stride = read_be32_fast(vm_base + read_be32_fast(vm_base + g + 0x208u) + 0x20u);
+        const uint32_t dst    = cv_call_direct_u32(ctx, CV_FD_FN_DRAW_DESC_ALLOC, arg4, vcnt, stride);
+        if (dst != 0u) {
+            const uint32_t bytes = vcnt * stride;
+            std::memcpy(vm_base + dst, vm_base + src, bytes);
+            src += bytes;
         }
     }
 }
