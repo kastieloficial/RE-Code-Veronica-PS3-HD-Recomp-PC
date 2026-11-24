@@ -357,6 +357,7 @@ typedef struct rsx_state {
     u32 vertex_constants_lo;
     u32 vertex_constants_hi;
     u32 vc_gen;                 /* bumped whenever a vertex constant changes value */
+    u32 va_gen;                 /* bumped whenever vertex_attribs / vertex_data4f / divider changes */
     int vertex_constants_dirty;
 
     /* Captured RSX vertex program microcode (NV40 ISA), filled by

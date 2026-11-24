@@ -315,6 +315,7 @@ static int process_vertex_attrib_method(rsx_state* state, u32 method, u32 data)
         attr->enabled   = (attr->size != 0);
         attr->format    = data;
         state->vertex_dirty = 1;
+        state->va_gen++;
         return 0;
     }
 
@@ -323,6 +324,7 @@ static int process_vertex_attrib_method(rsx_state* state, u32 method, u32 data)
         u32 index = (method - NV4097_SET_VERTEX_DATA_ARRAY_OFFSET) / 4;
         state->vertex_attribs[index].offset = data;
         state->vertex_dirty = 1;
+        state->va_gen++;
         return 0;
     }
 
@@ -390,7 +392,7 @@ int rsx_process_method(rsx_state* state, u32 method, u32 data)
      * value) for the sub-channel path. */
     /* NV4097_SET_FREQUENCY_DIVIDER_OPERATION: per-attribute modulo/divide mask
      * for the frequency divisor (instancing). Captured for read_vp_vertex. */
-    if (method == 0x00001FC0) { state->frequency_divider_op = data; return 0; }
+    if (method == 0x00001FC0) { state->frequency_divider_op = data; state->va_gen++; return 0; }
 
     { static u32 s_sem_off = 0;
       if (method == 0x1D6C) { s_sem_off = data; return 0; }
@@ -668,6 +670,7 @@ int rsx_process_method(rsx_state* state, u32 method, u32 data)
         u32 lane = ((method - 0x1C00u) >> 2) & 3;   /* x/y/z/w   */
         float f; memcpy(&f, &data, 4);
         state->vertex_data4f[idx][lane] = f;
+        state->va_gen++;
         { static int _d = -1; if (_d < 0) _d = getenv("VDATA_DBG") ? 1 : 0;
           static int _n = 0;
           if (_d && _n < 400) { _n++;

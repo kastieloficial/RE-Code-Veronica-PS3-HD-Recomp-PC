@@ -446,7 +446,7 @@ typedef struct {
     int                   vp_fp_n;
     u32                   srv_inc;              /* CBV_SRV_UAV descriptor size   */
     /* VP path: latest texture bound per unit (t0-t3). */
-    struct { u32 off, raw, w, h, fmt, ctrl1, addr, mips, pitch; int cube; int set; } cur_texs[FP_TEX_UNITS];
+    struct { u32 off, raw, w, h, fmt, ctrl1, addr, pitch, mips; int cube; int set; } cur_texs[FP_TEX_UNITS];
 
     /* Render-to-texture: offscreen RT pool + their RTV heap. */
     OffRT                 off_rt[MAX_OFF_RTS];
@@ -14314,13 +14314,18 @@ static u32 s_vmemo_gen = 1;
  * attribute as before. */
 static rsx_fetch_plan s_vplan;
 static const rsx_state* s_vplan_state = NULL;
+static u32 s_vplan_gen = ~0u;
 static void vp_fetch_begin(const rsx_state* state)
 {
     ++s_vmemo_gen;
     static int noplan = -1;
     if (noplan < 0) noplan = getenv("VTX_NOPLAN") ? 1 : 0;
-    s_vplan_state = NULL;
-    if (state && !noplan) { rsx_fetch_plan_build(state, &s_vplan); s_vplan_state = state; }
+    if (!state || noplan) { s_vplan_state = NULL; return; }
+    if (s_vplan_state != state || s_vplan_gen != state->va_gen) {
+        rsx_fetch_plan_build(state, &s_vplan);
+        s_vplan_state = state;
+        s_vplan_gen = state->va_gen;
+    }
 }
 #define VP_FETCH_BEGIN() vp_fetch_begin(state)
 
@@ -15382,18 +15387,8 @@ static void d3d12_draw_arrays_impl(void* ud, u32 primitive, u32 first, u32 count
                     dr->alpha_ctl = ((s_d3d.current_rsx_state->alpha_test_enable ? 1u : 0u) << 16)
                                   | ((s_d3d.current_rsx_state->alpha_func & 0xFFu) << 8)
                                   | (s_d3d.current_rsx_state->alpha_ref & 0xFFu);
-                for (int _u = 0; _u < FP_TEX_UNITS; _u++) {
-                    dr->tex[_u].off = s_d3d.cur_texs[_u].off;
-                    dr->tex[_u].raw = s_d3d.cur_texs[_u].raw;
-                    dr->tex[_u].w   = s_d3d.cur_texs[_u].w;
-                    dr->tex[_u].h   = s_d3d.cur_texs[_u].h;
-                    dr->tex[_u].fmt = s_d3d.cur_texs[_u].fmt;
-                    dr->tex[_u].ctrl1 = s_d3d.cur_texs[_u].ctrl1; dr->tex[_u].addr = s_d3d.cur_texs[_u].addr;
-                    dr->tex[_u].cube  = s_d3d.cur_texs[_u].cube;
-                    dr->tex[_u].mips  = s_d3d.cur_texs[_u].mips; dr->tex[_u].pitch=s_d3d.cur_texs[_u].pitch;
-                    dr->tex[_u].set = s_d3d.cur_texs[_u].set;
-                    dr->tex_rt[_u]  = -1;
-                }
+                memcpy(dr->tex, s_d3d.cur_texs, sizeof dr->tex);
+                memset(dr->tex_rt, -1, sizeof dr->tex_rt);
                 dr->tex_slot = -1;
                 dr->vs_idx = vp_get_vs(s_d3d.current_rsx_state);
                 vtex_record(dr, s_d3d.current_rsx_state);
@@ -15559,18 +15554,8 @@ static void d3d12_draw_arrays_impl(void* ud, u32 primitive, u32 first, u32 count
                 dr->alpha_ctl = ((s_d3d.current_rsx_state->alpha_test_enable ? 1u : 0u) << 16)
                               | ((s_d3d.current_rsx_state->alpha_func & 0xFFu) << 8)
                               | (s_d3d.current_rsx_state->alpha_ref & 0xFFu);
-            for (int _u = 0; _u < FP_TEX_UNITS; _u++) {
-                dr->tex[_u].off = s_d3d.cur_texs[_u].off;
-                dr->tex[_u].raw = s_d3d.cur_texs[_u].raw;
-                dr->tex[_u].w   = s_d3d.cur_texs[_u].w;
-                dr->tex[_u].h   = s_d3d.cur_texs[_u].h;
-                dr->tex[_u].fmt = s_d3d.cur_texs[_u].fmt;
-                    dr->tex[_u].ctrl1 = s_d3d.cur_texs[_u].ctrl1; dr->tex[_u].addr = s_d3d.cur_texs[_u].addr;
-                    dr->tex[_u].cube  = s_d3d.cur_texs[_u].cube;
-                    dr->tex[_u].mips  = s_d3d.cur_texs[_u].mips; dr->tex[_u].pitch=s_d3d.cur_texs[_u].pitch;
-                dr->tex[_u].set = s_d3d.cur_texs[_u].set;
-                dr->tex_rt[_u]  = -1;
-            }
+            memcpy(dr->tex, s_d3d.cur_texs, sizeof dr->tex);
+            memset(dr->tex_rt, -1, sizeof dr->tex_rt);
             dr->tex_slot = -1;
             dr->vs_idx = vp_get_vs(s_d3d.current_rsx_state);
             vtex_record(dr, s_d3d.current_rsx_state);

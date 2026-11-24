@@ -2232,11 +2232,13 @@ static void gcm_rsx_process_fifo_unlocked(void)
                 continue;
             }
             /* Fast path for normal 3D subchannel 0 blocks when no per-word debug/alt engines are active. */
-            { static int s_fast_subch0 = -1;
+            { static int s_fast_subch0 = -1, s_fast_tconst = -1;
               if (s_fast_subch0 < 0) {
                   s_fast_subch0 = (!getenv("GCM_SUBCH7") && !getenv("GCM_OBJDBG") && !getenv("GCM_SUBCH_GATE") &&
                                    !getenv("GCM_VAL_WATCH") && !getenv("RSX_LIVE_FEED_DBG") &&
                                    !rsx_live_draw_enabled() && !rsx_draw_engine_enabled()) ? 1 : 0;
+                  s_fast_tconst = (s_fast_subch0 && !getenv("TCONST_DBG") && !getenv("SEQ_DBG") &&
+                                   !getenv("RSX_TRACE") && !getenv("LOAD_DBG")) ? 1 : 0;
               }
               if (s_fast_subch0 && subch == 0 && count > 0) {
                   const u32 io_first = s_fifo_getoff + 4u;
@@ -2244,6 +2246,38 @@ static void gcm_rsx_process_fifo_unlocked(void)
                   if ((io_first >> 20) == (io_last >> 20)) {
                       const u32 base_ea = gcm_io2ea(io_first);
                       if (base_ea) {
+                          if (s_fast_tconst && type == 0 && method == NV4097_SET_TRANSFORM_CONSTANT_LOAD && count == 1u) {
+                              s_state.transform_constant_load = vm_read32(base_ea);
+                              s_fifo_getoff += 8u;
+                              continue;
+                          }
+                          if (s_fast_tconst && type == 0 && method == NV4097_SET_TRANSFORM_CONSTANT && count <= 64u) {
+                              const u32 load = s_state.transform_constant_load;
+                              u32 changed = 0;
+                              for (u32 i = 0; i < count; i++) {
+                                  const u32 slot = load + (i >> 2);
+                                  if (slot < RSX_MAX_VERTEX_CONSTANTS) {
+                                      const u32 val = vm_read32(base_ea + (i << 2));
+                                      u32* dst_u32 = (u32*)&s_state.vertex_constants[slot][i & 3u];
+                                      if (*dst_u32 != val) { *dst_u32 = val; changed = 1; }
+                                  }
+                              }
+                              if (changed) s_state.vc_gen++;
+                              if (load < RSX_MAX_VERTEX_CONSTANTS) {
+                                  u32 hi = load + ((count - 1u) >> 2);
+                                  if (hi >= RSX_MAX_VERTEX_CONSTANTS) hi = RSX_MAX_VERTEX_CONSTANTS - 1u;
+                                  if (!s_state.vertex_constants_dirty) {
+                                      s_state.vertex_constants_lo = load;
+                                      s_state.vertex_constants_hi = hi;
+                                      s_state.vertex_constants_dirty = 1;
+                                  } else {
+                                      if (load < s_state.vertex_constants_lo) s_state.vertex_constants_lo = load;
+                                      if (hi > s_state.vertex_constants_hi) s_state.vertex_constants_hi = hi;
+                                  }
+                              }
+                              s_fifo_getoff += 4u + (count << 2);
+                              continue;
+                          }
                           const u32 step = (type == 0) ? 4u : 0u;
                           u32 m = method;
                           for (u32 i = 0; i < count; i++, m += step) {
