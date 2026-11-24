@@ -6,7 +6,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <map>
 #include <memory>
+#include <tuple>
 #pragma comment(lib,"gdiplus.lib")
 using namespace Gdiplus;
 
@@ -17,6 +19,24 @@ namespace col=cv_port_ui::col;
 namespace lay=layout;
 using ui::ButtonState;using ui::Role;
 using ui::Glyph;using ui::GlyphKind;
+
+// Cached Consolas family/fonts + pre-scaled 32bppPARGB thumbnails (all freed in release_caches()).
+std::unique_ptr<FontFamily> mono_family;
+std::map<int,std::unique_ptr<Font>> mono_fonts;
+std::map<std::tuple<const uint32_t*,int,int>,std::unique_ptr<Bitmap>> thumb_cache;
+float thumb_scale_key=0;
+
+const Font& mono_font(float px) {
+    if(!mono_family)mono_family=std::make_unique<FontFamily>(L"Consolas");
+    const int k=int(std::lround(px*4));
+    auto it=mono_fonts.find(k);
+    if(it!=mono_fonts.end())return *it->second;
+    return *(mono_fonts[k]=std::make_unique<Font>(mono_family.get(),px,FontStyleBold,UnitPixel));
+}
+float graphics_scale(Graphics& g) {
+    Matrix m;g.GetTransform(&m);REAL e[6]={};m.GetElements(e);
+    return (e[0]>0.05f&&e[0]<10.f)?e[0]:1.f;
+}
 
 const wchar_t* ts(const View& v,cv_archives_i18n::Id id) {return cv_archives_i18n::strings[std::clamp(v.language,0,12)][id];}
 const wchar_t* ps(const View& v,cv_port_ui_i18n::Id id) {return cv_port_ui_i18n::strings[std::clamp(v.language,0,12)][id];}
@@ -132,11 +152,28 @@ void tabs(Graphics& g,const View& v,int kind) {
     side_glyph(g,v,kind,lay::TAB_PREV,HIT_TAB_PREV,true);
     side_glyph(g,v,kind,lay::TAB_NEXT,HIT_TAB_NEXT,false);
 }
-void picture(Graphics& g,RectF box,const uint32_t* pixels) {   // 16:9 picture, "cover" fit
-    Bitmap bmp(int(THUMB_W),int(THUMB_H),int(THUMB_W*4),PixelFormat32bppARGB,reinterpret_cast<BYTE*>(const_cast<uint32_t*>(pixels)));
-    const float s=std::max(box.Width/THUMB_W,box.Height/THUMB_H),w=THUMB_W*s,h=THUMB_H*s;
-    const auto st=g.Save();g.SetClip(box,CombineModeIntersect);g.SetInterpolationMode(InterpolationModeHighQualityBicubic);
-    g.DrawImage(&bmp,RectF(box.X+(box.Width-w)/2,box.Y+(box.Height-h)/2,w,h),0,0,float(THUMB_W),float(THUMB_H),UnitPixel);g.Restore(st);
+void picture(Graphics& g,RectF box,const uint32_t* pixels) {   // 16:9 picture, "cover" fit, cached 32bppPARGB
+    const float sc=graphics_scale(g);
+    const float qsc=std::round(sc*100.f);
+    if(thumb_scale_key!=0&&thumb_scale_key!=qsc)thumb_cache.clear();
+    thumb_scale_key=qsc;
+    const int pw=std::max(1,int(std::ceil(box.Width*sc)));
+    const int ph=std::max(1,int(std::ceil(box.Height*sc)));
+    const auto key=std::make_tuple(pixels,pw,ph);
+    auto it=thumb_cache.find(key);
+    if(it==thumb_cache.end()) {
+        Bitmap src(int(THUMB_W),int(THUMB_H),int(THUMB_W*4),PixelFormat32bppARGB,reinterpret_cast<BYTE*>(const_cast<uint32_t*>(pixels)));
+        auto dst=std::make_unique<Bitmap>(pw,ph,PixelFormat32bppPARGB);
+        Graphics bg(dst.get());
+        bg.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+        bg.SetPixelOffsetMode(PixelOffsetModeHalf);
+        const float s=std::max(float(pw)/THUMB_W,float(ph)/THUMB_H),w=THUMB_W*s,h=THUMB_H*s;
+        bg.DrawImage(&src,RectF((pw-w)/2,(ph-h)/2,w,h),0,0,float(THUMB_W),float(THUMB_H),UnitPixel);
+        if(thumb_cache.size()>160)thumb_cache.clear();
+        it=thumb_cache.emplace(key,std::move(dst)).first;
+    }
+    const auto st=g.Save();g.SetInterpolationMode(InterpolationModeLowQuality);
+    g.DrawImage(it->second.get(),box);g.Restore(st);
 }
 // A picture in the gold frame (the preview) or a plain placeholder text.
 void preview(Graphics& g,const View& v,RectF r) {
@@ -149,7 +186,7 @@ void preview(Graphics& g,const View& v,RectF r) {
     } else if(!v.placeholder.empty())
         txt(g,v.placeholder,in,F(v,Role::BODY400,19),Color(255,157,148,137),StringAlignmentCenter,StringAlignmentCenter,true,0);
     if(!v.tag.empty()) {   // the room code, bottom left
-        const std::unique_ptr<FontFamily> fam(new FontFamily(L"Consolas"));Font mono(fam.get(),17,FontStyleBold,UnitPixel);
+        const Font& mono=mono_font(17);
         const float tw=ui::text_width(g,v.tag,mono,1)+18;const RectF tag(in.X+12,in.Y+in.Height-10-26,tw,26);
         SolidBrush b(Color(179,10,15,30));fill_round(g,tag,2,b);stroke_round(g,tag,2,col::GOLD_LO,1);
         txt(g,v.tag,tag,mono,Color(255,246,231,168),StringAlignmentCenter,StringAlignmentCenter,false,1);
@@ -162,7 +199,7 @@ void list_row(Graphics& g,const View& v,int slot,const Row& row,int index) {
     row_card(g,r,on,state(v,HIT_ROW,index));
     const float ox=r.X,oy=r.Y;
     if(row.kind==Row::MAP) {
-        const std::unique_ptr<FontFamily> fam(new FontFamily(L"Consolas"));Font mono(fam.get(),32,FontStyleBold,UnitPixel);
+        const Font& mono=mono_font(32);
         txt(g,row.title,RectF(ox+24,oy+14,600,38),mono,C_WHO,StringAlignmentNear,StringAlignmentCenter,false,1);
         txt(g,row.where,RectF(ox+24,oy+57.5f,760,22),F(v,Role::BODY400,18),C_DIM,StringAlignmentNear,StringAlignmentCenter);
         if(!row.event.empty()) {
@@ -207,7 +244,7 @@ void filter_and_now(Graphics& g,const View& v) {   // Maps: the search field's f
     g.Restore(st);
     {
         const std::wstring label=ts(v,cv_archives_i18n::CURRENT);
-        const std::unique_ptr<FontFamily> fam(new FontFamily(L"Consolas"));Font mono(fam.get(),21,FontStyleBold,UnitPixel);
+        const Font& mono=mono_font(21);
         const std::wstring code=v.now_room.empty()?L"—":v.now_room;
         const float cw=ui::text_width(g,code,mono,1),right=lay::NOW_ROOM.X+lay::NOW_ROOM.Width;
         txt(g,code,RectF(right-cw-8,lay::NOW_ROOM.Y,cw+8,lay::NOW_ROOM.Height),mono,Color(255,227,184,78),StringAlignmentFar,StringAlignmentCenter,false,0);
@@ -258,6 +295,16 @@ void button_content(Graphics& g,const View& v,int kind,RectF r,const Glyph& glyp
     if(shadow)txt(g,label,RectF(x+gw+12,cy-16+1,tw+10,32),f,Color(170,0,0,0),StringAlignmentNear,StringAlignmentCenter,false,tracking);
     txt(g,label,RectF(x+gw+12,cy-16,tw+10,32),f,ink,StringAlignmentNear,StringAlignmentCenter,false,tracking);
 }
+void delete_plate(Graphics& g,RectF r,ButtonState st) {
+    const auto s=g.Save();g.SetSmoothingMode(SmoothingModeAntiAlias);
+    if(st==ButtonState::PRESSED)r=RectF(r.X+1,r.Y+1,r.Width,r.Height);
+    if(st==ButtonState::HOVER){for(int i=2;i>=1;i--){Pen gl(Color(BYTE(18*i),230,90,90),float(i*3));auto p=ui::round_path(RectF(r.X-i,r.Y-i,r.Width+2*i,r.Height+2*i),4);g.DrawPath(&gl,p.get());}}
+    auto fill=lin(r,180,shade(Color(255,58,20,24),st),shade(Color(255,34,12,16),st));
+    fill_round(g,r,3,*fill);
+    stroke_round(g,r,3,shade(Color(255,196,86,86),st),1.5f);
+    {SolidBrush hi(Color(28,255,190,190));g.FillRectangle(&hi,r.X+2,r.Y+1.5f,r.Width-4,1.f);}
+    g.Restore(s);
+}
 void buttons(Graphics& g,const View& v,int kind) {
     const bool kb=kind==PAD_INPUT_KEYBOARD,maps=v.page==PAGE_MAPS;
     const RectF pr=maps?lay::PRIMARY_MAPS:lay::PRIMARY;
@@ -266,10 +313,23 @@ void buttons(Graphics& g,const View& v,int kind) {
     ui::primary_button_red(g,pr,L"",v.language,19,1.4f,st);
     if(enabled)button_content(g,v,kind,pr,kb?Glyph{GlyphKind::KEY,VK_RETURN,L""}:Glyph{GlyphKind::PAD,PB_SOUTH,L""},label,19,1.4f,Color(255,255,255,255),true,st==ButtonState::PRESSED);
     else txt(g,label,inset(pr,6),F(v,Role::BODY600,19),Color(255,150,146,146),StringAlignmentCenter,StringAlignmentCenter,false,1.4f);
-    if(v.page==PAGE_SAVE&&v.can_overwrite) {
+    const bool show_over=v.page==PAGE_SAVE&&v.can_overwrite;
+    const bool show_del=(v.page==PAGE_LOAD||v.page==PAGE_SAVE)&&v.can_delete;
+    if(show_over&&show_del) {
+        const ButtonState s2=state(v,HIT_SECONDARY);
+        ui::plate(g,lay::SECONDARY_LEFT,false,s2);
+        button_content(g,v,kind,lay::SECONDARY_LEFT,kb?Glyph{GlyphKind::KEY,'O',L""}:Glyph{GlyphKind::PAD,PB_WEST,L""},ts(v,cv_archives_i18n::OVERWRITE),16.5f,0.6f,Color(255,230,236,248),false,s2==ButtonState::PRESSED);
+        const ButtonState sd=state(v,HIT_DELETE);
+        delete_plate(g,lay::SECONDARY_RIGHT,sd);
+        button_content(g,v,kind,lay::SECONDARY_RIGHT,kb?Glyph{GlyphKind::KEY,VK_DELETE,L"Del"}:Glyph{GlyphKind::PAD,PB_SELECT,L""},ts(v,cv_archives_i18n::DELETE_SAVE),16.5f,0.6f,Color(255,255,212,212),false,sd==ButtonState::PRESSED);
+    } else if(show_over) {
         const ButtonState s2=state(v,HIT_SECONDARY);
         ui::plate(g,lay::SECONDARY,false,s2);
         button_content(g,v,kind,lay::SECONDARY,kb?Glyph{GlyphKind::KEY,'O',L""}:Glyph{GlyphKind::PAD,PB_WEST,L""},ts(v,cv_archives_i18n::OVERWRITE),18,1,Color(255,230,236,248),false,s2==ButtonState::PRESSED);
+    } else if(show_del) {
+        const ButtonState sd=state(v,HIT_DELETE);
+        delete_plate(g,lay::SECONDARY,sd);
+        button_content(g,v,kind,lay::SECONDARY,kb?Glyph{GlyphKind::KEY,VK_DELETE,L"Del"}:Glyph{GlyphKind::PAD,PB_WEST,L""},ts(v,cv_archives_i18n::DELETE_SAVE),18,1,Color(255,255,212,212),false,sd==ButtonState::PRESSED);
     }
     // The message under it: a result or refusal, else the page's own note (Maps: when it works).
     std::wstring msg=v.status;Tone tone=v.tone;
@@ -299,10 +359,16 @@ void footer(Graphics& g,const View& v,int kind) {
 void dialog(Graphics& g,const View& v) {
     SolidBrush dim(Color(158,3,6,14));g.FillRectangle(&dim,RectF(0,0,W,H));
     ui::gold_frame(g,lay::DIALOG);
-    ui::title_gold(g,ts(v,cv_archives_i18n::OVERWRITE),RectF(lay::DIALOG_TITLE.X,lay::DIALOG_TITLE.Y-15,lay::DIALOG_TITLE.Width,lay::DIALOG_TITLE.Height+30),v.language,32,1.5f,StringAlignmentCenter,StringAlignmentCenter);
-    txt(g,ts(v,cv_archives_i18n::QUESTION),lay::DIALOG_TEXT,F(v,Role::BODY400,23),C_DETAIL,StringAlignmentCenter,StringAlignmentNear,true);
+    const auto title_id=v.confirm_delete?cv_archives_i18n::DELETE_TITLE:cv_archives_i18n::OVERWRITE;
+    const auto text_id=v.confirm_delete?cv_archives_i18n::DELETE_QUESTION:cv_archives_i18n::QUESTION;
+    ui::title_gold(g,ts(v,title_id),RectF(lay::DIALOG_TITLE.X,lay::DIALOG_TITLE.Y-15,lay::DIALOG_TITLE.Width,lay::DIALOG_TITLE.Height+30),v.language,32,1.5f,StringAlignmentCenter,StringAlignmentCenter);
+    txt(g,ts(v,text_id),lay::DIALOG_TEXT,F(v,Role::BODY400,23),C_DETAIL,StringAlignmentCenter,StringAlignmentNear,true);
     ui::plate_label(g,lay::DIALOG_CANCEL,!v.confirm_yes,ts(v,cv_archives_i18n::CANCEL),v.language,24,1.5f,state(v,HIT_DIALOG_CANCEL));
-    ui::plate_label(g,lay::DIALOG_YES,v.confirm_yes,ts(v,cv_archives_i18n::YES),v.language,24,1.5f,state(v,HIT_DIALOG_YES));
+    if(v.confirm_delete&&v.confirm_yes) {
+        ui::primary_button_red(g,lay::DIALOG_YES,ts(v,cv_archives_i18n::YES),v.language,24,1.5f,state(v,HIT_DIALOG_YES));
+    } else {
+        ui::plate_label(g,lay::DIALOG_YES,v.confirm_yes,ts(v,cv_archives_i18n::YES),v.language,24,1.5f,state(v,HIT_DIALOG_YES));
+    }
 }
 }  // namespace
 
@@ -317,7 +383,11 @@ std::vector<Hit> hits(const View& v) {
         out.push_back({lay::STEP_MINUS,HIT_STEP_MINUS,0});out.push_back({lay::STEP_PLUS,HIT_STEP_PLUS,0});
     }
     if(v.primary_enabled)out.push_back({v.page==PAGE_MAPS?lay::PRIMARY_MAPS:lay::PRIMARY,HIT_PRIMARY,0});
-    if(v.page==PAGE_SAVE&&v.can_overwrite)out.push_back({lay::SECONDARY,HIT_SECONDARY,0});
+    const bool show_over=v.page==PAGE_SAVE&&v.can_overwrite;
+    const bool show_del=(v.page==PAGE_LOAD||v.page==PAGE_SAVE)&&v.can_delete;
+    if(show_over&&show_del){out.push_back({lay::SECONDARY_LEFT,HIT_SECONDARY,0});out.push_back({lay::SECONDARY_RIGHT,HIT_DELETE,0});}
+    else if(show_over)out.push_back({lay::SECONDARY,HIT_SECONDARY,0});
+    else if(show_del)out.push_back({lay::SECONDARY,HIT_DELETE,0});
     if(v.back_rect.Width>0)out.push_back({v.back_rect,HIT_BACK,0});
     return out;
 }
@@ -326,12 +396,22 @@ const Hit* hit_at(const std::vector<Hit>& list,float x,float y) {
     return nullptr;
 }
 
-void draw(Graphics& g,const View& v) {
+void release_caches() {
+    thumb_cache.clear();
+    mono_fonts.clear();
+    mono_family.reset();
+    thumb_scale_key=0;
+}
+void draw_backdrop(Graphics& g,const View& v) {
+    g.SetSmoothingMode(SmoothingModeAntiAlias);g.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
+    g.SetPixelOffsetMode(PixelOffsetModeHalf);
+    ui::gold_frame(g,RectF(0,0,W,H));
+    header(g,v);
+}
+void draw_foreground(Graphics& g,const View& v) {
     g.SetSmoothingMode(SmoothingModeAntiAlias);g.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
     g.SetInterpolationMode(InterpolationModeHighQualityBicubic);g.SetPixelOffsetMode(PixelOffsetModeHalf);
     const int kind=ui::hint_kind(v.input);
-    ui::gold_frame(g,RectF(0,0,W,H));
-    header(g,v);
     tabs(g,v,kind);
     if(v.page==PAGE_MAPS)filter_and_now(g,v);else library_header(g,v);
     list(g,v);
@@ -340,5 +420,9 @@ void draw(Graphics& g,const View& v) {
     buttons(g,v,kind);
     footer(g,v,kind);
     if(v.confirming)dialog(g,v);
+}
+void draw(Graphics& g,const View& v) {
+    draw_backdrop(g,v);
+    draw_foreground(g,v);
 }
 }

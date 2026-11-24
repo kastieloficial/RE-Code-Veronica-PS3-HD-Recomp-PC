@@ -351,6 +351,18 @@ static void pad_poll_xinput(void)
             if(p.buttons)s_last_input=p.kind;
             continue;
         }
+        /* Also latch early when both triggers (L2+R2) are held together in chord
+         * mode: RE:CVX never uses L2+R2 simultaneously, so building a chord with
+         * L2+R2 slightly before L1/R1 never leaks Circle/Triangle into the game. */
+        if (g_pad_shortcut_chords && (p.buttons & ((1u << PB_L2) | (1u << PB_R2))) == ((1u << PB_L2) | (1u << PB_R2))) {
+            shortcut_held[i] = 1;
+            hs->buttons = 0;
+            hs->analog_lx = hs->analog_ly = hs->analog_rx = hs->analog_ry = 128;
+            hs->trigger_l2 = hs->trigger_r2 = 0;
+            pad_set_pressures(hs);
+            s_last_input = p.kind;
+            continue;
+        }
         if(s_gameplay_button_filter)p.buttons=s_gameplay_button_filter(p.buttons);cv_map_sticks(&p,s_map_btn,axes);if(i==0)cv_physical_left_analog=(abs((int)axes[0]-128)>30||abs((int)axes[1]-128)>30);if(s_gameplay_right_stick_filter&&s_gameplay_right_stick_filter())axes[2]=axes[3]=128;
         u16 btns = 0;
         for (int a = 0; a < PA_COUNT; a++)
@@ -563,14 +575,42 @@ static void pad_poll_backend(void)
 #ifdef _WIN32
     pad_map_load();
     pad_poll_keyboard();   /* keyboard always adds to port 0 */
-    if (g_pad_block)       /* the options menu has the focus */
-        for (int i = 0; i < PAD_MAX_HOST_PORTS; i++) {
-            PadHostState* hs = &s_host_state[i];
-            hs->buttons = 0;
-            hs->analog_lx = hs->analog_ly = hs->analog_rx = hs->analog_ry = 128;
-            hs->trigger_l2 = hs->trigger_r2 = 0;
-            pad_set_pressures(hs);
+    {
+        /* Suppress any button held when closing a port menu (F5/F6/F7) or
+         * finishing a shortcut chord until that button is physically released,
+         * so Circle/Triangle/etc. never leak into the game (opening Map/Inv). */
+        static u16 s_block_release[PAD_MAX_HOST_PORTS];
+        static int s_was_blocked = 0;
+        if (g_pad_block) {       /* a port menu has the focus */
+            s_was_blocked = 1;
+            for (int i = 0; i < PAD_MAX_HOST_PORTS; i++) {
+                PadHostState* hs = &s_host_state[i];
+                s_block_release[i] = hs->buttons;
+                hs->buttons = 0;
+                hs->analog_lx = hs->analog_ly = hs->analog_rx = hs->analog_ry = 128;
+                hs->trigger_l2 = hs->trigger_r2 = 0;
+                pad_set_pressures(hs);
+            }
+        } else {
+            if (s_was_blocked) {
+                /* Catch buttons pressed on the exact frame g_pad_block cleared. */
+                for (int i = 0; i < PAD_MAX_HOST_PORTS; i++)
+                    s_block_release[i] |= s_host_state[i].buttons;
+                s_was_blocked = 0;
+            }
+            for (int i = 0; i < PAD_MAX_HOST_PORTS; i++) {
+                if (!s_block_release[i]) continue;
+                PadHostState* hs = &s_host_state[i];
+                s_block_release[i] &= hs->buttons;
+                if (s_block_release[i]) {
+                    hs->buttons &= (u16)~s_block_release[i];
+                    if (s_block_release[i] & CELL_PAD_CTRL_L2) hs->trigger_l2 = 0;
+                    if (s_block_release[i] & CELL_PAD_CTRL_R2) hs->trigger_r2 = 0;
+                    pad_set_pressures(hs);
+                }
+            }
         }
+    }
 #endif
 }
 

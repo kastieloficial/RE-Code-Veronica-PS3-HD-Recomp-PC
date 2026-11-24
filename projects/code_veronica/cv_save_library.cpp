@@ -105,8 +105,21 @@ bool read(const Record& r,Data& d,std::vector<uint32_t>* image=nullptr){
  std::memcpy(d.slot.data(),b.data()+head_size,slot_size);std::memcpy(d.common.data(),b.data()+head_size+slot_size,common_size);d.option=le(b.data()+head_size+slot_size+common_size);
  if(image){image->resize(tw*th);std::memcpy(image->data(),b.data()+head_size+slot_size+common_size+4,tw*th*4);}return valid_slot(d);
 }
-void refresh(){
- entries.clear();thumbnails.clear();std::error_code ec;
+bool read_thumbnail_only(const Record& r,std::vector<uint32_t>& image){
+ if(r.legacy>=0)return false;
+ std::ifstream f(r.path,std::ios::binary|std::ios::ate);if(!f)return false;
+ const size_t expected=head_size+slot_size+common_size+4+tw*th*4;
+ if(f.tellg()!=std::streamoff(expected))return false;
+ std::array<uint8_t,head_size> h{};f.seekg(0);f.read((char*)h.data(),h.size());
+ if(!f||!header(h.data()))return false;
+ image.resize(tw*th);
+ f.seekg(std::streamoff(head_size+slot_size+common_size+4));
+ f.read((char*)image.data(),std::streamsize(tw*th*4));
+ return bool(f);
+}
+void refresh(bool keep_pos=false){
+ const int prev_sel=selected,prev_scr=scroll;
+ entries.clear();thumbnails.clear();cv_archives_ui::release_caches();std::error_code ec;
  for(fs::directory_iterator it(library(),ec),end;!ec&&it!=end;it.increment(ec)){
   if(!it->is_regular_file(ec)||it->path().extension()!=L".cvsav")continue;
   std::ifstream f(it->path(),std::ios::binary);std::array<uint8_t,head_size> h{};f.read((char*)h.data(),h.size());if(!f||!header(h.data()))continue;
@@ -120,7 +133,13 @@ void refresh(){
   for(int i=0;i<15;i++){Data d;f.seekg(8+i*slot_size);f.read((char*)d.slot.data(),slot_size);if(!f||!valid_slot(d))continue;auto r=metadata(d);r.path=path;r.time=written;r.legacy=i;entries.push_back(r);}
  }
  std::sort(entries.begin(),entries.end(),[](const auto&a,const auto&b){return a.time>b.time;});
- selected=std::clamp(selected,0,std::max(0,int(entries.size())-(saving?0:1)));selected=std::max(0,selected);scroll=0;
+ const int max_sel=std::max(0,int(entries.size())-(saving?0:1));
+ selected=std::clamp(keep_pos?prev_sel:selected,0,max_sel);
+ if(keep_pos){
+  scroll=std::clamp(prev_scr,0,std::max(0,max_sel-cv_archives_ui::ROWS_VISIBLE+1));
+  if(selected<scroll)scroll=selected;
+  if(selected>=scroll+cv_archives_ui::ROWS_VISIBLE)scroll=selected-cv_archives_ui::ROWS_VISIBLE+1;
+ }else scroll=0;
 }
 std::wstring date(uint64_t value){FILETIME ft{DWORD(value),DWORD(value>>32)},local{};SYSTEMTIME t{};FileTimeToLocalFileTime(&ft,&local);FileTimeToSystemTime(&local,&t);wchar_t out[64];swprintf(out,64,L"%04u-%02u-%02u  %02u:%02u:%02u",t.wYear,t.wMonth,t.wDay,t.wHour,t.wMinute,t.wSecond);return out;}
 void thumbnail(void* user,const uint32_t* rgba,unsigned w,unsigned h){
@@ -193,7 +212,8 @@ constexpr int rows_visible=au::ROWS_VISIBLE;
 int page=au::PAGE_LOAD,spawn=0,input_kind=PAD_INPUT_KEYBOARD;
 int painted_hint_kind=PAD_INPUT_KEYBOARD;POINT last_mouse{};bool stick_active[PAD_PHYS_MAX]={};
 int page_selected[3]={},page_scroll[3]={};
-bool confirming=false,confirm_yes=false,double_click=false,search_focus=false;
+bool confirming=false,confirm_yes=false,confirm_delete=false,double_click=false,search_focus=false;
+bool view_dirty=true;
 au::Tone status_tone=au::Tone::NEUTRAL;
 std::atomic<int> context{tf::CTX_NONE};   // what the game thread says F7 may do: nothing, gameplay, the title menu
 HWND search=nullptr;
@@ -205,9 +225,9 @@ unsigned current_room=~0u;
 bool (*travel_to)(unsigned,unsigned)=nullptr;
 ULONGLONG held_since[PAD_PHYS_MAX]={};
 uint32_t held_direction[PAD_PHYS_MAX]={};
-void repaint(){if(window)InvalidateRect(window,nullptr,FALSE);}
-void set_status(const std::wstring& s,au::Tone t=au::Tone::NEUTRAL){status=s;status_tone=t;}
-void close_window(){if(busy)return;confirming=false;cv_port_modal::close(cv_port_modal::ARCHIVES);}   // hides, the game runs again and gets the focus
+void repaint(bool dirty=true){if(dirty)view_dirty=true;if(window)InvalidateRect(window,nullptr,FALSE);}
+void set_status(const std::wstring& s,au::Tone t=au::Tone::NEUTRAL){status=s;status_tone=t;view_dirty=true;}
+void close_window(){if(busy)return;confirming=false;confirm_delete=false;cv_port_modal::close(cv_port_modal::ARCHIVES);}   // hides, the game runs again and gets the focus
 int count(){return page==au::PAGE_MAPS?int(filtered_maps.size()):int(entries.size())+(saving?1:0);}
 void move(int delta){if(busy||confirming||!count())return;selected=std::clamp(selected+delta,0,count()-1);if(selected<scroll)scroll=selected;if(selected>=scroll+rows_visible)scroll=selected-rows_visible+1;repaint();}
 void filter_maps(){wchar_t value[128]={};if(search)GetWindowTextW(search,value,128);std::wstring query=value;for(auto& c:query)c=wchar_t(towlower(c));filtered_maps.clear();for(size_t i=0;i<maps.size();i++)if(query.empty()||maps[i].code().find(query)!=std::wstring::npos)filtered_maps.push_back(i);selected=scroll=0;repaint();}
@@ -235,22 +255,40 @@ void activate(bool overwrite=false){
  if(page==au::PAGE_MAPS){if(selected>=0&&selected<int(filtered_maps.size())&&travel_to&&travel_to(maps[filtered_maps[selected]].key(),unsigned(spawn)))close_window();else{set_status(mt(cv_test_i18n::REFUSED),au::Tone::BAD);repaint();}return;}
  if(saving&&!tf::save_allowed(ctx)){set_status(tr(ui::SAVE_TITLE_BLOCKED),au::Tone::WARN);repaint();return;}   // no save at the title
  Pending p;p.save=saving;const int index=selected-(saving?1:0);
- if(saving){if(index>=0&&!overwrite){confirming=true;confirm_yes=false;repaint();return;}
+ if(saving){if(index>=0&&!overwrite){confirming=true;confirm_delete=false;confirm_yes=false;repaint();return;}
   if(index>=0){if(index>=int(entries.size())||entries[index].legacy>=0)return;p.replace=entries[index].path;}}
  else if(index<0||index>=int(entries.size())||!read(entries[index],p.data)){set_status(tr(ui::CORRUPT),au::Tone::BAD);repaint();return;}
  {std::lock_guard<std::mutex> lock(queue_lock);if(have_request)return;queued=std::move(p);have_request=true;busy=true;}
  set_status(tr(ui::WORKING));if(!saving)cv_port_modal::close(cv_port_modal::ARCHIVES);else cv_port_modal::set_working(cv_port_modal::ARCHIVES,true);   // a save is written with the game running, the window still shown
  repaint();
 }
-void request_overwrite(){const auto* e=selection();if(busy||!tf::save_allowed(context.load())||!saving||!e||e->legacy>=0)return;confirming=true;confirm_yes=false;repaint();}
-void accept(){if(confirming){bool yes=confirm_yes;confirming=false;if(yes)activate(true);repaint();}else{if(saving)selected=scroll=0;activate();}}
-void back(){if(confirming){confirming=false;repaint();}else close_window();}
+void request_overwrite(){const auto* e=selection();if(busy||!tf::save_allowed(context.load())||!saving||!e||e->legacy>=0)return;confirming=true;confirm_delete=false;confirm_yes=false;repaint();}
+void request_delete(){const auto* e=selection();if(busy||page==au::PAGE_MAPS||!e||e->legacy>=0)return;confirming=true;confirm_delete=true;confirm_yes=false;repaint();}
+void delete_selected(){
+ const auto* e=selection();
+ if(busy||page==au::PAGE_MAPS||!e||e->legacy>=0)return;
+ const fs::path target=e->path;
+ std::error_code ec;
+ const bool ok=fs::remove(target,ec)&&!ec;
+ if(ok){refresh(true);set_status(tr(ui::DELETED),au::Tone::GOOD);}
+ else{set_status(tr(ui::DELETE_FAILED),au::Tone::BAD);}
+ repaint();
+}
+void accept(){
+ if(confirming){
+  const bool yes=confirm_yes,del=confirm_delete;
+  confirming=false;confirm_delete=false;
+  if(yes){if(del)delete_selected();else activate(true);}
+  repaint();
+ }else{if(saving)selected=scroll=0;activate();}
+}
+void back(){if(confirming){confirming=false;confirm_delete=false;repaint();}else close_window();}
 const wchar_t* chars[]={L"Claire Redfield",L"Chris Redfield",L"Steve Burnside",L"Albert Wesker"};
 std::wstring clock_text(unsigned seconds){wchar_t tm[32];swprintf(tm,32,L"%02u:%02u:%02u",seconds/3600,seconds/60%60,seconds%60);return tm;}
 // The thumbnail of a library file (320x180), read once and kept; null for an original slot or an unreadable file.
 const uint32_t* thumbnail_of(const Record* e){
  if(!e||e->legacy>=0)return nullptr;const auto key=e->path.wstring();auto at=thumbnails.find(key);
- if(at==thumbnails.end()){Data d;std::vector<uint32_t> px;if(!read(*e,d,&px)||px.size()!=size_t(tw)*th)return nullptr;at=thumbnails.emplace(key,std::move(px)).first;}
+ if(at==thumbnails.end()){std::vector<uint32_t> px;if(!read_thumbnail_only(*e,px)||px.size()!=size_t(tw)*th)return nullptr;at=thumbnails.emplace(key,std::move(px)).first;}
  return at->second.data();
 }
 // The input helpers live in cv_port_ui (shared with the other port windows).
@@ -259,11 +297,13 @@ void note_input(int kind){kind=cv_port_ui::normalize_kind(kind);if(input_kind!=k
 using cv_port_ui::menu_pad;
 // Fills `view` for a paint or a hit test: only what is visible, the pictures held in `thumbnails` until the next sync.
 void sync_view(){
+ if(!view_dirty)return;
+ view_dirty=false;
  au::View& v=view;const int ctx=context.load();const int total=count();
- if(thumbnails.size()>24)thumbnails.clear();   // before this batch: the pointers below stay valid until the next sync
+ if(thumbnails.size()>64){thumbnails.clear();au::release_caches();}   // before this batch: the pointers below stay valid until the next sync
  v.language=language.load();v.page=page;v.input=input_kind;v.unavailable=!tf::load_allowed(ctx);
  v.count=total;v.scroll=scroll;v.selected=selected;v.spawn=spawn;v.files=int(entries.size());
- v.confirming=confirming;v.confirm_yes=confirm_yes;v.busy=busy;v.search_focus=search_focus;
+ v.confirming=confirming;v.confirm_yes=confirm_yes;v.confirm_delete=confirm_delete;v.busy=busy;v.search_focus=search_focus;
  v.rows.clear();
  for(int item=scroll;item<total&&item<scroll+rows_visible;item++){
   au::Row row;
@@ -293,6 +333,7 @@ void sync_view(){
  else v.placeholder=tr(ui::NO_PREVIEW);
  v.primary_enabled=tf::load_allowed(ctx)&&!busy&&(page==au::PAGE_SAVE?tf::save_allowed(ctx):total>0);
  v.can_overwrite=saving&&tf::save_allowed(ctx)&&selection()&&selection()->legacy<0;
+ v.can_delete=!busy&&page!=au::PAGE_MAPS&&selection()&&selection()->legacy<0;
  // Under the main button: a result or refusal first, else why the page may not work, else the page's own note.
  if(!status.empty()){v.status=status;v.tone=status_tone;}
  else if(!tf::load_allowed(ctx)){v.status=tr(ui::UNAVAILABLE);v.tone=au::Tone::WARN;}
@@ -300,15 +341,45 @@ void sync_view(){
  else if(page==au::PAGE_MAPS){v.status=ctx==tf::CTX_TITLE?tr(ui::MAP_TITLE_NOTE):tr(ui::UNAVAILABLE);v.tone=au::Tone::WARN;}
  else{v.status.clear();v.tone=au::Tone::NEUTRAL;}
 }
+struct ArchivesBuffers{
+ HDC memdc=nullptr;HBITMAP dib=nullptr;HGDIOBJ old_bmp=nullptr;uint8_t* bits=nullptr;
+ std::vector<uint8_t> backdrop;int w=0,h=0,lang=-1;float sc=0;
+ void free_all(){
+  if(memdc&&old_bmp){SelectObject(memdc,old_bmp);old_bmp=nullptr;}
+  if(dib){DeleteObject(dib);dib=nullptr;}
+  if(memdc){DeleteDC(memdc);memdc=nullptr;}
+  bits=nullptr;backdrop.clear();backdrop.shrink_to_fit();w=h=0;lang=-1;sc=0;
+ }
+ bool ensure(HDC ref_dc,int nw,int nh,float nsc,const au::View& v){
+  if(dib&&w==nw&&h==nh&&sc==nsc&&lang==v.language)return true;
+  free_all();
+  BITMAPINFO bmi{};bmi.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);bmi.bmiHeader.biWidth=nw;bmi.bmiHeader.biHeight=-nh;
+  bmi.bmiHeader.biPlanes=1;bmi.bmiHeader.biBitCount=32;bmi.bmiHeader.biCompression=BI_RGB;
+  void* raw=nullptr;memdc=CreateCompatibleDC(ref_dc);if(!memdc)return false;
+  dib=CreateDIBSection(memdc,&bmi,DIB_RGB_COLORS,&raw,nullptr,0);if(!dib||!raw){free_all();return false;}
+  old_bmp=SelectObject(memdc,dib);bits=static_cast<uint8_t*>(raw);w=nw;h=nh;sc=nsc;lang=v.language;
+  backdrop.assign(size_t(nw)*size_t(nh)*4,0);
+  {Gdiplus::Bitmap bg_bmp(nw,nh,nw*4,PixelFormat32bppPARGB,backdrop.data());
+   Gdiplus::Graphics bg(&bg_bmp);bg.ScaleTransform(nsc,nsc);au::draw_backdrop(bg,v);}
+  return true;
+ }
+} abuf;
 void paint(HWND h){painted_hint_kind=hint_kind();PAINTSTRUCT ps;HDC dc=BeginPaint(h,&ps);RECT c;GetClientRect(h,&c);
  const int w=std::max<int>(1,c.right),hh=std::max<int>(1,c.bottom);sync_view();
- {Gdiplus::Bitmap back(w,hh,PixelFormat32bppARGB);
+ if(abuf.ensure(dc,w,hh,scale,view)){
+  std::memcpy(abuf.bits,abuf.backdrop.data(),abuf.backdrop.size());
+  {Gdiplus::Bitmap back(w,hh,w*4,PixelFormat32bppPARGB,abuf.bits);
+   Gdiplus::Graphics g(&back);g.ScaleTransform(scale,scale);au::draw_foreground(g,view);}
+  BitBlt(dc,0,0,w,hh,abuf.memdc,0,0,SRCCOPY);
+ }else{
+  Gdiplus::Bitmap back(w,hh,PixelFormat32bppPARGB);
   {Gdiplus::Graphics g(&back);g.ScaleTransform(scale,scale);au::draw(g,view);}
-  Gdiplus::Graphics out(dc);out.DrawImage(&back,Gdiplus::Rect(0,0,w,hh),0,0,w,hh,Gdiplus::UnitPixel);}
+  Gdiplus::Graphics out(dc);out.DrawImage(&back,Gdiplus::Rect(0,0,w,hh),0,0,w,hh,Gdiplus::UnitPixel);
+ }
  EndPaint(h,&ps);
 }
 int id_at(int px,int py){sync_view();const auto list=au::hits(view);const au::Hit* hit=au::hit_at(list,px/scale,py/scale);return hit?au::hit_id(hit->kind,hit->value):-1;}
-void reveal(int index){selected=std::clamp(index,0,std::max(0,count()-1));if(selected<scroll)scroll=selected;if(selected>=scroll+rows_visible)scroll=selected-rows_visible+1;}
+void reveal(int index){selected=std::clamp(index,0,std::max(0,count()-1));if(selected<scroll)scroll=selected;if(selected>=scroll+rows_visible)scroll=selected-rows_visible+1;view_dirty=true;}
 // The action of a control, on the button's release over it.
 void fire(int id,bool dbl){
  const int kind=id/65536,value=id%65536;
@@ -320,6 +391,7 @@ void fire(int id,bool dbl){
  case au::HIT_STEP_MINUS:case au::HIT_STEP_PLUS:spawn=std::clamp(spawn+(kind==au::HIT_STEP_MINUS?-1:1),0,255);repaint();break;
  case au::HIT_PRIMARY:if(saving)selected=scroll=0;activate();break;
  case au::HIT_SECONDARY:request_overwrite();break;
+ case au::HIT_DELETE:request_delete();break;
  case au::HIT_BACK:back();break;
  case au::HIT_DIALOG_CANCEL:confirm_yes=false;accept();break;
  case au::HIT_DIALOG_YES:confirm_yes=true;accept();break;
@@ -331,6 +403,7 @@ void keyboard(WPARAM key){note_input(PAD_INPUT_KEYBOARD);if(busy)return;
  if(key==VK_UP)move(-1);if(key==VK_DOWN)move(1);if(key==VK_PRIOR)move(-rows_visible);if(key==VK_NEXT)move(rows_visible);if(key==VK_HOME)move(-count());if(key==VK_END)move(count());
  if(page==au::PAGE_MAPS&&(key==VK_LEFT||key==VK_RIGHT)){spawn=std::clamp(spawn+(key==VK_LEFT?-1:1),0,255);repaint();}
  if(key==VK_RETURN)accept();if(saving&&key=='O')request_overwrite();if(saving&&key=='N'){selected=scroll=0;activate();}
+ if(key==VK_DELETE&&page!=au::PAGE_MAPS)request_delete();
  if(page==au::PAGE_MAPS&&key=='F'){SetFocus(search);SendMessageW(search,EM_SETSEL,0,-1);}
 }
 LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM wp,LPARAM lp){switch(msg){
@@ -343,15 +416,15 @@ LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM wp,LPARAM lp){switch(msg){
   return 0;}
  case WM_CTLCOLOREDIT:if(!edit_brush)edit_brush=CreateSolidBrush(RGB(7,11,22));SetTextColor(reinterpret_cast<HDC>(wp),RGB(230,236,248));SetBkColor(reinterpret_cast<HDC>(wp),RGB(7,11,22));return reinterpret_cast<LRESULT>(edit_brush);
  case WM_MOUSEWHEEL:note_input(PAD_INPUT_KEYBOARD);move(GET_WHEEL_DELTA_WPARAM(wp)>0?-3:3);return 0;
- case WM_MOUSEMOVE:view.mouse.arm(h);if(view.mouse.move(id_at(GET_X_LPARAM(lp),GET_Y_LPARAM(lp))))repaint();return 0;
- case WM_MOUSELEAVE:if(view.mouse.leave())repaint();return 0;
+ case WM_MOUSEMOVE:view.mouse.arm(h);if(view.mouse.move(id_at(GET_X_LPARAM(lp),GET_Y_LPARAM(lp))))repaint(false);return 0;
+ case WM_MOUSELEAVE:if(view.mouse.leave())repaint(false);return 0;
  case WM_LBUTTONDOWN:case WM_LBUTTONDBLCLK:{note_input(PAD_INPUT_KEYBOARD);if(busy)return 0;
   if(!confirming)SetFocus(h);
   const int id=id_at(GET_X_LPARAM(lp),GET_Y_LPARAM(lp));double_click=msg==WM_LBUTTONDBLCLK;
-  if(id>=0){SetCapture(h);if(view.mouse.down(id))repaint();}return 0;}
+  if(id>=0){SetCapture(h);if(view.mouse.down(id))repaint(false);}return 0;}
  case WM_LBUTTONUP:if(view.mouse.pressed>=0){ReleaseCapture();int fired=-1;const bool changed=view.mouse.up(id_at(GET_X_LPARAM(lp),GET_Y_LPARAM(lp)),fired);
    const bool dbl=double_click;double_click=false;
-   if(fired>=0){fire(fired,dbl);repaint();}else if(changed)repaint();}
+   if(fired>=0){fire(fired,dbl);repaint();}else if(changed)repaint(false);}
   return 0;
  case WM_DONE:busy=false;if(IsWindowVisible(h)){cv_port_modal::set_working(cv_port_modal::ARCHIVES,false);refresh();set_status(wp?tr(ui::SAVED):tr(ui::FAILED),wp?au::Tone::GOOD:au::Tone::BAD);repaint();}return 0;
  case WM_TIMER:cv_port_modal::tick(cv_port_modal::ARCHIVES,h);if(painted_hint_kind!=hint_kind())repaint();if(IsWindowVisible(h)&&(GetForegroundWindow()==h||IsChild(h,GetForegroundWindow())))for(int i=0;i<PAD_PHYS_MAX;i++){
@@ -364,12 +437,16 @@ LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM wp,LPARAM lp){switch(msg){
   if(edge&(1u<<PB_EAST)){back();return 0;}
   if(confirming){if(edge&((1u<<PB_LEFT)|(1u<<PB_RIGHT))){confirm_yes=!confirm_yes;repaint();}if(edge&(1u<<PB_SOUTH))accept();continue;}
   if(edge&(1u<<PB_L1))switch_tab(page-1);if(edge&(1u<<PB_R1))switch_tab(page+1);
-  if(edge&(1u<<PB_SOUTH))accept();if(saving&&(edge&(1u<<PB_WEST)))request_overwrite();if(saving&&(edge&(1u<<PB_NORTH))){selected=scroll=0;activate();}
+  if(edge&(1u<<PB_SOUTH))accept();
+  if(saving&&(edge&(1u<<PB_WEST))){if(tf::save_allowed(context.load()))request_overwrite();else request_delete();}
+  if(saving&&(edge&(1u<<PB_SELECT)))request_delete();
+  if(!saving&&page==au::PAGE_LOAD&&(edge&(1u<<PB_WEST)))request_delete();
+  if(saving&&(edge&(1u<<PB_NORTH))){selected=scroll=0;activate();}
   if(page==au::PAGE_MAPS&&(edge&((1u<<PB_LEFT)|(1u<<PB_RIGHT)))){spawn=std::clamp(spawn+((edge&(1u<<PB_LEFT))?-1:1),0,255);repaint();}
   uint32_t dir=p.buttons&((1u<<PB_UP)|(1u<<PB_DOWN)|(1u<<PB_L2)|(1u<<PB_R2));auto now=GetTickCount64();if(!dir){held_direction[i]=0;continue;}if(dir!=held_direction[i]){held_direction[i]=dir;held_since[i]=now;repeat_at[i]=0;}
   if(now>=repeat_at[i]){note_input(p.kind);int delta=(dir&((1u<<PB_UP)|(1u<<PB_L2)))?-1:1;if(dir&((1u<<PB_L2)|(1u<<PB_R2)))delta*=rows_visible;move(delta);repeat_at[i]=now+((now==held_since[i])?340:(now-held_since[i]>1100?55:115));}
  }return 0;
- case WM_DESTROY:KillTimer(h,1);notification=nullptr;window=nullptr;search=nullptr;return 0;}
+ case WM_DESTROY:KillTimer(h,1);abuf.free_all();au::release_caches();notification=nullptr;window=nullptr;search=nullptr;return 0;}
  return DefWindowProcW(h,msg,wp,lp);
 }
 
@@ -395,7 +472,7 @@ void cv_save_library_frame(ppu_context* ctx,bool gameplay,bool title){
  catch(...){busy=false;publish(tr(ui::FAILED),false);}
 }
 void cv_save_library_show(bool mode,int lang){cv_archives_show(mode?au::PAGE_SAVE:au::PAGE_LOAD,lang);}
-void cv_archives_show(int page_,int lang,int opening_input){if(busy)return;language=std::clamp(lang,0,12);page=std::clamp(page_,0,2);saving=page==au::PAGE_SAVE;selected=scroll=0;confirming=false;status.clear();refresh();
+void cv_archives_show(int page_,int lang,int opening_input){if(busy)return;language=std::clamp(lang,0,12);page=std::clamp(page_,0,2);saving=page==au::PAGE_SAVE;selected=scroll=0;confirming=false;confirm_delete=false;view_dirty=true;status.clear();refresh();
  cv_port_ui::fonts_available();   // the embedded fonts load before any Graphics of this window exists
  if(!window){WNDCLASSW wc{};wc.style=CS_DBLCLKS;wc.lpfnWndProc=proc;wc.hInstance=GetModuleHandleW(nullptr);wc.hCursor=LoadCursorW(nullptr,MAKEINTRESOURCEW(32512));wc.lpszClassName=L"CVSaveLibrary";wc.hIcon=LoadIconW(wc.hInstance,MAKEINTRESOURCEW(1));RegisterClassW(&wc);
   // Owned by the game window, never TOPMOST: above the game, below other programs.
@@ -420,6 +497,7 @@ void cv_archives_show(int page_,int lang,int opening_input){if(busy)return;langu
 void cv_save_library_close(){if(!busy)close_window();}
 void cv_archives_release(){   // before GdiplusShutdown / at exit
  if(window)DestroyWindow(window);
+ abuf.free_all();au::release_caches();
  if(edit_font){DeleteObject(edit_font);edit_font=nullptr;}if(edit_brush){DeleteObject(edit_brush);edit_brush=nullptr;}
  cv_port_ui::release_fonts();
 }

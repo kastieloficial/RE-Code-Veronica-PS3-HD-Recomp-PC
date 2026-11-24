@@ -35,15 +35,16 @@ inline const RectF DETAIL_CHARACTER(880, 524, 496, 24), DETAIL_TIME(880, 554, 49
 inline const RectF STEPPER(880, 526, 496, 40), STEP_MINUS(1085, 531, 30, 30), STEP_VALUE(1121, 531, 120, 30), STEP_PLUS(1247, 531, 30, 30),
     STEP_HINT(1301, 531, 59, 30), ENTRY_HINT(880, 578, 496, 46);
 inline const RectF PRIMARY_MAPS(880, 650, 496, 46), PRIMARY(880, 652, 496, 46), SECONDARY(880, 600, 496, 42);
+inline const RectF SECONDARY_LEFT(880, 600, 244, 42), SECONDARY_RIGHT(1132, 600, 244, 42);
 inline const RectF MESSAGE_MAPS(880, 710, 496, 44), MESSAGE(880, 712, 496, 44);
 inline const RectF FOOTER(24, 776, 1352, 40);
-// The confirmation dialog (overwrite): over a dimmed window.
+// The confirmation dialog (overwrite / delete): over a dimmed window.
 inline const RectF DIALOG(300, 260, 800, 300), DIALOG_TITLE(343, 297, 714, 42), DIALOG_TEXT(363, 363, 674, 70),
     DIALOG_CANCEL(363, 459, 310, 56), DIALOG_YES(713, 459, 310, 56);
 }
 
 enum class Tone { NEUTRAL, GOOD, WARN, BAD };
-enum HitKind { HIT_TAB, HIT_TAB_PREV, HIT_TAB_NEXT, HIT_ROW, HIT_STEP_MINUS, HIT_STEP_PLUS, HIT_PRIMARY, HIT_SECONDARY, HIT_BACK, HIT_DIALOG_CANCEL, HIT_DIALOG_YES };
+enum HitKind { HIT_TAB, HIT_TAB_PREV, HIT_TAB_NEXT, HIT_ROW, HIT_STEP_MINUS, HIT_STEP_PLUS, HIT_PRIMARY, HIT_SECONDARY, HIT_DELETE, HIT_BACK, HIT_DIALOG_CANCEL, HIT_DIALOG_YES };
 constexpr int hit_id(int kind, int value = 0) { return kind * 65536 + value; }
 struct Hit { Gdiplus::RectF rect; int kind, value; };
 
@@ -71,8 +72,8 @@ struct View {
     const uint32_t* image = nullptr;          // the picture (THUMB_W x THUMB_H ARGB)
     std::wstring placeholder;                 // shown instead of a picture
     std::wstring character, play_time;        // Load / Save details (empty: hidden)
-    bool primary_enabled = true, can_overwrite = false, busy = false;
-    bool confirming = false, confirm_yes = false, search_focus = false;   // search_focus: the search field has the keyboard
+    bool primary_enabled = true, can_overwrite = false, can_delete = false, busy = false;
+    bool confirming = false, confirm_yes = false, confirm_delete = false, search_focus = false;   // search_focus: the search field has the keyboard
     std::wstring search_cue;                  // previews only: the placeholder text (the window's EDIT draws its own)
     std::wstring status;                      // under the main button; empty: the page's own note
     Tone tone = Tone::NEUTRAL;
@@ -84,4 +85,8 @@ std::vector<Hit> hits(const View& view);
 const Hit* hit_at(const std::vector<Hit>& list, float x, float y);   // the last hit containing the point
 // Draws the whole window; the caller scales the Graphics to the window's pixels.
 void draw(Gdiplus::Graphics& g, const View& view);
+// Split backdrop/foreground path + cache release (used by cv_save_library for fast DIB rendering).
+void draw_backdrop(Gdiplus::Graphics& g, const View& view);
+void draw_foreground(Gdiplus::Graphics& g, const View& view);
+void release_caches();
 }
