@@ -1899,9 +1899,11 @@ void cellGcm_rsx_process_fifo(void)
 static void gcm_rsx_process_fifo_unlocked(void)
 {
     { static unsigned _n = 0; static unsigned long long _t0 = 0;
-      extern unsigned long long ps3_ms_now(void);
-      _n++;
-      if (getenv("GCM_RATE")) {
+      static int s_gcm_rate = -1;
+      if (s_gcm_rate < 0) s_gcm_rate = getenv("GCM_RATE") ? 1 : 0;
+      if (s_gcm_rate) {
+          extern unsigned long long ps3_ms_now(void);
+          _n++;
           unsigned long long now = ps3_ms_now();
           if (_t0 == 0) _t0 = now;
           if (now - _t0 >= 2000) {
@@ -1942,7 +1944,9 @@ static void gcm_rsx_process_fifo_unlocked(void)
      * once at init; if the title repoints gCellGcmCurrentContext at a buffer of
      * its own, every field below moves with it and the FIFO the runtime walks
      * stops being the one the title fills. Reported on change, not per tick. */
-    if (getenv("GCM_CTXDBG") && s_gcm_ctx_out_ea) {
+    static int s_gcm_ctxdbg = -1;
+    if (s_gcm_ctxdbg < 0) s_gcm_ctxdbg = getenv("GCM_CTXDBG") ? 1 : 0;
+    if (s_gcm_ctxdbg && s_gcm_ctx_out_ea) {
         static u32 last_ptr = 0xFFFFFFFFu, last_cur = 0xFFFFFFFFu;
         u32 ptr = vm_read32(s_gcm_ctx_out_ea);
         u32 cur = ptr ? vm_read32(ptr + 0x8) : 0;
@@ -1958,7 +1962,9 @@ static void gcm_rsx_process_fifo_unlocked(void)
     }
 
     u32 start_off = s_fifo_getoff;
-    if (getenv("GCM_DRAINDBG")) {
+    static int s_gcm_draindbg = -1;
+    if (s_gcm_draindbg < 0) s_gcm_draindbg = getenv("GCM_DRAINDBG") ? 1 : 0;
+    if (s_gcm_draindbg) {
         static int n = 0;
         if (n++ % 60 == 0)
             printf("[DRAIN] getoff=%08X put=%08X ref=%08X ctx.current=%08X\n",
@@ -1970,8 +1976,9 @@ static void gcm_rsx_process_fifo_unlocked(void)
      * present in 0..put. "The title waits for a fence we never published" has
      * two very different causes -- we missed the command, or it was never
      * submitted -- and only a direct scan of the ring separates them. */
-    { static int scanned = 0;
-      if (!scanned && getenv("GCM_SCANREF") && put >= 0x19F0) { scanned = 1;
+    { static int scanned = 0; static int s_scanref = -1;
+      if (s_scanref < 0) s_scanref = getenv("GCM_SCANREF") ? 1 : 0;
+      if (!scanned && s_scanref && put >= 0x19F0) { scanned = 1;
         unsigned found = 0;
         for (u32 io = 0; io + 8 <= put; io += 4) {
             u32 ea = gcm_io2ea(io); if (!ea) continue;
@@ -2204,7 +2211,9 @@ static void gcm_rsx_process_fifo_unlocked(void)
                     u32 m = (type == 0) ? method + i * 4 : method;
                     u32 v = vm_read32(dea);
                     u32 la = GCM_LABEL_GUEST_BASE + (s_sema_offset & 0xFFFFu);
-                    { static int sn = 0; if (getenv("GCM_RECDBG") && sn++ < 12)
+                    { static int sn = 0; static int s_recdbg_s = -1;
+                      if (s_recdbg_s < 0) s_recdbg_s = getenv("GCM_RECDBG") ? 1 : 0;
+                      if (s_recdbg_s && sn++ < 12)
                         fprintf(stderr, "[SEMA] m=0x%02X v=0x%08X off=0x%X\n", m, v, s_sema_offset); }
                     if (m == 0x64u)      s_sema_offset = v;
                     else if (m == 0x6Cu) vm_write32(la, v);
@@ -2221,6 +2230,40 @@ static void gcm_rsx_process_fifo_unlocked(void)
                 if (sem_blocked) break;
                 s_fifo_getoff += 4 + count * 4;
                 continue;
+            }
+            /* Fast path for normal 3D subchannel 0 blocks when no per-word debug/alt engines are active. */
+            { static int s_fast_subch0 = -1;
+              if (s_fast_subch0 < 0) {
+                  s_fast_subch0 = (!getenv("GCM_SUBCH7") && !getenv("GCM_OBJDBG") && !getenv("GCM_SUBCH_GATE") &&
+                                   !getenv("GCM_VAL_WATCH") && !getenv("RSX_LIVE_FEED_DBG") &&
+                                   !rsx_live_draw_enabled() && !rsx_draw_engine_enabled()) ? 1 : 0;
+              }
+              if (s_fast_subch0 && subch == 0 && count > 0) {
+                  const u32 io_first = s_fifo_getoff + 4u;
+                  const u32 io_last  = s_fifo_getoff + (count << 2);
+                  if ((io_first >> 20) == (io_last >> 20)) {
+                      const u32 base_ea = gcm_io2ea(io_first);
+                      if (base_ea) {
+                          const u32 step = (type == 0) ? 4u : 0u;
+                          u32 m = method;
+                          for (u32 i = 0; i < count; i++, m += step) {
+                              const u32 val = vm_read32(base_ea + (i << 2));
+                              rsx_process_method(&s_state, m, val);
+                              if (m == 0x50u) gcm_ref_push_at(g_rsx_last_reference, s_fifo_getoff);
+                              else if (m == 0x1800u) {
+                                  const u32 idx = (val & 0xFFFFFFu) / 16u;
+                                  if (idx < CELL_GCM_MAX_REPORT_COUNT) {
+                                      s_report_data[idx].timestamp = get_timestamp_ns();
+                                      s_report_data[idx].value = (val >> 24) == 1u ? 0xFFFFu : 0u;
+                                      gcm_report_store(idx);
+                                  }
+                              }
+                          }
+                          s_fifo_getoff += 4u + (count << 2);
+                          continue;
+                      }
+                  }
+              }
             }
             for (u32 i = 0; i < count; i++) {
                 u32 dea = gcm_io2ea(s_fifo_getoff + 4 + i * 4);
@@ -2435,7 +2478,7 @@ static void gcm_rsx_process_fifo_unlocked(void)
      * per tick (gcm_ref_push/gcm_ref_publish_one above) so every SET_REFERENCE
      * value stays observable to equality-waiters. The wrap recycle path polls
      * the drained EA. */
-    if (getenv("GCM_DRAINDBG")) {
+    if (s_gcm_draindbg) {
         static int n2 = 0;
         if (n2++ % 60 == 0)
             fprintf(stderr, "[DRAINEND] %s: %08X -> %08X (%u bytes), put=%08X\n",

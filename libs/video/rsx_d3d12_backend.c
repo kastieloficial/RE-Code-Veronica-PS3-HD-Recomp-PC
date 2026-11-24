@@ -4224,6 +4224,7 @@ static u32  s_fp_arena_used = 0;
 typedef struct { u32 addr, len, snap; } FPSnap;
 static FPSnap s_fp_snaps[64];
 static u32 s_fp_nsnap = 0;
+static u32 s_fp_last_idx = 0;
 
 /* The first guest page is already readable for a resolved shader address.
  * Small programs finish there without a host query. Before extending the
@@ -4285,13 +4286,22 @@ static void fp_snapshot(D3D12DrawRecord* dr)
      * frame: the same program, so the same length and per-program data.
      * Parsing it again was most of this function, ~9000 times a frame. */
     { static int off = -1; if (off < 0) off = getenv("FP_NOSNAP") ? 1 : 0;
-      if (!off)
-          for (u32 i = 0; i < s_fp_nsnap; i++) {
-              const FPSnap* q = &s_fp_snaps[i];
+      if (!off && s_fp_nsnap) {
+          if (s_fp_last_idx < s_fp_nsnap) {
+              const FPSnap* q = &s_fp_snaps[s_fp_last_idx];
               if (q->addr == dr->fp_addr && !memcmp(s_fp_arena + q->snap - 1, src, q->len)) {
                   dr->fp_bytes = q->len; dr->fp_snap = q->snap; return;
               }
-          } }
+          }
+          for (u32 i = 0; i < s_fp_nsnap; i++) {
+              if (i == s_fp_last_idx) continue;
+              const FPSnap* q = &s_fp_snaps[i];
+              if (q->addr == dr->fp_addr && !memcmp(s_fp_arena + q->snap - 1, src, q->len)) {
+                  s_fp_last_idx = i;
+                  dr->fp_bytes = q->len; dr->fp_snap = q->snap; return;
+              }
+          }
+      } }
     u32 constants = 0;
     u32 len = fp_guest_program_size(src, &constants);
     if (!len) return;
@@ -4333,6 +4343,7 @@ static void fp_snapshot(D3D12DrawRecord* dr)
     memmove(&s_fp_snaps[1], &s_fp_snaps[0], sizeof(FPSnap) * n);
     s_fp_snaps[0].addr = dr->fp_addr; s_fp_snaps[0].len = len; s_fp_snaps[0].snap = at + 1;
     s_fp_nsnap = n + 1;
+    s_fp_last_idx = 0;
 }
 
 static const u8* fp_snap_ptr(const D3D12DrawRecord* dr)
@@ -4621,8 +4632,8 @@ static int vp_get_vs(const rsx_state* st)
     /* V34: defer the END scan until the existing generation/start/texture
      * cache misses. Native mode and CV_VP_SCAN_DEFER=0 keep reference order. */
     static int defer_scan=-1;
-    if(defer_scan<0){const char* fps=getenv("CV_FPS_TEST_60"),*off=getenv("CV_VP_SCAN_DEFER");
-        defer_scan=fps&&!strcmp(fps,"1")&&!(off&&!strcmp(off,"0"));}
+    if(defer_scan<0){const char* off=getenv("CV_VP_SCAN_DEFER");
+        defer_scan=!(off&&!strcmp(off,"0"));}
     if(!defer_scan){u32 ni=rsx_vp_program_size_instrs(vuc,vlen);if(ni)vlen=ni*16;}
     /* Same store generation, start and texture units as the last lookup: same
      * program. Hashing up to 16 KB of ucode on every draw was a measurable
@@ -7816,70 +7827,43 @@ static void vp_record_cb(u32 slot, int vs_idx, const D3D12DrawRecord* dr)
     if (s_d3d.vp_fpcb_mapped) {
         float* ts = (float*)((char*)s_d3d.vp_fpcb_mapped
             + ((u64)s_d3d.vp_parity * MAX_DRAWS + slot) * VP_FPCB_STRIDE);
+        float hdr[FP_K_BASE];
+        const int pre_edges = precomputed_tex_edges_on();
+        static int s_no_texgamma = -1, s_no_alphatest = -1, s_cube_raw = -1;
+        if (s_no_texgamma < 0)  s_no_texgamma  = getenv("NO_TEXGAMMA") ? 1 : 0;
+        if (s_no_alphatest < 0) s_no_alphatest = getenv("NO_ALPHATEST") ? 1 : 0;
+        if (s_cube_raw < 0)     s_cube_raw     = getenv("RSX_CUBE_LUT_RAW") ? 1 : 0;
+        int shadow_checked = 0, compensated_shadow = 0;
+
         for (int _u = 0; _u < FP_TEX_UNITS; _u++) {
-            /* .xy: half-texel edge distances, computed once per draw instead
-             * of dividing by texture dimensions in every shaded pixel. This
-             * preserves the guest-size clamp (including scaled render targets).
-             * RSX_ADDR's clamp modes stop at the edge texel centres. The static samplers wrap, and a linear fetch at
-             * exactly 0.0 blended the first texel with the last: Code
-             * Veronica's 1024x1 colour LUT turned every black pixel into
-             * (LUT[0] + LUT[1023]) / 2, the bright speckle over the cell. */
-            float sx = 0.0f, sy = 0.0f;
             if (dr && dr->tex[_u].set) {
-                sx = (float)dr->tex[_u].w;
-                sy = (float)dr->tex[_u].h;
-            }
-            ts[_u*4+0] = precomputed_tex_edges_on() ? (sx > 0.0f ? 0.5f / sx : 0.0f) : sx;
-            ts[_u*4+1] = precomputed_tex_edges_on() ? (sy > 0.0f ? 0.5f / sy : 0.0f) : sy;
-            ts[_u*4+2] = 0.0f; ts[_u*4+3] = 0.0f;
-            /* .zw: the guest's S/T address modes, applied in the shader by
-             * RSX_ADDR (the static samplers cannot follow them per draw). */
-            if (dr && dr->tex[_u].set) {
-                ts[_u*4+2] = (float)(dr->tex[_u].addr & 0xFu);
-                ts[_u*4+3] = (float)((dr->tex[_u].addr >> 8) & 0xFu);
-            }
-        }
-        /* rsx_alphatest (b1[4]): x=enable, y=ref/255, z=func-0x200. D3D12
-         * has no fixed alpha test; guest FPs discard on it dynamically
-         * (wave's colour wheel is a disc via alpha test -- without it the
-         * palette drew as an opaque square). */
-        /* rsx_texaddr[u].z bits 4..7: the unit's texture gamma (sRGB decode)
-         * bits, from TEXTURE_ADDRESS[20:23] (R,G,B,A). */
-        if (dr && !getenv("NO_TEXGAMMA"))
-            for (int _u = 0; _u < FP_TEX_UNITS; _u++)
-                if (dr->tex[_u].set) {
-                    /* Colour formats only (A1R5G5B5..DXT5). Single-channel
-                     * planes (B8 = 0x81, G8B8 = 0x8B) hold luma/chroma or
-                     * data: decoding them broke the FMV YUV->RGB maths. */
-                    u32 bf = dr->tex[_u].fmt & 0x9Fu;
-                    if (bf >= 0x82 && bf <= 0x88)
-                        ts[_u*4+2] = (float)((dr->tex[_u].addr & 0xFu) |
-                                             (((dr->tex[_u].addr >> 20) & 0xFu) << 4));
+                const float sx = (float)dr->tex[_u].w;
+                const float sy = (float)dr->tex[_u].h;
+                hdr[_u*4+0] = pre_edges ? (sx > 0.0f ? 0.5f / sx : 0.0f) : sx;
+                hdr[_u*4+1] = pre_edges ? (sy > 0.0f ? 0.5f / sy : 0.0f) : sy;
+                u32 zbits = dr->tex[_u].addr & 0xFu;
+                const u32 bf = dr->tex[_u].fmt & 0x9Fu;
+                if (!s_no_texgamma && bf >= 0x82u && bf <= 0x88u)
+                    zbits |= ((dr->tex[_u].addr >> 20) & 0xFu) << 4;
+                if (!s_cube_raw && dr->tex[_u].cube && bf == 0x95u &&
+                    dr->tex[_u].w > 1 && dr->tex[_u].w <= 64 && dr->tex[_u].w == dr->tex[_u].h) {
+                    if (!shadow_checked) {
+                        const u32 sc = fp_snap_code_in(dr, s_fp_arena);
+                        compensated_shadow = (sc == 0x59540949u || sc == 0x0C121A16u || sc == 0x4D26314Du);
+                        shadow_checked = 1;
+                    }
+                    if (!(compensated_shadow && _u == 1 && dr->tex[_u].w == 64))
+                        zbits |= 256u;
                 }
-        /* rsx_texaddr[u].z bit 8: an edge-to-edge Y16_X16 cube look-up table
-         * (rsx_cube). RSX_CUBE_LUT_RAW=1 samples it at texel centres instead. */
-        { static int raw = -1;
-          if (raw < 0) raw = getenv("RSX_CUBE_LUT_RAW") ? 1 : 0;
-          /* vp_record_cb runs on the producer: its snapshot is in s_fp_arena.
-           * s_rb.fp_arena belongs to the previous submitted render batch. */
-          const u32 shadow_code=dr?fp_snap_code_in(dr,s_fp_arena):0;
-          const int compensated_shadow=shadow_code==0x59540949u||shadow_code==0x0C121A16u||shadow_code==0x4D26314Du;
-          if (dr && !raw)
-              for (int _u = 0; _u < FP_TEX_UNITS; _u++)
-                  if (dr->tex[_u].set && dr->tex[_u].cube && (dr->tex[_u].fmt & 0x9Fu) == 0x95u &&
-                      dr->tex[_u].w > 1 && dr->tex[_u].w <= 64 && dr->tex[_u].w == dr->tex[_u].h) {
-                      /* With the RGB selector's actual pitch honoured, these
-                       * shaders already scale non-dominant direction lanes by
-                       * 63/64. That maps i/63 LUT values onto texel centres.
-                       * Applying bit-256 remapping again shifts the shadow by
-                       * up to 1.876 atlas texels. Keep other LUT users intact. */
-                      if(compensated_shadow&&_u==1&&dr->tex[_u].w==64)continue;
-                      ts[_u*4+2] = (float)((u32)ts[_u*4+2] | 256u);
-                  }
+                hdr[_u*4+2] = (float)zbits;
+                hdr[_u*4+3] = (float)((dr->tex[_u].addr >> 8) & 0xFu);
+            } else {
+                hdr[_u*4+0] = 0.0f; hdr[_u*4+1] = 0.0f;
+                hdr[_u*4+2] = 0.0f; hdr[_u*4+3] = 0.0f;
+            }
         }
         /* TEX_NOGAMMA_FP=<code hex>:<unit>,...: drop the sRGB decode of those
-         * units for the program with that code hash (an experiment: RPCS3
-         * reads Code Veronica's water normal map raw). */
+         * units for the program with that code hash. */
         { static const char* ng = (const char*)1; static u32 ncode = 0, nmask = 0;
           if (ng == (const char*)1) {
               ng = getenv("TEX_NOGAMMA_FP");
@@ -7895,56 +7879,47 @@ static void vp_record_cb(u32 slot, int vs_idx, const D3D12DrawRecord* dr)
               if (vm_base && fo != 0xFFFFFFFFu && rsx_fp_code_hash(vm_base + fo, dr->fp_bytes) == ncode)
                   for (int _u = 0; _u < FP_TEX_UNITS && _u < 8; _u++)
                       if (nmask & (1u << _u))
-                          ts[_u*4+2] = (float)((u32)ts[_u*4+2] & 0x8Fu);
+                          hdr[_u*4+2] = (float)((u32)hdr[_u*4+2] & 0x8Fu);
           } }
-        if (dr && !getenv("NO_ALPHATEST")) {
+        if (dr && !s_no_alphatest) {
             { static int _at = 0;
               if (((dr->alpha_ctl >> 16) & 1u) && _at++ < 4)
                   printf("[ALPHATEST] enable func=%u ref=%u\n",
                          (dr->alpha_ctl >> 8) & 0xFFu, dr->alpha_ctl & 0xFFu); }
-            ts[FP_ALPHA_BASE+0] = (float)((dr->alpha_ctl >> 16) & 1u);
-            ts[FP_ALPHA_BASE+1] = (float)(dr->alpha_ctl & 0xFFu) / 255.0f;
-            ts[FP_ALPHA_BASE+2] = (float)((dr->alpha_ctl >> 8) & 0x07u);
-            ts[FP_ALPHA_BASE+3] = 0.0f;
+            hdr[FP_ALPHA_BASE+0] = (float)((dr->alpha_ctl >> 16) & 1u);
+            hdr[FP_ALPHA_BASE+1] = (float)(dr->alpha_ctl & 0xFFu) * (1.0f / 255.0f);
+            hdr[FP_ALPHA_BASE+2] = (float)((dr->alpha_ctl >> 8) & 0x07u);
+            hdr[FP_ALPHA_BASE+3] = 0.0f;
         } else {
-            ts[FP_ALPHA_BASE+0] = 0.0f; ts[FP_ALPHA_BASE+1] = 0.0f;
-            ts[FP_ALPHA_BASE+2] = 7.0f; ts[FP_ALPHA_BASE+3] = 0.0f;
+            hdr[FP_ALPHA_BASE+0] = 0.0f; hdr[FP_ALPHA_BASE+1] = 0.0f;
+            hdr[FP_ALPHA_BASE+2] = 7.0f; hdr[FP_ALPHA_BASE+3] = 0.0f;
         }
-        /* rsx_alpha_k.w: 1/RES_SCALE of this draw's target, which WPOS.xy is
-         * divided by (fp_post_res_scale) so programs see guest pixels. */
+        /* rsx_alpha_k.w: 1/RES_SCALE of this draw's target. */
         if (dr && s_rs != 1.0f) {
             float sc = dr->rt_off ? rs_for(dr->rt_w ? dr->rt_w : s_d3d.width,
                                            dr->rt_h ? dr->rt_h : s_d3d.height) : s_rs;
-            ts[FP_ALPHA_BASE+3] = 1.0f / sc;
+            hdr[FP_ALPHA_BASE+3] = 1.0f / sc;
         }
-
-        /* Record phase: fp_snap_ptr() belongs to the frozen render batch,
-         * not this recording arena. Do not inspect it here: the same offset
-         * can name another program in the previous frame, causing flicker.
-         * The shader-side code whitelist already limits who reads this lane. */
         if (s_lighter_probe && dr && dr->rt_off == 0x01C30000u && !dr->tex[7].set) {
-            ts[7*4+3] = InterlockedCompareExchange(&s_lighter_shadow_bypass, 0, 0) ? -1234.0f : 0.0f;
+            hdr[7*4+3] = InterlockedCompareExchange(&s_lighter_shadow_bypass, 0, 0) ? -1234.0f : 0.0f;
         }
-        /* fp_k[]: the program's inline fragment constants, re-read from the
-         * guest ucode every draw. The decompiler emits fp_k[i] lookups instead
-         * of baking these in as literals, so the compiled shader no longer
-         * changes when the title re-patches them -- which is what forced the
-         * pipeline cache to key on a hash of the ucode bytes. */
+        memcpy(ts, hdr, sizeof hdr);
+
+        /* fp_k[]: the program's inline fragment constants. */
         if (dr && dr->fp_addr) {
             extern uint8_t* vm_base;
             extern u32 cellGcmResolveLocated(int, u32);
-            u32 foff = cellGcmResolveLocated((dr->fp_addr & 0x3u) == 1,
-                                             dr->fp_addr & ~0x3u);
+            u32 foff = 0xFFFFFFFFu;
             if (dr->fp_snap && s_fp_arena) {   /* extracted once, with the snapshot */
                 const u8* tail = s_fp_arena + dr->fp_snap - 1 + dr->fp_bytes + 16;
                 u32 nk; memcpy(&nk, tail, 4);
                 if (nk > FP_MAX_K) nk = FP_MAX_K;
-                memcpy(&ts[FP_K_BASE], tail + 16, (size_t)nk * 16u);
-            } else if (vm_base && foff != 0xFFFFFFFFu)
-                rsx_fp_extract_consts(vm_base + foff, dr->fp_bytes, &ts[FP_K_BASE], FP_MAX_K);   /* fp_k[] */
-            /* FP_ZERO_K=<code hex>:<i>,<j>,...: zero those fp_k[] entries of the
-             * program with that code hash (an experiment: RPCS3 draws Code
-             * Veronica's water with its normal-map constants at zero). */
+                if (nk) memcpy(&ts[FP_K_BASE], tail + 16, (size_t)nk * 16u);
+            } else {
+                foff = cellGcmResolveLocated((dr->fp_addr & 0x3u) == 1, dr->fp_addr & ~0x3u);
+                if (vm_base && foff != 0xFFFFFFFFu)
+                    rsx_fp_extract_consts(vm_base + foff, dr->fp_bytes, &ts[FP_K_BASE], FP_MAX_K);   /* fp_k[] */
+            }
             { static const char* zk = (const char*)1; static u32 zcode = 0; static u32 zmask[4];
               if (zk == (const char*)1) {
                   zk = getenv("FP_ZERO_K");
@@ -7952,17 +7927,15 @@ static void vp_record_cb(u32 slot, int vs_idx, const D3D12DrawRecord* dr)
                             while (e && *e) { long i = strtol(e + 1, &e, 10);
                                               if (i >= 0 && i < 128) zmask[i >> 5] |= 1u << (i & 31); } }
               }
-              if (zk && vm_base && foff != 0xFFFFFFFFu && dr->fp_bytes) {
+              if (zk && vm_base && dr->fp_bytes) {
+                  if (foff == 0xFFFFFFFFu)
+                      foff = cellGcmResolveLocated((dr->fp_addr & 0x3u) == 1, dr->fp_addr & ~0x3u);
                   extern u32 rsx_fp_code_hash(const u8*, u32);
-                  if (rsx_fp_code_hash(vm_base + foff, dr->fp_bytes) == zcode)
+                  if (foff != 0xFFFFFFFFu && rsx_fp_code_hash(vm_base + foff, dr->fp_bytes) == zcode)
                       for (int i = 0; i < 128 && i < FP_MAX_K; i++)
                           if (zmask[i >> 5] & (1u << (i & 31)))
                               memset(&ts[FP_K_BASE + i * 4], 0, 4 * sizeof(float));
               } }
-            /* FPK_DBG=1: the fragment constants as the shader will see them.
-             * A program whose only output is fp_k[0].xxxx renders black if
-             * those constants never arrive, which looks identical from the
-             * outside to geometry that never rasterised. */
             { static int fk = -1; if (fk < 0) fk = getenv("FPK_DBG") ? 1 : 0;
               static int n = 0;
               if (fk && n < 12 && dr->fp_addr != 0x00EC2B02u) { n++;
@@ -7976,8 +7949,6 @@ static void vp_record_cb(u32 slot, int vs_idx, const D3D12DrawRecord* dr)
                   fprintf(stderr, "[FPK]   ucode main@0x%08X:", ea_main);
                   for (int b = 0; b < 48; b++) fprintf(stderr, "%s%02X", (b%16)?" ":"  |", vm_base[ea_main + b]);
                   fputc(10, stderr); }
-              /* distinct fragment programs seen -- if every draw shares one,
-               * SET_SHADER_PROGRAM is not being tracked per draw. */
               if (fk) { static u32 seen[16]; static int ns = 0; int f = 0;
                   for (int q = 0; q < ns; q++) if (seen[q] == dr->fp_addr) f = 1;
                   if (!f && ns < 16) { seen[ns++] = dr->fp_addr;
@@ -13960,7 +13931,7 @@ static void render_frame(void)
     if (s_rt_async) gpu_pending = (u64)s_rt_set_fence[s_d3d.vp_parity];
     s_vcb_batch++;   /* constant banks of the old batch are not reusable */
     { u8* t = s_fp_arena; s_fp_arena = s_fp_arena_spare; s_fp_arena_spare = t; }
-    s_fp_arena_used = 0; s_fp_nsnap = 0;
+    s_fp_arena_used = 0; s_fp_nsnap = 0; s_fp_last_idx = 0;
     { u8* t = s_vtex_arena; u32 c = s_vtex_arena_cap;
       s_vtex_arena = s_vtex_arena_spare; s_vtex_arena_cap = s_vtex_arena_spare_cap;
       s_vtex_arena_spare = t; s_vtex_arena_spare_cap = c; }
@@ -14536,12 +14507,13 @@ static void vf_flush(void)
     rsx_fetch_plan* plan = &s_vplan;
     if (s_vplan_state != st) { rsx_fetch_plan_build(st, &local); plan = &local; }
     u32* desc = (u32*)(vf_parity_base() + VF_DESC_OFF + (u64)cur * VF_DESC_SIZE);
+    u32 desc_local[16 * 8];
     struct { int main_mem; u64 s, e; u32 arena; } seg[16];
     int nseg = 0, segof[16];
     for (int i = 0; i < 16; i++) {
         const rsx_attr_plan* a = &plan->a[i];
-        memcpy(&desc[i * 8 + 4], a->cst, 16);
-        desc[i * 8 + 0] = desc[i * 8 + 1] = desc[i * 8 + 2] = desc[i * 8 + 3] = 0;
+        memcpy(&desc_local[i * 8 + 4], a->cst, 16);
+        desc_local[i * 8 + 0] = desc_local[i * 8 + 1] = desc_local[i * 8 + 2] = desc_local[i * 8 + 3] = 0;
         segof[i] = -1;
         if (!a->active) continue;
         u32 e0 = s_vf_vmin, e1 = s_vf_vmax;
@@ -14560,7 +14532,10 @@ static void vf_flush(void)
     }
     u64 total = 0;
     for (int k = 0; k < nseg; k++) total += seg[k].e - seg[k].s + 32;
-    if (total > VF_RANGE_MAX || s_vf_aused + total > VF_ARENA_BYTES) { s_vf_nfall++; vf_fallback(plan, cur, desc); return; }
+    if (total > VF_RANGE_MAX || s_vf_aused + total > VF_ARENA_BYTES) {
+        memcpy(desc, desc_local, sizeof desc_local);
+        s_vf_nfall++; vf_fallback(plan, cur, desc); return;
+    }
     u8* arena = vf_parity_base() + VF_ARENA_OFF;
     for (int k = 0; k < nseg; k++) {
         const u32 at = (s_vf_aused + 15u) & ~15u, len = (u32)(seg[k].e - seg[k].s);
@@ -14571,12 +14546,13 @@ static void vf_flush(void)
     for (int i = 0; i < 16; i++) {
         if (segof[i] < 0) continue;
         const rsx_attr_plan* a = &plan->a[i];
-        desc[i * 8 + 0] = seg[segof[i]].arena + (a->off0 - (u32)seg[segof[i]].s);
-        desc[i * 8 + 1] = a->stride;
-        desc[i * 8 + 2] = 0x80000000u | (a->type & 15u) | ((a->n & 7u) << 4) | (a->modulo ? 0x80u : 0u);
-        desc[i * 8 + 3] = a->freq;
+        desc_local[i * 8 + 0] = seg[segof[i]].arena + (a->off0 - (u32)seg[segof[i]].s);
+        desc_local[i * 8 + 1] = a->stride;
+        desc_local[i * 8 + 2] = 0x80000000u | (a->type & 15u) | ((a->n & 7u) << 4) | (a->modulo ? 0x80u : 0u);
+        desc_local[i * 8 + 3] = a->freq;
     }
-    vf_check(plan, cur, desc);
+    memcpy(desc, desc_local, sizeof desc_local);
+    vf_check(plan, cur, desc_local);
 }
 
 static void pose_note_vertex(const VPSlot* dst,const VPSlot* src,u32 source_index) {
@@ -14815,8 +14791,25 @@ static u32 upload_tris_vp(const rsx_state* state, u32 first, u32 count)
     VPSlot* out = (VPSlot*)((u8*)s_d3d.vp_vb_mapped
         + (u64)s_d3d.vp_parity * MAX_VERTICES * VP_VERT_STRIDE + s_d3d.vp_vb_offset);
     { double _tv = perf_on() ? perf_now() : 0.0;
-      for (u32 k = 0; k < count; k++)
-          read_vp_vertex(state, first + k, &out[k*16]);
+      if (s_vf_mapped && !vf_pose_enabled() && count > 0) {
+          if (s_vf_cur >= 0 && s_vf_state != state) vf_flush();
+          if (s_vf_cur < 0) {
+              if (s_vf_ndesc >= VF_DESC_MAX) { s_vf_ndesc = VF_DESC_MAX - 1; }
+              s_vf_cur = (int)s_vf_ndesc++; s_vf_state = state;
+              s_vf_vmin = s_vf_rmin = ~0u; s_vf_vmax = s_vf_rmax = 0;
+          }
+          const u32 r0 = s_d3d.vp_vb_offset / VP_VERT_STRIDE;
+          const u32 cur_u = (u32)s_vf_cur;
+          u32* rec = (u32*)vf_parity_base() + (u64)r0 * 2;
+          for (u32 k = 0; k < count; k++) { rec[k * 2 + 0] = first + k; rec[k * 2 + 1] = cur_u; }
+          if (first < s_vf_vmin) s_vf_vmin = first;
+          if (first + count - 1 > s_vf_vmax) s_vf_vmax = first + count - 1;
+          if (r0 < s_vf_rmin) s_vf_rmin = r0;
+          if (r0 + count - 1 > s_vf_rmax) s_vf_rmax = r0 + count - 1;
+      } else {
+          for (u32 k = 0; k < count; k++)
+              read_vp_vertex(state, first + k, &out[k*16]);
+      }
       if (perf_on()) { s_perf_vtx += perf_now() - _tv; s_perf_nverts += count; } }
     /* IDXDBG=<hex shader_program>: vertex range for that program's draws. */
     { static const char* ie = (const char*)1; static u32 iw = 0;
@@ -14881,14 +14874,40 @@ static u32 upload_strip_vp_from(const rsx_state* state, u32 first, u32 count, in
     VPSlot* out = (VPSlot*)((u8*)s_d3d.vp_vb_mapped
         + (u64)s_d3d.vp_parity * MAX_VERTICES * VP_VERT_STRIDE + s_d3d.vp_vb_offset);
     u32 o = 0;
-    for (u32 t = t_begin; t < tris; t++) {
-        u32 i0 = fan ? 0 : t;
-        /* strip winding alternates per triangle to keep facing consistent */
-        u32 i1 = t + 1, i2 = t + 2;
-        if (!fan && (t & 1)) { u32 tmp = i1; i1 = i2; i2 = tmp; }
-        read_vp_vertex(state, first + i0, &out[o*16]); o++;
-        read_vp_vertex(state, first + i1, &out[o*16]); o++;
-        read_vp_vertex(state, first + i2, &out[o*16]); o++;
+    if (s_vf_mapped && !vf_pose_enabled() && t_begin < tris) {
+        if (s_vf_cur >= 0 && s_vf_state != state) vf_flush();
+        if (s_vf_cur < 0) {
+            if (s_vf_ndesc >= VF_DESC_MAX) { s_vf_ndesc = VF_DESC_MAX - 1; }
+            s_vf_cur = (int)s_vf_ndesc++; s_vf_state = state;
+            s_vf_vmin = s_vf_rmin = ~0u; s_vf_vmax = s_vf_rmax = 0;
+        }
+        const u32 r0 = s_d3d.vp_vb_offset / VP_VERT_STRIDE;
+        const u32 cur_u = (u32)s_vf_cur;
+        u32* rec = (u32*)vf_parity_base() + (u64)r0 * 2;
+        for (u32 t = t_begin; t < tris; t++) {
+            u32 i0 = fan ? 0 : t;
+            u32 i1 = t + 1, i2 = t + 2;
+            if (!fan && (t & 1)) { u32 tmp = i1; i1 = i2; i2 = tmp; }
+            rec[o * 2 + 0] = first + i0; rec[o * 2 + 1] = cur_u; o++;
+            rec[o * 2 + 0] = first + i1; rec[o * 2 + 1] = cur_u; o++;
+            rec[o * 2 + 0] = first + i2; rec[o * 2 + 1] = cur_u; o++;
+        }
+        const u32 v_lo = fan ? first : (first + t_begin);
+        const u32 v_hi = first + tris + 1;
+        if (v_lo < s_vf_vmin) s_vf_vmin = v_lo;
+        if (v_hi > s_vf_vmax) s_vf_vmax = v_hi;
+        if (r0 < s_vf_rmin) s_vf_rmin = r0;
+        if (r0 + o - 1 > s_vf_rmax) s_vf_rmax = r0 + o - 1;
+    } else {
+        for (u32 t = t_begin; t < tris; t++) {
+            u32 i0 = fan ? 0 : t;
+            /* strip winding alternates per triangle to keep facing consistent */
+            u32 i1 = t + 1, i2 = t + 2;
+            if (!fan && (t & 1)) { u32 tmp = i1; i1 = i2; i2 = tmp; }
+            read_vp_vertex(state, first + i0, &out[o*16]); o++;
+            read_vp_vertex(state, first + i1, &out[o*16]); o++;
+            read_vp_vertex(state, first + i2, &out[o*16]); o++;
+        }
     }
     s_d3d.vp_vb_offset += o * VP_VERT_STRIDE;
     return o;
