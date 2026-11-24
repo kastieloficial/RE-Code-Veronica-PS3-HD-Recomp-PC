@@ -98,13 +98,48 @@ constexpr float CARD_Y=216,CARD_H=68,CARD_STEP=76,CARD_NARROW=194,CARD_GAP2=206;
 constexpr float STEP1_Y=604,STEP2_Y=650,STEP_H=38,BTN_Y=700,BTN_H=42,FOOT_Y=776;
 const Color C_MUTED2(255,136,146,174),C_MUTED3(255,125,138,174),C_LABEL(255,183,191,214);
 
+// ---- Render caches (all freed in release() before GdiplusShutdown) --------
+// Pre-scaled 32bppPARGB sprites eliminate repeated GDI+ HighQualityBicubic +
+// ColorMatrix + PathGradientBrush software passes on every cursor move / hover.
+struct CachedBitmap {
+    std::unique_ptr<Bitmap> bmp;
+    float ox=0, oy=0, dw=0, dh=0;
+};
+float cache_scale_key=0;
+std::map<std::tuple<int,int,int,int>, CachedBitmap> icon_cache;
+std::map<std::tuple<int,int,int,int>, std::unique_ptr<Bitmap>> cell_cache;
+std::map<std::tuple<int,int,int>, std::unique_ptr<Bitmap>> card_glow_cache;
+std::map<std::tuple<int,int,int,int,int,std::wstring>, float> fit_cache;
+
+void clear_render_caches() {
+    icon_cache.clear();
+    cell_cache.clear();
+    card_glow_cache.clear();
+    fit_cache.clear();
+    cache_scale_key=0;
+}
+float graphics_scale(Graphics& g) {
+    Matrix m;g.GetTransform(&m);REAL e[6]={};m.GetElements(e);
+    return (e[0]>0.05f&&e[0]<10.f)?e[0]:1.f;
+}
+void ensure_cache_scale(float sc) {
+    const float q=std::round(sc*100.f);
+    if(cache_scale_key!=0&&cache_scale_key!=q)clear_render_caches();
+    cache_scale_key=q;
+}
+
 // ---- Drawing helpers ------------------------------------------------------------------
-struct Ctx {Graphics& g;View& v;const std::wstring& game;int lang() const {return v.language;}};
+struct Ctx {Graphics& g;View& v;const std::wstring& game;float sc=1.f;int lang() const {return v.language;}};
 const Font* F(const Ctx& c,Role role,float px) {return &ui::font_cached(c.v.language,role,px);}
-// The font shrunk (to `min_px`) until `s` fits `max_w`.
+// The font shrunk (to `min_px`) until `s` fits `max_w` (cached per string/width).
 const Font* fit(const Ctx& c,Role role,float px,const std::wstring& s,float max_w,float tracking=0,float min_px=10) {
+    const auto key=std::make_tuple(c.v.language,int(role),int(std::lround(px*2)),int(std::lround(max_w)),int(std::lround(tracking*10)),s);
+    auto it=fit_cache.find(key);
+    if(it!=fit_cache.end())return F(c,role,it->second);
     const Font* f=F(c,role,px);
     while(px>min_px&&ui::text_width(c.g,s,*f,tracking)>max_w){px-=0.5f;f=F(c,role,px);}
+    if(fit_cache.size()>2048)fit_cache.clear();
+    fit_cache.emplace(key,px);
     return f;
 }
 Color mix(Color c,float t,int to) {
@@ -124,29 +159,75 @@ void glow(Graphics& g,RectF r,float radius,Color c,int steps=3) {
         auto path=ui::round_path(RectF(r.X-i,r.Y-i,r.Width+2*i,r.Height+2*i),radius+i);g.DrawPath(&p,path.get());}
 }
 // An item's art, fitted inside `r` keeping its proportions: the HD icon, else the game's own, else its name.
+// Pre-rendered once per (id, pixel size, alpha) with HighQualityBicubic + drop shadow into 32bppPARGB.
 void icon(Ctx& c,int id,RectF r,float alpha=1) {
     Bitmap* image=cv_item_icons_hd::get(id);
     if(!image)image=images.get(c.game,id);
     if(!image){auto f=F(c,Role::BODY500,12);ui::text(c.g,name(c.v,id),r,*f,col::MUTED,StringAlignmentCenter,StringAlignmentCenter,true);return;}
     const float iw=float(image->GetWidth()),ih=float(image->GetHeight());
     const float s=std::min(r.Width/iw,r.Height/ih),w=iw*s,h=ih*s;
-    const RectF to(r.X+(r.Width-w)/2,r.Y+(r.Height-h)/2,w,h);
-    const auto state=c.g.Save();c.g.SetInterpolationMode(InterpolationModeHighQualityBicubic);
-    ColorMatrix shadow={0,0,0,0,0, 0,0,0,0,0, 0,0,0,0,0, 0,0,0,alpha*0.45f,0, 0,0,0,0,1};   // the soft drop shadow
-    ImageAttributes sa;sa.SetColorMatrix(&shadow);
-    c.g.DrawImage(image,RectF(to.X,to.Y+3,to.Width,to.Height),0,0,iw,ih,UnitPixel,&sa);
-    ColorMatrix m={1,0,0,0,0, 0,1,0,0,0, 0,0,1,0,0, 0,0,0,alpha,0, 0,0,0,0,1};
-    ImageAttributes a;a.SetColorMatrix(&m);
-    c.g.DrawImage(image,to,0,0,iw,ih,UnitPixel,&a);
+    const float x=r.X+(r.Width-w)/2,y=r.Y+(r.Height-h)/2;
+    const int pw=std::max(1,int(std::ceil(w*c.sc)));
+    const int ph=std::max(1,int(std::ceil(h*c.sc)));
+    const int sh_dy=std::max(1,int(std::lround(3.f*c.sc)));
+    const int a255=std::clamp(int(std::lround(alpha*255.f)),0,255);
+    const auto key=std::make_tuple(id,pw,ph,a255);
+    auto it=icon_cache.find(key);
+    if(it==icon_cache.end()) {
+        const int cw=pw+2,ch=ph+sh_dy+2;
+        auto bmp=std::make_unique<Bitmap>(cw,ch,PixelFormat32bppPARGB);
+        Graphics bg(bmp.get());
+        bg.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+        bg.SetPixelOffsetMode(PixelOffsetModeHalf);
+        ColorMatrix shadow={{{0,0,0,0,0},{0,0,0,0,0},{0,0,0,0,0},{0,0,0,alpha*0.45f,0},{0,0,0,0,1}}};
+        ImageAttributes sa;sa.SetColorMatrix(&shadow);
+        bg.DrawImage(image,RectF(1.f,1.f+float(sh_dy),float(pw),float(ph)),0,0,iw,ih,UnitPixel,&sa);
+        if(a255>=255) {
+            bg.DrawImage(image,RectF(1.f,1.f,float(pw),float(ph)),0,0,iw,ih,UnitPixel);
+        } else {
+            ColorMatrix m={{{1,0,0,0,0},{0,1,0,0,0},{0,0,1,0,0},{0,0,0,alpha,0},{0,0,0,0,1}}};
+            ImageAttributes a;a.SetColorMatrix(&m);
+            bg.DrawImage(image,RectF(1.f,1.f,float(pw),float(ph)),0,0,iw,ih,UnitPixel,&a);
+        }
+        if(icon_cache.size()>512)icon_cache.clear();
+        it=icon_cache.emplace(key,CachedBitmap{std::move(bmp),-1.f/c.sc,-1.f/c.sc,float(cw)/c.sc,float(ch)/c.sc}).first;
+    }
+    const auto& cached=it->second;
+    const auto state=c.g.Save();
+    c.g.SetInterpolationMode(InterpolationModeLowQuality);
+    c.g.DrawImage(cached.bmp.get(),RectF(x+cached.ox,y+cached.oy,cached.dw,cached.dh));
+    c.g.Restore(state);
+}
+// Cached cell_blue tile (avoids software PathGradientBrush on all 16 grid cells every paint).
+void draw_cell_blue_cached(Ctx& c,RectF r,bool selected,ButtonState st=ButtonState::NORMAL) {
+    const float pad=selected?6.f:2.f;
+    const int pw=std::max(1,int(std::ceil((r.Width+pad*2)*c.sc)));
+    const int ph=std::max(1,int(std::ceil((r.Height+pad*2)*c.sc)));
+    const auto key=std::make_tuple(selected?1:0,int(st),pw,ph);
+    auto it=cell_cache.find(key);
+    if(it==cell_cache.end()) {
+        auto bmp=std::make_unique<Bitmap>(pw,ph,PixelFormat32bppPARGB);
+        Graphics bg(bmp.get());
+        bg.ScaleTransform(c.sc,c.sc);
+        bg.SetSmoothingMode(SmoothingModeAntiAlias);
+        bg.SetPixelOffsetMode(PixelOffsetModeHalf);
+        ui::cell_blue(bg,RectF(pad,pad,r.Width,r.Height),selected,st);
+        if(cell_cache.size()>64)cell_cache.clear();
+        it=cell_cache.emplace(key,std::move(bmp)).first;
+    }
+    const auto state=c.g.Save();
+    c.g.SetInterpolationMode(InterpolationModeLowQuality);
+    c.g.DrawImage(it->second.get(),RectF(r.X-pad,r.Y-pad,float(pw)/c.sc,float(ph)/c.sc));
     c.g.Restore(state);
 }
 // Text with a black outline, white inside (the quantity on a card).
 void outlined(Ctx& c,const std::wstring& s,float x,RectF band,const Font& f,Color fill) {
-    // Drawn as text (GraphicsPath::AddString crashed on the embedded private-collection fonts): a black ring of copies, then the fill.
+    // Drawn as text (GraphicsPath::AddString crashed on the embedded private-collection fonts): 8-way ring + fill.
     StringFormat sf(StringFormat::GenericTypographic());sf.SetFormatFlags(StringFormatFlagsNoWrap);
     const float lh=f.GetHeight(&c.g),y=band.Y+(band.Height-lh)/2;
     SolidBrush black(Color(255,0,0,0)),white(fill);
-    for(int i=0;i<16;i++){const float a=float(i)*0.3927f,dx=std::cos(a)*2.f,dy=std::sin(a)*2.f;c.g.DrawString(s.c_str(),-1,&f,PointF(x+dx,y+dy),&sf,&black);}
+    static constexpr float kOff[8][2]={{2.f,0.f},{-2.f,0.f},{0.f,2.f},{0.f,-2.f},{1.41f,1.41f},{-1.41f,1.41f},{1.41f,-1.41f},{-1.41f,-1.41f}};
+    for(const auto& o:kOff)c.g.DrawString(s.c_str(),-1,&f,PointF(x+o[0],y+o[1]),&sf,&black);
     c.g.DrawString(s.c_str(),-1,&f,PointF(x,y),&sf,&white);
 }
 // ---- Tab icons: vectors (docs/mockup-inventario/gen.py TABICON, pistol.svg.txt) ----------------------------
@@ -217,10 +298,25 @@ void card(Ctx& c,RectF r,int id,int quantity,bool counted,bool percent,const Car
     else stroke(g,body,2,o.fixed?col::GOLD_LO:o.st==ButtonState::HOVER?Color(255,120,160,230):col::BLUE_LINE,1);
     const float iw=o.fixed?110:wide_card?170:92;
     const RectF ii(body.X+4,body.Y+4,iw,body.Height-8);
-    {   // the soft light behind the art
-        GraphicsPath p;p.AddEllipse(RectF(ii.X-ii.Width*0.18f,ii.Y-ii.Height*0.2f,ii.Width*1.36f,ii.Height*1.4f));PathGradientBrush pb(&p);
-        pb.SetCenterColor(o.fixed?Color(90,120,130,170):Color(140,46,100,205));const Color sur[1]={o.fixed?Color(0,22,28,48):Color(0,16,40,94)};INT n=1;pb.SetSurroundColors(sur,&n);
-        const auto clip=g.Save();g.SetClip(ii,CombineModeIntersect);g.FillPath(&pb,&p);g.Restore(clip);
+    {   // the soft light behind the art (cached 32bppPARGB per fixed/size to skip PathGradientBrush)
+        const int pw=std::max(1,int(std::ceil(ii.Width*c.sc)));
+        const int ph=std::max(1,int(std::ceil(ii.Height*c.sc)));
+        const auto key=std::make_tuple(o.fixed?1:0,pw,ph);
+        auto it=card_glow_cache.find(key);
+        if(it==card_glow_cache.end()) {
+            auto bmp=std::make_unique<Bitmap>(pw,ph,PixelFormat32bppPARGB);
+            Graphics bg(bmp.get());
+            bg.ScaleTransform(c.sc,c.sc);
+            bg.SetSmoothingMode(SmoothingModeAntiAlias);
+            GraphicsPath p;p.AddEllipse(RectF(-ii.Width*0.18f,-ii.Height*0.2f,ii.Width*1.36f,ii.Height*1.4f));PathGradientBrush pb(&p);
+            pb.SetCenterColor(o.fixed?Color(90,120,130,170):Color(140,46,100,205));const Color sur[1]={o.fixed?Color(0,22,28,48):Color(0,16,40,94)};INT n=1;pb.SetSurroundColors(sur,&n);
+            bg.FillPath(&pb,&p);
+            if(card_glow_cache.size()>32)card_glow_cache.clear();
+            it=card_glow_cache.emplace(key,std::move(bmp)).first;
+        }
+        const auto s2=g.Save();g.SetInterpolationMode(InterpolationModeLowQuality);
+        g.DrawImage(it->second.get(),RectF(ii.X,ii.Y,float(pw)/c.sc,float(ph)/c.sc));
+        g.Restore(s2);
     }
     icon(c,id,RectF(ii.X+6,ii.Y+3,ii.Width-12,ii.Height-6),o.icon_alpha);
     const float tx0=body.X+iw+10,right=body.X+body.Width-9;
@@ -343,7 +439,8 @@ Ghost with_ghost(const View& v,int id,bool panel_open) {
 }
 }  // namespace
 
-void release() {images.cache.clear();portraits.clear();cv_item_icons_hd::release();cv_port_ui::release_fonts();}
+void release_window_buffers();
+void release() {release_window_buffers();clear_render_caches();images.cache.clear();portraits.clear();cv_item_icons_hd::release();cv_port_ui::release_fonts();}
 int View::item() const {
     const auto list=cv_items::items(cv_items::Category(category));
     return selected>=0&&selected<int(list.size())?list[size_t(selected)]:0;
@@ -515,15 +612,28 @@ void poll_result(View& v) {
     bool ok;v.status=summary(v.language,done,ok);v.tone=ok?GOOD:WARN;
 }
 
-void draw(Graphics& g,View& v,const std::wstring& game) {
+void draw_backdrop_layers(Graphics& g) {
+    g.SetSmoothingMode(SmoothingModeAntiAlias);
+    g.SetPixelOffsetMode(PixelOffsetModeHalf);
+    ui::gold_frame(g,RectF(0,0,W,H));
+    ui::header_band(g,RectF(3,3,W-6,65));
+    ui::panel_blue(g,RectF(CAT_X,CAT_Y,CAT_W,CAT_H));
+    ui::panel_gold(g,RectF(BAN_X,BAN_Y,BAN_W,BAN_H));
+}
+
+void draw_impl(Graphics& g,View& v,const std::wstring& game,bool include_backdrop) {
     v.hits.clear();
-    Ctx c{g,v,game};
+    const float sc=graphics_scale(g);
+    ensure_cache_scale(sc);
+    Ctx c{g,v,game,sc};
     g.SetSmoothingMode(SmoothingModeAntiAlias);g.SetTextRenderingHint(TextRenderingHintAntiAliasGridFit);
     g.SetInterpolationMode(InterpolationModeHighQualityBicubic);g.SetPixelOffsetMode(PixelOffsetModeHalf);
     const auto& inv=v.inventory;
     const int kind=ui::hint_kind(v.input);
-    ui::gold_frame(g,RectF(0,0,W,H));
-    ui::header_band(g,RectF(3,3,W-6,65));
+    if(include_backdrop) {
+        ui::gold_frame(g,RectF(0,0,W,H));
+        ui::header_band(g,RectF(3,3,W-6,65));
+    }
 
     // ---- Header: the title and "Game paused" on the left; the character, the spaces and the close button on the right.
     {
@@ -599,14 +709,14 @@ void draw(Graphics& g,View& v,const std::wstring& game) {
     }
 
     // ---- The catalog: 4x4 cells that scroll by rows with the selection.
-    ui::panel_blue(g,RectF(CAT_X,CAT_Y,CAT_W,CAT_H));
+    if(include_backdrop)ui::panel_blue(g,RectF(CAT_X,CAT_Y,CAT_W,CAT_H));
     const auto list=cv_items::items(cv_items::Category(v.category));
     const int rows=(int(list.size())+COLS-1)/COLS;
     for(int i=v.scroll*COLS;i<int(list.size())&&i<(v.scroll+ROWS)*COLS;i++) {
         const int cc=i%COLS,rr=i/COLS-v.scroll;
         const RectF cell(GRID_X+cc*(CELL_W+GAP),GRID_Y+rr*(CELL_H+GAP),CELL_W,CELL_H);
         const bool on=i==v.selected;const int id=list[size_t(i)];
-        ui::cell_blue(g,cell,on,v.mouse.state(hit_id(HIT_ITEM,i)));
+        draw_cell_blue_cached(c,cell,on,v.mouse.state(hit_id(HIT_ITEM,i)));
         icon(c,id,RectF(cell.X+12,cell.Y+8,196,62));
         const std::wstring n=name(v,id);
         auto f=fit(c,Role::BODY600,15.5f,n,cell.Width-12,0.2f,10.5f);
@@ -628,10 +738,10 @@ void draw(Graphics& g,View& v,const std::wstring& game) {
     const int id=v.item();const auto* info=cv_items::info(id);
     const bool panel_open=v.focus==1&&info;
     const bool removing=v.focus==2;
-    ui::panel_gold(g,RectF(BAN_X,BAN_Y,BAN_W,BAN_H));
+    if(include_backdrop)ui::panel_gold(g,RectF(BAN_X,BAN_Y,BAN_W,BAN_H));
     if(info) {
         const RectF pic(36,612,132,108);
-        ui::cell_blue(g,pic,false);
+        draw_cell_blue_cached(c,pic,false);
         icon(c,id,RectF(pic.X+6,pic.Y+12,120,84));
         const float tx0=186,tw=BAN_X+BAN_W-2-14-tx0;
         const std::wstring n=name(v,id);
@@ -744,6 +854,7 @@ void draw(Graphics& g,View& v,const std::wstring& game) {
     // ---- The footer: the glyphs of the last input device.
     ui::draw_footer(g,RectF(24,FOOT_Y,1352,40),v.language,kind,footer_groups(v,kind));
 }
+void draw(Graphics& g,View& v,const std::wstring& game) {draw_impl(g,v,game,true);}
 }  // namespace cv_item_menu
 
 // ---- The window ---------------------------------------------------------------
@@ -752,12 +863,74 @@ using namespace cv_item_menu;
 HWND window=nullptr;View view;std::wstring game_root;float scale=1;ULONGLONG closed_at=0;
 uint32_t previous_pad[PAD_PHYS_MAX]={};ULONGLONG repeat_at[PAD_PHYS_MAX]={};
 std::atomic<bool> allowed{false};
+
+struct WindowBuffers {
+    HDC memdc=nullptr;
+    HBITMAP dib=nullptr;
+    HGDIOBJ old_bmp=nullptr;
+    uint8_t* bits=nullptr;
+    std::vector<uint8_t> backdrop;
+    int w=0,h=0;
+    float sc=0;
+    void free_all() {
+        if(memdc&&old_bmp){SelectObject(memdc,old_bmp);old_bmp=nullptr;}
+        if(dib){DeleteObject(dib);dib=nullptr;}
+        if(memdc){DeleteDC(memdc);memdc=nullptr;}
+        bits=nullptr;backdrop.clear();backdrop.shrink_to_fit();w=h=0;sc=0;
+    }
+    bool ensure(HDC ref_dc,int nw,int nh,float nsc) {
+        if(dib&&w==nw&&h==nh&&sc==nsc)return true;
+        free_all();
+        BITMAPINFO bmi{};
+        bmi.bmiHeader.biSize=sizeof(BITMAPINFOHEADER);
+        bmi.bmiHeader.biWidth=nw;
+        bmi.bmiHeader.biHeight=-nh;   // top-down 32bpp BGRA == PixelFormat32bppPARGB
+        bmi.bmiHeader.biPlanes=1;
+        bmi.bmiHeader.biBitCount=32;
+        bmi.bmiHeader.biCompression=BI_RGB;
+        void* raw=nullptr;
+        memdc=CreateCompatibleDC(ref_dc);
+        if(!memdc)return false;
+        dib=CreateDIBSection(memdc,&bmi,DIB_RGB_COLORS,&raw,nullptr,0);
+        if(!dib||!raw){free_all();return false;}
+        old_bmp=SelectObject(memdc,dib);
+        bits=static_cast<uint8_t*>(raw);
+        w=nw;h=nh;sc=nsc;
+        // Pre-render the static backdrop (gold_frame radial gradient + header + panels) once per size.
+        const size_t nbytes=size_t(nw)*size_t(nh)*4;
+        backdrop.assign(nbytes,0);
+        {
+            Bitmap bg_bmp(nw,nh,nw*4,PixelFormat32bppPARGB,backdrop.data());
+            Graphics bg(&bg_bmp);
+            bg.ScaleTransform(nsc,nsc);
+            cv_item_menu::draw_backdrop_layers(bg);
+        }
+        return true;
+    }
+} wbuf;
+}  // namespace
+
+namespace cv_item_menu {
+void release_window_buffers() {wbuf.free_all();}
+}
+
+namespace {
 void paint(HWND h) {
     PAINTSTRUCT ps;HDC dc=BeginPaint(h,&ps);RECT c;GetClientRect(h,&c);
     const int w=std::max<int>(1,c.right),hh=std::max<int>(1,c.bottom);
-    Bitmap back(w,hh,PixelFormat32bppARGB);
-    {Graphics g(&back);g.ScaleTransform(scale,scale);draw(g,view,game_root);}
-    Graphics out(dc);out.DrawImage(&back,0,0);
+    if(wbuf.ensure(dc,w,hh,scale)) {
+        std::memcpy(wbuf.bits,wbuf.backdrop.data(),wbuf.backdrop.size());
+        {
+            Bitmap back(w,hh,w*4,PixelFormat32bppPARGB,wbuf.bits);
+            Graphics g(&back);g.ScaleTransform(scale,scale);
+            draw_impl(g,view,game_root,false);
+        }
+        BitBlt(dc,0,0,w,hh,wbuf.memdc,0,0,SRCCOPY);
+    } else {
+        Bitmap back(w,hh,PixelFormat32bppPARGB);
+        {Graphics g(&back);g.ScaleTransform(scale,scale);draw(g,view,game_root);}
+        Graphics out(dc);out.DrawImage(&back,0,0);
+    }
     EndPaint(h,&ps);
 }
 void redraw() {if(window)InvalidateRect(window,nullptr,FALSE);}
@@ -863,7 +1036,7 @@ LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM wp,LPARAM lp) {
         if(dirty)redraw();
         return 0;}
     case WM_CLOSE:cv_item_menu_close();return 0;
-    case WM_DESTROY:window=nullptr;return 0;
+    case WM_DESTROY:wbuf.free_all();window=nullptr;return 0;
     }
     return DefWindowProcW(h,msg,wp,lp);
 }
@@ -903,6 +1076,6 @@ void cv_item_menu_toggle(const std::wstring& game,int language) {
     refresh(view,cv_items::read());
     SetFocus(window);
     for(int i=0;i<PAD_PHYS_MAX;i++){PadPhys pad{};pad_phys_poll(i,&pad);cv_port_ui::menu_pad(pad);previous_pad[i]=pad.buttons;}
-    SetTimer(window,1,50,nullptr);redraw();
+    SetTimer(window,1,16,nullptr);redraw();
 }
 #endif
