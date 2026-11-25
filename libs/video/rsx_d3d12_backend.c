@@ -10262,6 +10262,65 @@ static void display_present(u32 fi)
     aa_barrier(out, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
 }
 
+/* First start with a new shipped shader list: present the shader screen by
+ * itself, with no guest frame behind it. Render thread, at the top of
+ * render_frame_impl (before it takes the frame index). */
+static void loading_only_present(void)
+{
+    if (!s_d3d.swap_chain || !s_d3d.cmd_list) return;
+    wait_for_gpu();   /* this slot's allocator and upload buffers are free again */
+    const u32 fi = s_d3d.frame_index;
+    ID3D12GraphicsCommandList* cl = s_d3d.cmd_list;
+    s_d3d.cmd_allocators[fi]->lpVtbl->Reset(s_d3d.cmd_allocators[fi]);
+    cl->lpVtbl->Reset(cl, s_d3d.cmd_allocators[fi], NULL);
+    ID3D12Resource* out; D3D12_CPU_DESCRIPTOR_HANDLE rtv; u32 w, h;
+    if (s_display) {
+        const u32 di = s_d3d.swap_chain->lpVtbl->GetCurrentBackBufferIndex(s_d3d.swap_chain);
+        out = s_disp_bufs[di]; w = s_disp_w; h = s_disp_h;
+        s_disp_rtv->lpVtbl->GetCPUDescriptorHandleForHeapStart(s_disp_rtv, &rtv);
+        rtv.ptr += (u64)di * s_d3d.rtv_descriptor_size;
+    } else {
+        out = s_d3d.render_targets[fi]; w = rs_dim(s_d3d.width, s_rs); h = rs_dim(s_d3d.height, s_rs);
+        s_d3d.rtv_heap->lpVtbl->GetCPUDescriptorHandleForHeapStart(s_d3d.rtv_heap, &rtv);
+        rtv.ptr += (u64)fi * s_d3d.rtv_descriptor_size;
+    }
+    if (out && w && h) {
+        aa_barrier(out, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        const float black[4] = {0, 0, 0, 1};
+        cl->lpVtbl->ClearRenderTargetView(cl, rtv, black, 0, NULL);
+        s_qb_display = s_display ? 1 : 0; s_qb_rtv = rtv; s_qb_w = w; s_qb_h = h;
+        float mvp[16] = {0};
+        mvp[0] = 2.f / (float)w; mvp[5] = -2.f / (float)h; mvp[10] = mvp[15] = 1; mvp[12] = -1; mvp[13] = 1;
+        loading_screen_draw(fi, w, h, mvp);
+        s_qb_display = 0;
+        aa_barrier(out, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+    }
+    cl->lpVtbl->Close(cl);
+    ID3D12CommandList* lists[] = {(ID3D12CommandList*)cl};
+    s_d3d.cmd_queue->lpVtbl->ExecuteCommandLists(s_d3d.cmd_queue, 1, lists);
+    s_d3d.swap_chain->lpVtbl->Present(s_d3d.swap_chain, 1, 0);
+    move_to_next_frame();
+    /* The hang watchdog (cv_hang_watch.cpp) sees frames that are not empty. */
+    g_rsx_watch_frames++; g_rsx_watch_draws = 0x7FFF;
+}
+
+/* Hold the game whole while the shipped list builds: the guest's frame waits
+ * here, so nothing advances (the opening movie and its sound included) until
+ * the list is ready, and the shader screen is redrawn four times a second.
+ * Before, each guest frame was let through every half second and the game
+ * crept ahead at two frames a second behind the screen. */
+static void pl_seed_hold(void)
+{
+    /* FSR 3 frame generation owns its own present sequence: keep the old
+     * half-second hold (pl_tick) when it ran last frame. */
+    if (!rsx_shader_preload_waiting() || s_fsr_ready) return;
+    while (s_pl_threads_left > 0 && !s_d3d.window_closed) {
+        loading_only_present();
+        const double t0 = perf_now();
+        while (s_pl_threads_left > 0 && !s_d3d.window_closed && perf_now() - t0 < 0.25) Sleep(5);
+    }
+}
+
 static void composite_present(u32 fi)
 {
     u32 want = s_composite_src;
@@ -11844,6 +11903,7 @@ static int pose_overlap_on(void);
 int rsx_d3d12_pose_replay_enabled(void);
 static void render_frame_impl(void)
 {
+    pl_seed_hold();   /* first start with a new shipped list: the game waits whole */
     { static int announced; if(!announced&&opt30_mode()>=0){
         fprintf(stderr,"[OPT30] package=%s prep=%d shadow=%d tex_edges=%d pose=%d fps_test60=0 (restart to switch)\n",
             opt30_mode()?"ON":"OFF",prep_reuse_on(),shadow_batch_on(),precomputed_tex_edges_on(),s_pose_on);announced=1;}}
@@ -13891,9 +13951,23 @@ static void render_wait_cpu_idle(void)
 {
     if (!s_rt_idle) return;
     for (;;) {
-        DWORD r = MsgWaitForMultipleObjects(1, &s_rt_idle, FALSE, INFINITE, QS_SENDMESSAGE);
+        /* While the render thread holds the game for the shipped shader list
+         * (pl_seed_hold, up to minutes), also run this thread's window: input
+         * and paint stay serviced, Windows does not mark it "Not responding",
+         * and closing it is seen (the hold ends on window_closed). */
+        const int hold = rsx_shader_preload_waiting();
+        DWORD r = MsgWaitForMultipleObjects(1, &s_rt_idle, FALSE, hold ? 100 : INFINITE,
+                                            hold ? QS_ALLINPUT : QS_SENDMESSAGE);
         if (r == WAIT_OBJECT_0) return;
-        MSG m; PeekMessageA(&m, NULL, 0, 0, PM_NOREMOVE | PM_QS_SENDMESSAGE);
+        MSG m;
+        if (hold) {
+            while (PeekMessageA(&m, NULL, 0, 0, PM_REMOVE)) {
+                if (m.message == WM_QUIT) {   /* end the hold; the main loop's pump sees it again */
+                    s_d3d.window_closed = 1; PostQuitMessage((int)m.wParam); break;
+                }
+                TranslateMessage(&m); DispatchMessageA(&m);
+            }
+        } else PeekMessageA(&m, NULL, 0, 0, PM_NOREMOVE | PM_QS_SENDMESSAGE);
     }
 }
 static volatile LONG64 s_rt_fence_pending;
