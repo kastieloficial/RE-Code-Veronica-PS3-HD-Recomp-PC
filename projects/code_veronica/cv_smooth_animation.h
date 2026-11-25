@@ -28,8 +28,15 @@ bool native_scene_ready() {
     // 6C 0x000800C0 are set only while the scope is up (player state 0x47).
     // Its overlay is not rebuilt by the extra scene pass; keep original frames.
     const bool scope_view=(control&0x00800000)||(vm_read32(system+0x6C)&0x000800C0);
+    // 6C bits 0x100/0x200 mark rooms with special render paths and stay
+    // excluded, except in one room: rm_1050 (stage 1, room 5, any variant),
+    // where the alarm keeps 0x200 set while it flashes and the whole room fell
+    // back to 30 Hz. Only 0x200 is let through there; every other guard above
+    // (Game Over, monitor, scope, messages, loads) still applies.
+    const bool alarm_room=vm_read8(CV_SRT_ROOM)==1&&vm_read8(CV_SRT_ROOM+1)==5;
+    const uint32_t special_render=alarm_room?0x100u:0x300u;
     return (tasks&0x80)&&!(tasks&0x1803F)&&(!(camera_mode&7)||scripted_camera)&&
-        !(control&0x1C040308)&&!(vm_read32(system+0x6C)&0x300)&&!scope_view;
+        !(control&0x1C040308)&&!(vm_read32(system+0x6C)&special_render)&&!scope_view;
 }
 // Room numbers and camera IDs can be reused after loading. Match the actual
 // scene resources as well, and never carry render endpoints across a transition.
@@ -124,7 +131,8 @@ void native_scene_log() {
     // Own file, flushed per line: the game's stderr is not always captured.
     static std::FILE* file=std::fopen("smooth-log.txt","w");
     if(!file)return;
-    std::fprintf(file,"[SMOOTH-LOG] t=%ld ready=%d",(long)std::clock(),native_scene_ready()?1:0);
+    std::fprintf(file,"[SMOOTH-LOG] t=%ld ready=%d room=%02X%02X%02X",(long)std::clock(),native_scene_ready()?1:0,
+        vm_read8(CV_SRT_ROOM),vm_read8(CV_SRT_ROOM+1),vm_read8(CV_SRT_ROOM+2));
     std::fprintf(file," tasks=%08X/%08X 6C=%08X ctl=%08X cam=%08X actor_c=%08X actor_8c=%08X cut=%08X/%08X/%08X\n",
         now[0],now[1],now[2],now[3],now[4],now[5],now[6],now[7],now[8],now[9]);
     std::fflush(file);
