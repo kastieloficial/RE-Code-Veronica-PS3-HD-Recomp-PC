@@ -132,14 +132,20 @@ const Color C_BG(255,16,16,18),C_SIDE(255,11,11,13),C_PANEL(255,24,23,25),
  * (cv_version.h, build-release-jp.cmd). The launcher of either accepts both:
  * a folder of the other version starts that version's executable, which
  * reads the same settings and starts at once. */
-struct GameVersion { const wchar_t* code; const char* elf_sha1; const wchar_t* exe; const wchar_t* name; };
+/* elf_sha1_alt: a second accepted ELF with the same code. The Japanese
+ * NPJB00135 comes as a free-licence EBOOT (CONTENT00DISCPKG, whose data names
+ * the Revival Selection disc BLJM60372) and the paid PSN one (CONTENT0000DLPKG,
+ * needs a .rap). Decrypted, they are the same size with the same program
+ * headers and code; only the 9-byte title string at file offset 0x864664
+ * (data, past the code range) reads "BLJM60372" or "NPJB00135". */
+struct GameVersion { const wchar_t* code; const char* elf_sha1; const wchar_t* exe; const wchar_t* name; const char* elf_sha1_alt; };
 const GameVersion k_versions[] = {
     { L"NPEB00553", "d0c9d3ab3a5ed12c80ab77fe73fa58d464083fa1", L"CodeVeronicaPort.exe",
-      L"Resident Evil Code: Veronica X (PSN)" },
+      L"Resident Evil Code: Veronica X (PSN)", nullptr },
     { L"NPUB30467", "93d060e5019d877df39cd091c28efff920b98e49", L"CodeVeronicaPort_US.exe",
-      L"Resident Evil Code: Veronica X (PSN US)" },
+      L"Resident Evil Code: Veronica X (PSN US)", nullptr },
     { L"NPJB00135", "ad17bbfadf23937480ba0330616262e595dfaa78", L"CodeVeronicaPort_JP.exe",
-      L"BIOHAZARD CODE: Veronica Kanzenban (PSN)" },
+      L"BIOHAZARD CODE: Veronica Kanzenban (PSN)", "846f0f8c2c432aa3d5f14ae67f84f4a28f6be9c5" },
 };
 const wchar_t* GAME_CODE = L"" CV_TITLE_ID;
 /* The text that names the compatible versions in the strings, replaced by
@@ -3966,21 +3972,34 @@ HANDLE s_play_ev;
 extern "C" int npdrm_self_decrypt(const char* self_path, const char* rap_path, const char* out_path);
 extern "C" int edat_sha1_file(const char* path, unsigned char out[20]);
 
-/* True if the ELF is the exact one the recompiled code came from. */
-bool eboot_matches(const std::string& elf)
+/* The SHA-1 of a file as 40 lowercase hex digits, or "" if it cannot be read. */
+std::string file_sha1_hex(const std::string& path)
 {
     unsigned char h[20];
-    if (edat_sha1_file(elf.c_str(), h) != 0) return false;
+    if (edat_sha1_file(path.c_str(), h) != 0) return "";
     char hex[41];
     for (int i = 0; i < 20; i++) snprintf(hex + 2 * i, 3, "%02x", h[i]);
-    return strcmp(hex, GAME_ELF_SHA1) == 0;
+    return hex;
+}
+
+/* True if the ELF is the exact one the recompiled code came from (or, for the
+ * Japanese version, the other edition with the same code: elf_sha1_alt). */
+bool eboot_matches(const std::string& elf)
+{
+    const std::string hex = file_sha1_hex(elf);
+    if (hex.empty()) return false;
+    const char* alt = own_version().elf_sha1_alt;
+    return hex == GAME_ELF_SHA1 || (alt && hex == alt);
 }
 
 /* The game runs from the plain ELF. A PSN copy only has the encrypted
  * EBOOT.BIN, so it is decrypted once with the .rap (the same steps RPCS3
  * takes) into eboot_cache beside the shader cache, and reused while it is
- * newer than the EBOOT.BIN. A folder that already holds a decrypted
- * USRDIR/EBOOT.elf and no EBOOT.BIN is used as it is. */
+ * newer than the EBOOT.BIN and was made from this same EBOOT.BIN (its SHA-1
+ * is kept in EBOOT.src beside it): two folders of one version, such as the
+ * two Japanese editions, share the cache path, and an ELF decrypted from one
+ * must not be run with the other's files. A folder that already holds a
+ * decrypted USRDIR/EBOOT.elf and no EBOOT.BIN is used as it is. */
 int prepare_eboot()
 {
     std::error_code ec;
@@ -3999,15 +4018,23 @@ int prepare_eboot()
     const std::wstring rap = rap_for_game(g.s, GAME_CODE);
     wchar_t cwd[MAX_PATH]; GetCurrentDirectoryW(MAX_PATH, cwd);
     const fs::path out = fs::path(cwd) / L"eboot_cache" / GAME_CODE / L"EBOOT.elf";
+    const fs::path src = out.parent_path() / L"EBOOT.src";
     g.eboot = narrow(out.wstring());
-    if (!fs::exists(out, ec) || fs::last_write_time(out, ec) < fs::last_write_time(bin, ec)) {
+    const std::string bin_sha1 = file_sha1_hex(narrow(bin.wstring()));
+    std::string cached_from;
+    { std::ifstream f(src); std::getline(f, cached_from); }
+    if (!fs::exists(out, ec) || fs::last_write_time(out, ec) < fs::last_write_time(bin, ec) ||
+        bin_sha1.empty() || cached_from != bin_sha1) {
         /* An empty licence is tried too: a free-licence EBOOT needs none. */
         fs::create_directories(out.parent_path(), ec);
+        fs::remove(src, ec);
         if (npdrm_self_decrypt(narrow(bin.wstring()).c_str(), narrow(rap).c_str(), g.eboot.c_str()) != 0)
             return S_DECRYPT_FAIL;
+        std::ofstream(src) << bin_sha1 << '\n';
     }
     if (eboot_matches(g.eboot)) return 0;
     fs::remove(out, ec);            /* not this version: do not keep it as a cache */
+    fs::remove(src, ec);
     return S_EBOOT_MISMATCH;
 }
 
