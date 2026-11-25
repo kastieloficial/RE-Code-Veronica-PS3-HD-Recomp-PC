@@ -10295,6 +10295,9 @@ static void loading_only_present(void)
         s_qb_display = 0;
         aa_barrier(out, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
     }
+    /* FSR 3 frame generation: this frame is not eligible (as on menu frames),
+     * so the proxy swapchain presents it as it is. A no-op without FSR 3. */
+    rsx_fsr31_frame(cl, s_d3d.swap_chain, 0);
     cl->lpVtbl->Close(cl);
     ID3D12CommandList* lists[] = {(ID3D12CommandList*)cl};
     s_d3d.cmd_queue->lpVtbl->ExecuteCommandLists(s_d3d.cmd_queue, 1, lists);
@@ -10311,9 +10314,7 @@ static void loading_only_present(void)
  * crept ahead at two frames a second behind the screen. */
 static void pl_seed_hold(void)
 {
-    /* FSR 3 frame generation owns its own present sequence: keep the old
-     * half-second hold (pl_tick) when it ran last frame. */
-    if (!rsx_shader_preload_waiting() || s_fsr_ready) return;
+    if (!rsx_shader_preload_waiting()) return;
     while (s_pl_threads_left > 0 && !s_d3d.window_closed) {
         loading_only_present();
         const double t0 = perf_now();
