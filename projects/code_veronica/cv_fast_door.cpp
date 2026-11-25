@@ -832,6 +832,20 @@ bool is_attract_demo(uint32_t sys)
     return (vm_read32(sys + kOffSsFlg) & 0x00400000u) != 0;
 }
 
+bool is_disc_swap(uint32_t sys)
+{
+    if (!sys) return false;
+    const uint32_t tasks = vm_read32(sys + 0x64u);
+    if (tasks == 0x00240000u) return true;
+    const uint32_t ss_flg = vm_read32(sys + kOffSsFlg);
+    if ((ss_flg & 0x00400000u) == 0u) {
+        const int8_t stage = (int8_t)vm_read8(sys + 0x95u);
+        const bool   disc2 = (ss_flg & 1u) != 0u;
+        if ((!disc2 && stage > 5) || (disc2 && stage < 6)) return true;
+    }
+    return false;
+}
+
 void write_float(uint32_t addr, float val)
 {
     uint32_t bits = 0;
@@ -1015,6 +1029,12 @@ DoorProfiler g_prof;
 void CV_FD_FN_DOOR_DEMO(ppu_context* ctx)
 {
     const uint32_t sys = get_sys();
+    if (sys && is_disc_swap(sys)) {
+        g_prof.active = false;
+        g_prof.fade_in_pending = false;
+        CV_FD_ORIG_DOOR_DEMO(ctx);
+        return;
+    }
     const bool enabled = fast_door_enabled() && sys && !is_attract_demo(sys);
 
     if (!enabled) {
@@ -1049,10 +1069,18 @@ void CV_FD_FN_DOOR_DEMO(ppu_context* ctx)
 void CV_FD_FN_MONITOR(ppu_context* ctx)
 {
     const uint32_t sys = get_sys();
+    if (g_prof.active) {
+        const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            DoorProfiler::clock::now() - g_prof.start_time).count();
+        if (elapsed_ms > 5000 || !sys || is_disc_swap(sys)) {
+            g_prof.active = false;
+            g_prof.fade_in_pending = false;
+        }
+    }
     /* Only accelerate room loads that were actually started by a door
      * transition (g_prof.active). Save loads, title/new-game transitions,
-     * and non-door stage loads must run unmodified 1 step per frame. */
-    const bool enabled = fast_door_enabled() && g_prof.active && sys && !is_attract_demo(sys);
+     * and Disc 1 <-> Disc 2 swaps must run unmodified 1 step per frame. */
+    const bool enabled = fast_door_enabled() && g_prof.active && sys && !is_attract_demo(sys) && !is_disc_swap(sys);
 
     if (!enabled) {
         CV_FD_ORIG_MONITOR(ctx);
@@ -1060,10 +1088,14 @@ void CV_FD_FN_MONITOR(ppu_context* ctx)
     }
 
     const uint8_t start_md0 = vm_read8(sys + kOffMnMd0);
-    if (start_md0 == 4u) {
-        g_prof.monitor_frames++;
-        g_prof.record_md1(vm_read8(sys + kOffMnMd1), sys);
+    if (start_md0 != 4u) {
+        g_prof.active = false;
+        g_prof.fade_in_pending = false;
+        CV_FD_ORIG_MONITOR(ctx);
+        return;
     }
+    g_prof.monitor_frames++;
+    g_prof.record_md1(vm_read8(sys + kOffMnMd1), sys);
 
     static int micropoll_env = -1;
     if (micropoll_env < 0) micropoll_env = env_flag("CV_FAST_DOOR_MICROPOLL", true) ? 1 : 0;
@@ -1137,6 +1169,12 @@ void CV_FD_FN_MONITOR(ppu_context* ctx)
 void CV_FD_FN_SND_MON(ppu_context* ctx)
 {
     const uint32_t sys = get_sys();
+    if (sys && is_disc_swap(sys)) {
+        g_prof.active = false;
+        g_prof.fade_in_pending = false;
+        CV_FD_ORIG_SND_MON(ctx);
+        return;
+    }
     const bool door_on = fast_door_enabled() && sys && !is_attract_demo(sys);
 
     if (door_on && g_prof.fade_in_pending && fast_fade_enabled()) {
@@ -1182,7 +1220,8 @@ void CV_FD_FN_SND_MON(ppu_context* ctx)
 void CV_FD_FN_MT_READ(ppu_context* ctx)
 {
     const uint32_t obj = (uint32_t)ctx->gpr[3];
-    if (!fast_sync_read_enabled() || !obj) {
+    const uint32_t sys = get_sys();
+    if (!fast_sync_read_enabled() || !obj || (sys && is_disc_swap(sys))) {
         CV_FD_ORIG_MT_READ(ctx);
         return;
     }
