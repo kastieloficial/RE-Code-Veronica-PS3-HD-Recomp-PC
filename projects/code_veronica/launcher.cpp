@@ -1864,7 +1864,10 @@ void door_skip_card(Graphics& gr, float x, float y, float w, const Font& body, c
 
     const Color foot_c(255, 120, 110, 104);
     text(gr, T(S_PATCH_DOOR_T), x + 14, y + 6, body, C_TEXT, StringAlignmentNear, w - 260, 22);
-    text(gr, T(S_PATCH_DOOR_C), x + 14, y + 7, fsm, foot_c, StringAlignmentFar, w - 28, 20);
+    /* Credit for the mode chosen: Classic is Kapdap's RPCS3 patch; Fast and
+     * Supreme are the port's own (cv_fast_door.cpp). Off shows none. */
+    if (mode > 0)
+        text(gr, T(mode == 1 ? S_PATCH_DOOR_C : S_PATCH_DOOR_C_OWN), x + 14, y + 7, fsm, foot_c, StringAlignmentFar, w - 28, 20);
 
     const float gap = 8.0f;
     const float bw = (w - 28.0f - gap * 3.0f) / 4.0f;
