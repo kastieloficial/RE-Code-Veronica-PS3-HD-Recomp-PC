@@ -1864,10 +1864,6 @@ void door_skip_card(Graphics& gr, float x, float y, float w, const Font& body, c
 
     const Color foot_c(255, 120, 110, 104);
     text(gr, T(S_PATCH_DOOR_T), x + 14, y + 6, body, C_TEXT, StringAlignmentNear, w - 260, 22);
-    /* Credit for the mode chosen: Classic is Kapdap's RPCS3 patch; Fast and
-     * Supreme are the port's own (cv_fast_door.cpp). Off shows none. */
-    if (mode > 0)
-        text(gr, T(mode == 1 ? S_PATCH_DOOR_C : S_PATCH_DOOR_C_OWN), x + 14, y + 7, fsm, foot_c, StringAlignmentFar, w - 28, 20);
 
     const float gap = 8.0f;
     const float bw = (w - 28.0f - gap * 3.0f) / 4.0f;
@@ -1886,8 +1882,18 @@ void door_skip_card(Graphics& gr, float x, float y, float w, const Font& body, c
         hit(r.X, r.Y, r.Width, r.Height, ID_DOOR_MODE + m);
     }
 
+    /* Credits, always shown at the bottom right, by the modes' own names:
+     * Classic is Kapdap's RPCS3 patch; Fast and Supreme are Kastiel's
+     * (cv_fast_door.cpp). Built from the button labels, so every language
+     * reads it with no extra text to translate. */
+    const std::wstring credit = std::wstring(cv_door_skip_text::label(g_lang, 1)) + L": Kapdap (RPCS3)  ·  " +
+        cv_door_skip_text::label(g_lang, 2) + L" / " + cv_door_skip_text::label(g_lang, 3) + L": Kastiel";
+    RectF credit_box;
+    gr.MeasureString(credit.c_str(), -1, &fsm, PointF(0, 0), &credit_box);
+    const float credit_w = std::min(credit_box.Width + 4.0f, (w - 28.0f) * 0.5f);
+    text(gr, credit, x + w - 14 - credit_w, y + 68, fsm, foot_c, StringAlignmentFar, credit_w, 20);
     text(gr, cv_door_skip_text::desc(g_lang, mode), x + 14, y + 68, fsm, C_DIM,
-         StringAlignmentNear, w - 28, 20);
+         StringAlignmentNear, w - 28 - credit_w - 12, 20);
 }
 
 void draw_patches(Graphics& gr, const Font& head, const Font& body, const Font& fsm)
