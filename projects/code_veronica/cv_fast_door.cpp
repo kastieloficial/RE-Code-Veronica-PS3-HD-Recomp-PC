@@ -1088,14 +1088,10 @@ void CV_FD_FN_MONITOR(ppu_context* ctx)
     }
 
     const uint8_t start_md0 = vm_read8(sys + kOffMnMd0);
-    if (start_md0 != 4u) {
-        g_prof.active = false;
-        g_prof.fade_in_pending = false;
-        CV_FD_ORIG_MONITOR(ctx);
-        return;
+    if (start_md0 == 4u) {
+        g_prof.monitor_frames++;
+        g_prof.record_md1(vm_read8(sys + kOffMnMd1), sys);
     }
-    g_prof.monitor_frames++;
-    g_prof.record_md1(vm_read8(sys + kOffMnMd1), sys);
 
     static int micropoll_env = -1;
     if (micropoll_env < 0) micropoll_env = env_flag("CV_FAST_DOOR_MICROPOLL", true) ? 1 : 0;
