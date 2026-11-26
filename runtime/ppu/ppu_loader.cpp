@@ -1094,6 +1094,19 @@ extern "C" void ppu_report_guest_lrs(void)
         fprintf(stderr, "[WATCHDOG]   guest-tid %-3u lr=0x%08X  r3=0x%08X sp=0x%08X\n",
                 (unsigned)c->thread_id, (uint32_t)c->lr,
                 (uint32_t)c->gpr[3], (uint32_t)c->gpr[1]);
+        /* Guest back chain (PPC64 ELF ABI, 64-bit slots: [sp] = caller's sp, lr saved at caller's sp+16): the callers of lr, so a
+         * thread parked in a sleep or wait helper shows the game code that is waiting. Frames are only followed
+         * upward within 1 MB, so a garbage chain stops at once. */
+        { uint32_t sp = (uint32_t)c->gpr[1]; int k = 0;
+          fprintf(stderr, "[WATCHDOG]     chain:");
+          while (k < 12) {
+              const uint32_t next = vm_read32(sp + 4);          /* 64-bit slots: low word */
+              if (next <= sp || next - sp > 0x100000u) break;
+              const uint32_t lr = vm_read32(next + 16 + 4);
+              if (!lr) break;
+              fprintf(stderr, " %08X", lr); sp = next; k++;
+          }
+          fputc('\n', stderr); }
         /* With BCTRL_RING armed, follow it with that thread's recent INDIRECT
          * targets. lr cannot see those (bctrl does not write it), so for a
          * thread looping on a vtable call the ring is the only record of where
