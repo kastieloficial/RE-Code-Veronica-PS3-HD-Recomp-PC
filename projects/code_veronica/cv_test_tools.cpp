@@ -602,6 +602,36 @@ void lift_skip(ppu_context* ctx) {
     else call_door(ctx,0,8,0x04,1,0x21);
     std::printf("[EVENT-SKIP] area 8 lift: ride %s skipped\n",up?"up":"down");std::fflush(stdout);
 }
+// CV_SKIP_EVENTS=1: the area 7 cave lift (rm_717, Chris; mapped with CV_EVENT_LOG, US, 2026-11-26). Two scenes:
+//  - calling it at the bottom ("Call the elevator? Yes"): +74 becomes 0x3044 and ~8 s later the script sends the character
+//    into the car (kind 8, rm_717 variant 2, animation 0x35, arrival 0); the call sets state+CC bit 0x1000 for good.
+//  - the ride in the car (rm_717 variant 2 up, variant 3 down; +74 bit 4, ~7 s) ends with kind 0x0A: up to rm_70C variant 4,
+//    down to rm_717 variant 1 (animation 0x35, arrival 0); state+274 bit 0x10 ends set at the top, clear at the bottom.
+// Each scene's end request is made as soon as it starts, with those flags at the values its end leaves.
+void cave_lift_skip(ppu_context* ctx) {
+    static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
+    if(!on||!mapped(state_base,0x2A6AC)||!live_character())return;
+    if(vm_read8(state_base+0x95)!=7||vm_read8(state_base+0x96)!=0x17)return;
+    const uint32_t variant=vm_read8(state_base+0x98),f74=vm_read32(state_base+0x74);
+    if(vm_read32(state_base+0x2A6A0)==0||(f74&7)!=4)return;
+    const bool call=(variant==0||variant==1)&&(f74&0x3040u)==0x3040u,ride=variant==2||variant==3;
+    if(!call&&!ride)return;   // any other scene of this room is left alone
+    vm_write32(state_base+0x70,vm_read32(state_base+0x70)&~4u);
+    vm_write8(state_base+0x97,0);
+    if(call) {
+        vm_write32(state_base+0xCC,vm_read32(state_base+0xCC)|0x1000u);
+        vm_write32(state_base+0x74,f74&~4u);
+        call_door(ctx,8,7,0x17,2,0x35);
+        std::printf("[EVENT-SKIP] cave lift: call skipped\n");std::fflush(stdout);
+    } else {
+        const bool up=variant==2;const uint32_t f274=vm_read32(state_base+0x274);
+        vm_write32(state_base+0x274,up?f274|0x10u:f274&~0x10u);
+        vm_write32(state_base+0x74,f74&~4u);
+        if(up)call_door(ctx,0x0A,7,0x0C,4,0x35);
+        else call_door(ctx,0x0A,7,0x17,1,0x35);
+        std::printf("[EVENT-SKIP] cave lift: ride %s skipped\n",up?"up":"down");std::fflush(stdout);
+    }
+}
 void write_guest_float(uint32_t address,float value) {uint32_t bits;std::memcpy(&bits,&value,4);vm_write32(address,bits);}
 void submarine_skip(ppu_context* ctx) {
     static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
@@ -675,6 +705,7 @@ void TEST_FRAME(ppu_context* ctx) {
     elevator_skip(ctx);
     submarine_skip(ctx);
     lift_skip(ctx);
+    cave_lift_skip(ctx);
     if(enabled) {
         bool valid=active_game()&&!tool_load;ready=valid;
         room_known=live_character();
