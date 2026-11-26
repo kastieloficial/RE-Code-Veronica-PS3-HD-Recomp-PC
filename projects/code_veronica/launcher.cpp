@@ -357,7 +357,8 @@ const int NPATCHES = sizeof k_patches / sizeof k_patches[0];
 enum Enhancement { E_SMOOTH, E_INPUT, E_NOTICES, E_DOF, E_AMMO, E_HIDE, E_SKIP_TRANSITIONS, E_COUNT };
 static_assert(E_COUNT==sizeof(Settings::enhancements)/sizeof(bool),"one stored switch per enhancement");
 /* E_SKIP_TRANSITIONS: cv_test_tools.cpp elevator_skip (the area 7 elevator goes straight to the chosen floor) and
- * submarine_skip (the area 1 / area 4 voyage is not played; the character is inside, at the panel). */
+ * submarine_skip (the area 1 / area 4 voyage is not played; the character is inside, at the panel) and lift_skip
+ * (the area 8 lift, up and down). */
 const char* const enhancement_env[E_COUNT]={"CV_SMOOTH_ANIMATION","CV_INPUT_COMFORT","CV_SKIP_START_NOTICES","CV_DISABLE_DOF","CV_AMMO_READOUT","CV_HIDE_LAUNCHER","CV_SKIP_EVENTS"};
 const wchar_t* const enhancement_keys[E_COUNT]={L"smooth_animation",L"input_comfort",L"skip_start_notices",L"disable_dof",L"ammo_readout",L"hide_launcher",L"skip_transitions"};
 

@@ -581,6 +581,27 @@ void elevator_skip(ppu_context* ctx) {
 // variant 0 (no voyage; its arrival point is the ladder's foot), and the character is put at the panel (15, 0, 36.5), where
 // the voyage leaves her. Variant 0 at the far side has its ladder lead to Rockfort (01 0D 01 10); while the submarine is at
 // the far dock (+270 bit 0x00800000) that request is turned into the voyage room's own (04 03 01 10).
+// CV_SKIP_EVENTS=1: the area 8 lift (rm_804, Chris; mapped with CV_EVENT_LOG, US, 2026-11-26). Its car is the same room in
+// variant 0 going up and variant 3 going down; the car's script plays the ride (~16 s up, ~7 s down, +74 bit 4) and ends
+// with a door request kind 0, animation 0x21, arrival point 0: up to rm_70D variant 0, down to rm_804 variant 1. The car's
+// script sets state+A4 bit 0x08000000 on its first frame both ways (+74 becomes 0x44; +2A6A0 stays 1 in this room) and
+// clears it again with its end request going down: going up the bit stays set. Once the script has started (the bit set),
+// its own end request is made at once, the bit cleared first going down, as its end does.
+void lift_skip(ppu_context* ctx) {
+    static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
+    if(!on||!mapped(state_base,0x2A6AC)||!live_character())return;
+    if(vm_read8(state_base+0x95)!=8||vm_read8(state_base+0x96)!=4)return;
+    const uint32_t variant=vm_read8(state_base+0x98),f74=vm_read32(state_base+0x74),a4=vm_read32(state_base+0xA4);
+    if((variant!=0&&variant!=3)||vm_read32(state_base+0x2A6A0)==0||(f74&7)!=4||!(a4&0x08000000u))return;
+    const bool up=variant==0;
+    if(!up)vm_write32(state_base+0xA4,a4&~0x08000000u);
+    vm_write32(state_base+0x70,vm_read32(state_base+0x70)&~4u);
+    vm_write32(state_base+0x74,f74&~4u);
+    vm_write8(state_base+0x97,0);
+    if(up)call_door(ctx,0,7,0x0D,0,0x21);
+    else call_door(ctx,0,8,0x04,1,0x21);
+    std::printf("[EVENT-SKIP] area 8 lift: ride %s skipped\n",up?"up":"down");std::fflush(stdout);
+}
 void write_guest_float(uint32_t address,float value) {uint32_t bits;std::memcpy(&bits,&value,4);vm_write32(address,bits);}
 void submarine_skip(ppu_context* ctx) {
     static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
@@ -653,6 +674,7 @@ void TEST_FRAME(ppu_context* ctx) {
     cv_items::frame();   // the F6 item menu's one write, between game frames
     elevator_skip(ctx);
     submarine_skip(ctx);
+    lift_skip(ctx);
     if(enabled) {
         bool valid=active_game()&&!tool_load;ready=valid;
         room_known=live_character();
