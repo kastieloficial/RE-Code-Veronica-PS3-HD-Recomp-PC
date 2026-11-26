@@ -632,6 +632,28 @@ void cave_lift_skip(ppu_context* ctx) {
         std::printf("[EVENT-SKIP] cave lift: ride %s skipped\n",up?"up":"down");std::fflush(stdout);
     }
 }
+// CV_SKIP_EVENTS=1: the area 9 lift (rm_90A, Chris; mapped with CV_EVENT_LOG, US, 2026-11-26). Its car is rm_90A variant 2,
+// entered from either floor; the car's script plays the ride (+74 bit 4, ~5 s) and ends with kind 8, animation 0x43,
+// arrival 0, to the other floor: entered from rm_90D it goes to rm_90A variant 3, entered from rm_90A variant 3 it goes to
+// rm_90D variant 2. A ride toggles state+D0 bit 0x2000 (clear at the variant 3 floor, set at the rm_90D floor). The room
+// the character came from is kept here; once the car's script runs, its end request is made with that flag at its end value.
+void area9_lift_skip(ppu_context* ctx,uint32_t previous_room) {
+    static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
+    if(!on||!mapped(state_base,0x2A6AC)||!live_character())return;
+    if(vm_read8(state_base+0x95)!=9||vm_read8(state_base+0x96)!=0x0A||vm_read8(state_base+0x98)!=2)return;
+    const uint32_t f74=vm_read32(state_base+0x74);
+    if(vm_read32(state_base+0x2A6A0)==0||(f74&7)!=4)return;
+    const bool from_90d=(previous_room>>8)==0x090D,from_top=previous_room==0x090A03;
+    if(!from_90d&&!from_top)return;   // came in some other way: the ride plays as in the original
+    const uint32_t d0=vm_read32(state_base+0xD0);
+    vm_write32(state_base+0xD0,from_90d?d0&~0x2000u:d0|0x2000u);
+    vm_write32(state_base+0x70,vm_read32(state_base+0x70)&~4u);
+    vm_write32(state_base+0x74,f74&~4u);
+    vm_write8(state_base+0x97,0);
+    if(from_90d)call_door(ctx,8,9,0x0A,3,0x43);
+    else call_door(ctx,8,9,0x0D,2,0x43);
+    std::printf("[EVENT-SKIP] area 9 lift: ride skipped\n");std::fflush(stdout);
+}
 void write_guest_float(uint32_t address,float value) {uint32_t bits;std::memcpy(&bits,&value,4);vm_write32(address,bits);}
 void submarine_skip(ppu_context* ctx) {
     static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
@@ -706,6 +728,14 @@ void TEST_FRAME(ppu_context* ctx) {
     submarine_skip(ctx);
     lift_skip(ctx);
     cave_lift_skip(ctx);
+    {   // the room before the current one (area, room, variant), for the lifts whose car serves both floors
+        static uint32_t current=0,previous=0;
+        if(mapped(state_base,0x9C)) {
+            const uint32_t key=(uint32_t(vm_read8(state_base+0x95))<<16)|(uint32_t(vm_read8(state_base+0x96))<<8)|vm_read8(state_base+0x98);
+            if(key!=current){previous=current;current=key;}
+        }
+        area9_lift_skip(ctx,previous);
+    }
     if(enabled) {
         bool valid=active_game()&&!tool_load;ready=valid;
         room_known=live_character();
