@@ -592,20 +592,23 @@ void elevator_skip(ppu_context* ctx) {
 // script sets state+A4 bit 0x08000000 on its first frame both ways (+74 becomes 0x44; +2A6A0 stays 1 in this room) and
 // clears it again with its end request going down: going up the bit stays set. Once the script has started (the bit set),
 // its own end request is made at once, the bit cleared first going down, as its end does.
+// Claire's copy is rm_404 (area 4, mapped 2026-11-26): same car variants and A4 bit; its script's end requests are kind
+// 0x60, animation 0x21: up to rm_309 variant 1 at arrival point 1, down to rm_404 variant 1 at arrival point 0.
 void lift_skip(ppu_context* ctx) {
     static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
     if(!on||!mapped(state_base,0x2A6AC)||!live_character())return;
-    if(vm_read8(state_base+0x95)!=8||vm_read8(state_base+0x96)!=4)return;
+    const uint32_t area=vm_read8(state_base+0x95);
+    if((area!=8&&area!=4)||vm_read8(state_base+0x96)!=4)return;
     const uint32_t variant=vm_read8(state_base+0x98),f74=vm_read32(state_base+0x74),a4=vm_read32(state_base+0xA4);
     if((variant!=0&&variant!=3)||vm_read32(state_base+0x2A6A0)==0||(f74&7)!=4||!(a4&0x08000000u))return;
-    const bool up=variant==0;
+    const bool up=variant==0,chris=area==8;
     if(!up)vm_write32(state_base+0xA4,a4&~0x08000000u);
     vm_write32(state_base+0x70,vm_read32(state_base+0x70)&~4u);
     vm_write32(state_base+0x74,f74&~4u);
-    vm_write8(state_base+0x97,0);
-    if(up)call_door(ctx,0,7,0x0D,0,0x21);
-    else call_door(ctx,0,8,0x04,1,0x21);
-    std::printf("[EVENT-SKIP] area 8 lift: ride %s skipped\n",up?"up":"down");std::fflush(stdout);
+    vm_write8(state_base+0x97,chris||!up?0:1);
+    if(chris) {if(up)call_door(ctx,0,7,0x0D,0,0x21);else call_door(ctx,0,8,0x04,1,0x21);}
+    else {if(up)call_door(ctx,0x60,3,0x09,1,0x21);else call_door(ctx,0x60,4,0x04,1,0x21);}
+    std::printf("[EVENT-SKIP] airport lift (%s): ride %s skipped\n",chris?"Chris":"Claire",up?"up":"down");std::fflush(stdout);
 }
 // CV_SKIP_EVENTS=1: the area 7 cave lift (rm_717, Chris; mapped with CV_EVENT_LOG, US, 2026-11-26). Two scenes:
 //  - calling it at the bottom ("Call the elevator? Yes"): +74 becomes 0x3044 and ~8 s later the script sends the character
