@@ -712,6 +712,24 @@ void story_ride_skip(ppu_context* ctx) {
     from_scene=false;
     std::printf("[EVENT-SKIP] Claire's story ride up skipped\n");std::fflush(stdout);
 }
+// CV_SKIP_EVENTS=1: the story voyage with Steve (mapped with CV_EVENT_LOG, US, 2026-11-26). After Steve's wheel scene at
+// the Rockfort dock, a scene door (kind 0x41) takes Claire and Steve into the submarine (rm_10E variant 0); its script plays
+// the voyage (~13 s), flipping the submarine's flags (state+B4, +270) on its first frame, and ends with kind 0x40 to the far
+// dock (rm_403 variant 1, animation 0x10, arrival 0), where the next scene plays as usual. Once the voyage's script runs
+// (+2A6A0 3) and the far-dock flag is set, its end request is made at once.
+void steve_voyage_skip(ppu_context* ctx) {
+    static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
+    if(!on||!mapped(state_base,0x2A6AC)||!live_character())return;
+    if(vm_read8(state_base+0x95)!=1||vm_read8(state_base+0x96)!=0x0E||vm_read8(state_base+0x98)!=0)return;
+    const uint32_t f74=vm_read32(state_base+0x74);
+    if(vm_read32(state_base+0x2A6A4)!=0x41||vm_read32(state_base+0x2A6A0)!=3||(f74&7)!=4)return;   // came by the scene's door
+    if(!(vm_read32(state_base+0x270)&0x00800000u))return;   // the voyage's first frame not run yet
+    vm_write32(state_base+0x70,vm_read32(state_base+0x70)&~4u);
+    vm_write32(state_base+0x74,f74&~4u);
+    vm_write8(state_base+0x97,0);
+    call_door(ctx,0x40,4,0x03,1,0x10);
+    std::printf("[EVENT-SKIP] Steve's submarine voyage skipped\n");std::fflush(stdout);
+}
 void write_guest_float(uint32_t address,float value) {uint32_t bits;std::memcpy(&bits,&value,4);vm_write32(address,bits);}
 void submarine_skip(ppu_context* ctx) {
     static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
@@ -796,6 +814,7 @@ void TEST_FRAME(ppu_context* ctx) {
     }
     area9_second_lift_skip(ctx);
     story_ride_skip(ctx);
+    steve_voyage_skip(ctx);
     if(enabled) {
         bool valid=active_game()&&!tool_load;ready=valid;
         room_known=live_character();
