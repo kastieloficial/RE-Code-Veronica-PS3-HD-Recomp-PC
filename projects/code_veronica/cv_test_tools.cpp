@@ -556,19 +556,24 @@ void elevator_skip(ppu_context* ctx) {
     const bool now=(f74&0x1000)!=0;
     const bool edge=now&&!confirmed;
     confirmed=now;
-    if(!edge||vm_read8(state_base+0x95)!=7||vm_read8(state_base+0x96)!=1||(f74&7)!=4||!live_character())return;
+    // The same elevator in two maps: Chris's car rm_701 (area 7) and Claire's car rm_316 (area 3, mapped the same way on
+    // 2026-11-26: same floor menu and floor word, its floors at rm_315, rm_303 and rm_30C, all at arrival point 0).
+    const uint32_t area=vm_read8(state_base+0x95),room=vm_read8(state_base+0x96);
+    const bool chris=area==7&&room==1,claire=area==3&&room==0x16;
+    if(!edge||(!chris&&!claire)||(f74&7)!=4||!live_character())return;
     // entry: the arrival point, the byte +97 the script writes beside its door request (+94 reads 01 area room entry);
-    // 2F has its elevator door at entry 1, the other floors at 0. Without it the character lands at 0,0,0.
+    // Chris's 2F has its elevator door at entry 1, the other floors at 0. Without it the character lands at 0,0,0.
     struct Arrival {uint8_t room,variant,entry;};
-    static constexpr Arrival arrivals[3]={{0x06,2,0},{0x13,2,0},{0x03,1,1}};   // B1F rm_706, 1F rm_713, 2F rm_703
+    static constexpr Arrival chris_floors[3]={{0x06,2,0},{0x13,2,0},{0x03,1,1}};    // B1F rm_706, 1F rm_713, 2F rm_703
+    static constexpr Arrival claire_floors[3]={{0x15,1,0},{0x03,0,0},{0x0C,1,0}};   // B1F rm_315, 1F rm_303, 2F rm_30C
     const uint32_t floor=vm_read32(state_base+0x289DC);
     if(floor>2) {std::printf("[EVENT-SKIP] elevator: floor value %u unknown, ride left as is\n",floor);std::fflush(stdout);return;}
-    const Arrival& a=arrivals[floor];
+    const Arrival& a=(chris?chris_floors:claire_floors)[floor];
     // At the end of a natural ride the script clears bit 4 of +70 and +74 in the same frame as its door request.
     vm_write32(state_base+0x70,vm_read32(state_base+0x70)&~4u);
     vm_write32(state_base+0x74,vm_read32(state_base+0x74)&~4u);
     vm_write8(state_base+0x97,a.entry);
-    call_door(ctx,2,7,a.room,a.variant,0x29);
+    call_door(ctx,2,area,a.room,a.variant,0x29);
     std::printf("[EVENT-SKIP] elevator: floor %u chosen, ride skipped\n",floor);std::fflush(stdout);
 }
 // CV_SKIP_EVENTS=1: the submarine between area 1 and area 4. Inside it (rm_10E at Rockfort, rm_405 at the far dock) its
@@ -654,6 +659,24 @@ void area9_lift_skip(ppu_context* ctx,uint32_t previous_room) {
     else call_door(ctx,8,9,0x0D,2,0x43);
     std::printf("[EVENT-SKIP] area 9 lift: ride skipped\n");std::fflush(stdout);
 }
+// CV_SKIP_EVENTS=1: the second area 9 lift (rm_910, Chris; mapped with CV_EVENT_LOG, US, 2026-11-26). Its car is rm_910
+// variant 3 going up and variant 2 going down; the car's script plays the ride (+74 bit 4, ~6 s) and ends with kind 8,
+// animation 0x4C, arrival 0: up to rm_911 variant 0, down to rm_910 variant 4. A ride changes no lasting state. Once the
+// car's script runs, its end request is made at once.
+void area9_second_lift_skip(ppu_context* ctx) {
+    static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
+    if(!on||!mapped(state_base,0x2A6AC)||!live_character())return;
+    if(vm_read8(state_base+0x95)!=9||vm_read8(state_base+0x96)!=0x10)return;
+    const uint32_t variant=vm_read8(state_base+0x98),f74=vm_read32(state_base+0x74);
+    if((variant!=2&&variant!=3)||vm_read32(state_base+0x2A6A0)==0||(f74&7)!=4)return;
+    const bool up=variant==3;
+    vm_write32(state_base+0x70,vm_read32(state_base+0x70)&~4u);
+    vm_write32(state_base+0x74,f74&~4u);
+    vm_write8(state_base+0x97,0);
+    if(up)call_door(ctx,8,9,0x11,0,0x4C);
+    else call_door(ctx,8,9,0x10,4,0x4C);
+    std::printf("[EVENT-SKIP] second area 9 lift: ride %s skipped\n",up?"up":"down");std::fflush(stdout);
+}
 void write_guest_float(uint32_t address,float value) {uint32_t bits;std::memcpy(&bits,&value,4);vm_write32(address,bits);}
 void submarine_skip(ppu_context* ctx) {
     static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
@@ -736,6 +759,7 @@ void TEST_FRAME(ppu_context* ctx) {
         }
         area9_lift_skip(ctx,previous);
     }
+    area9_second_lift_skip(ctx);
     if(enabled) {
         bool valid=active_game()&&!tool_load;ready=valid;
         room_known=live_character();
