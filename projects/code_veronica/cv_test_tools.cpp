@@ -739,7 +739,27 @@ void steve_voyage_skip(ppu_context* ctx) {
 // arrival 1): its request is made on its first frame.
 void countdown_lift_skip(ppu_context* ctx) {
     static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
-    if(!on||!mapped(state_base,0x2A6AC)||!live_character())return;
+    static bool a4_was=true,pending_c0=false;
+    if(!on||!mapped(state_base,0x2A6AC)||!live_character()){a4_was=true;return;}
+    {   // The whole lift sequence (countdown scene in the warehouse rm_404 variant 1/2, ride, Alfred's scene, last ride;
+        // the user asked for all of it to go, 2026-11-26). Its script sets state+A4 bit 0x08000000 on its first frame.
+        // The only lasting change the sequence leaves is +C0 bit 0x08000000 (the countdown itself was already running),
+        // so set it and make the sequence's own end request at once: rm_309 variant 1, entry 1.
+        const uint32_t w74=vm_read32(state_base+0x74),wv=vm_read8(state_base+0x98),wa4=vm_read32(state_base+0xA4);
+        const bool a4=(wa4&0x08000000u)!=0,started=a4&&!a4_was;a4_was=a4;
+        if(vm_read8(state_base+0x95)==4&&vm_read8(state_base+0x96)==4&&(wv==1||wv==2)&&started&&(w74&7)==4) {
+            vm_write32(state_base+0xC0,vm_read32(state_base+0xC0)|0x08000000u);vm_write32(state_base+0xA4,wa4&~0x08000000u);
+            vm_write32(state_base+0x70,vm_read32(state_base+0x70)&~4u);vm_write32(state_base+0x74,w74&~0x10000006u);
+            vm_write8(state_base+0x97,1);pending_c0=true;
+            call_door(ctx,0x60,3,0x09,1,0x21);
+            std::printf("[EVENT-SKIP] countdown lift: whole sequence skipped\n");std::fflush(stdout);
+            return;
+        }
+        // Make sure the story flag survives the room load.
+        if(pending_c0&&vm_read8(state_base+0x95)==3&&vm_read8(state_base+0x96)==0x09&&(w74&7)==0) {
+            vm_write32(state_base+0xC0,vm_read32(state_base+0xC0)|0x08000000u);pending_c0=false;
+        }
+    }
     if(vm_read8(state_base+0x95)!=3||vm_read8(state_base+0x96)!=0x17||vm_read8(state_base+0x98)!=0)return;
     if(vm_read32(state_base+0x2A6A4)!=0x62||vm_read32(state_base+0x2A6A0)==0)return;
     const uint32_t f74=vm_read32(state_base+0x74),f70=vm_read32(state_base+0x70);
