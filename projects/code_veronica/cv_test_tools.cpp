@@ -700,11 +700,10 @@ void story_ride_skip(ppu_context* ctx) {
     if(!(vm_read32(state_base+0xBC)&0x00010000u)||!(a4&0x200u))return;   // the ride's script not started, or already ended
     // The script's opening (fade in, ~0.8 s) finishes switching the character from Steve to Claire: cutting on its first
     // frame left Claire with Steve's voice (user's test, 2026-11-26); waiting for the end of the fade and y >= 3 fixed it but
-    // showed the start of the ride. Now: as soon as the car moves (the character rises with it, y 0 -> 80), screen still dark.
-    // If Steve's voice comes back, the earlier point was: (f74&2)==0 and y >= 3.
-    const uint32_t actor=vm_read32(CV_SCENE_ACTOR);
-    if(!actor)return;
-    {uint32_t bits=vm_read32(actor+0x14);float y;std::memcpy(&y,&bits,4);if(!(y>=0.05f))return;}
+    // showed the start of the ride; cutting at the car's first move (y >= 0.05) kept the voice but let the lift's sound
+    // start. Now: the first frame of the fade in (+74 bit 2), the car still at rest and the screen dark.
+    // Fallbacks if Steve's voice comes back: y >= 0.05 (kept the voice), then (f74&2)==0 and y >= 3.
+    if(!(f74&2))return;
     vm_write32(state_base+0xA4,a4&~0x200u);
     vm_write32(state_base+0x70,vm_read32(state_base+0x70)&~4u);
     vm_write32(state_base+0x74,f74&~6u);   // the script bit and, when the cut lands in it, the fade in
