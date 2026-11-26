@@ -137,8 +137,77 @@ void native_scene_log() {
         now[0],now[1],now[2],now[3],now[4],now[5],now[6],now[7],now[8],now[9]);
     std::fflush(file);
 }
+// CV_EVENT_LOG=1 (dev only): system block words 0x40..0x9C whenever a state word changes, to map unskippable events.
+void native_event_log() {
+    static const bool on=[] {const char* e=std::getenv("CV_EVENT_LOG");return e&&std::strcmp(e,"1")==0;}();
+    if(!on)return;
+    const uint32_t system=vm_read32(CV_SCENE_SYSTEM);
+    if(!system)return;
+    static constexpr uint32_t watch[]={0x50,0x64,0x68,0x6C,0x70,0x74,0x78,0x7C,0x94,0x98,0x2A6A0,0x2A6A4,0x2A6A8,
+        0xB4,0x270,0x28C,0x8A0};   // submarine: lasting flags seen changing across its rides
+    uint32_t now[sizeof watch/sizeof watch[0]+1];
+    for(unsigned i=0;i<sizeof watch/sizeof watch[0];i++)now[i]=vm_read32(system+watch[i]);
+    now[sizeof watch/sizeof watch[0]]=(vm_read8(CV_SRT_ROOM)<<16)|(vm_read8(CV_SRT_ROOM+1)<<8)|vm_read8(CV_SRT_ROOM+2);
+    static uint32_t last[sizeof now/sizeof now[0]];
+    if(std::memcmp(now,last,sizeof now)==0)return;
+    std::memcpy(last,now,sizeof now);
+    static std::FILE* file=std::fopen("event-log.txt","w");
+    if(!file)return;
+    std::fprintf(file,"t=%ld room=%06X chr=%u",(long)std::clock(),now[sizeof watch/sizeof watch[0]],unsigned(vm_read8(CV_SRT_CHARACTER)));
+    for(uint32_t off=0x40;off<0xA0;off+=4)std::fprintf(file," %02X=%08X",off,vm_read32(system+off));
+    // The door request the room change reads (written by the warp function at +0x2A6A0..+0x2A6AB).
+    std::fprintf(file," door=%08X/%08X/%08X",vm_read32(system+0x2A6A0),vm_read32(system+0x2A6A4),vm_read32(system+0x2A6A8));
+    std::fprintf(file," B4=%08X 270=%08X 28C=%08X 8A0=%08X",vm_read32(system+0xB4),vm_read32(system+0x270),vm_read32(system+0x28C),vm_read32(system+0x8A0));
+    const uint32_t actor=vm_read32(CV_SCENE_ACTOR);
+    if(actor)std::fprintf(file," pos=%.1f,%.1f,%.1f rot=%08X",read_float(actor+0x10),read_float(actor+0x14),read_float(actor+0x18),
+        vm_read32(actor+0x1C));
+    std::fputc('\n',file);
+    // Busy span (74 & 7: script, fade, room change): snapshot the system block when it starts, list changed words when it ends.
+    static constexpr uint32_t span_words=0x2B000/4;   // the whole state block (live_character maps up to +0x2ACA4)
+    static std::vector<uint32_t> snap;
+    static bool busy=false;
+    const bool busy_now=(now[5]&7)!=0;
+    if(busy_now&&!busy) {
+        snap.resize(span_words);
+        for(uint32_t i=0;i<span_words;i++)snap[i]=vm_read32(system+4*i);
+        std::fprintf(file,"[SPAN-BEGIN] system=%08X\n",system);
+    } else if(!busy_now&&busy&&!snap.empty()) {
+        unsigned changed=0;
+        std::fprintf(file,"[SPAN-END] changed words:");
+        for(uint32_t i=0;i<span_words;i++) {
+            const uint32_t v=vm_read32(system+4*i);
+            if(v!=snap[i]&&changed++<400)std::fprintf(file," %05X:%08X>%08X",4*i,snap[i],v);
+        }
+        std::fprintf(file," (total %u)\n",changed);
+    }
+    busy=busy_now;
+    // Elevator menu: snapshot guest 0x00800000..0x00C00000 when the menu opens (70 & 0x80000), diff when the choice is
+    // confirmed (74 & 0x1000), to find where the chosen floor is kept.
+    static constexpr uint32_t wide_base=0x00800000,wide_words=0x00400000/4;
+    static std::vector<uint32_t> wide;
+    static bool menu=false,chosen=false;
+    const bool menu_now=(now[4]&0x00080000)!=0,chosen_now=(now[5]&0x1000)!=0;
+    if(menu_now&&!menu) {
+        wide.resize(wide_words);
+        for(uint32_t i=0;i<wide_words;i++)wide[i]=vm_read32(wide_base+4*i);
+        std::fprintf(file,"[MENU-OPEN]\n");
+    }
+    if(chosen_now&&!chosen&&!wide.empty()) {
+        unsigned changed=0;
+        std::fprintf(file,"[MENU-CHOICE] changed words:");
+        for(uint32_t i=0;i<wide_words;i++) {
+            const uint32_t v=vm_read32(wide_base+4*i);
+            if(v!=wide[i]&&changed++<600)std::fprintf(file," %08X:%08X>%08X",wide_base+4*i,wide[i],v);
+        }
+        std::fprintf(file," (total %u)\n",changed);
+        wide.clear();
+    }
+    menu=menu_now;chosen=chosen_now;
+    std::fflush(file);
+}
 void native_scene_before() {
     native_scene_log();
+    native_event_log();
     const char* on=std::getenv("CV_SMOOTH_ANIMATION");
     inspection_before(on&&std::strcmp(on,"1")==0);
     scene_previous_valid=on&&std::strcmp(on,"1")==0&&native_scene_ready()&&scene_read(scene_scene);

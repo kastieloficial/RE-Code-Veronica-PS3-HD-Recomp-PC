@@ -7,6 +7,8 @@
 #include "cv_port_modal.h"
 #include "cv_title_return.h"
 #include "cv_version.h"
+#include "cv_options.h"
+#include "cv_scene_region.h"
 #include "ppu_recomp.h"
 #include <atomic>
 #include <algorithm>
@@ -241,6 +243,18 @@ void call_warp(ppu_context* caller,uint32_t packed) {
     while(g_trampoline_fn) {auto next=g_trampoline_fn;g_trampoline_fn=nullptr;next(&work);}
     g_active_ctx=old_active;g_trampoline_fn=old_tail;
     std::printf("[CVTest] warp requested: rm_%u%02u%u entry=%u, on game thread\n",(packed>>24)&15,(packed>>16)&255,(packed>>8)&15,packed&255);std::fflush(stdout);
+}
+// The warp function with every argument as a script door gives it: r3 the request kind (+2A6A4), r4 area, r5 room,
+// r6 the variant of the new room (+2A6AA, read back as +98 and the room's variant), r7 the door animation (+2A6AB).
+void call_door(ppu_context* caller,uint32_t kind,uint32_t area,uint32_t room,uint32_t variant,uint32_t animation) {
+    ppu_context work=*caller;
+    const auto old_active=g_active_ctx;const auto old_tail=g_trampoline_fn;
+    work.gpr[1]-=0x400;vm_write64(work.gpr[1],caller->gpr[1]);work.gpr[2]=CV_TOC;
+    work.gpr[3]=kind;work.gpr[4]=area;work.gpr[5]=room;work.gpr[6]=variant;work.gpr[7]=animation;
+    g_active_ctx=&work;g_trampoline_fn=nullptr;
+    TEST_WARP(&work);
+    while(g_trampoline_fn) {auto next=g_trampoline_fn;g_trampoline_fn=nullptr;next(&work);}
+    g_active_ctx=old_active;g_trampoline_fn=old_tail;
 }
 std::wstring lower(std::wstring s) {for(auto& c:s)c=wchar_t(towlower(c));return s;}
 // The list row of the room the character is in (its variant, else the same
@@ -528,6 +542,78 @@ void title_probe() {
 #else
 inline void title_probe() {}
 #endif
+// CV_SKIP_EVENTS=1: the elevator of area 7 (rm_701, the car) goes straight to the chosen floor once the floor menu is confirmed.
+// Mapped with CV_EVENT_LOG (US, 2026-11-26): the car room is area 7 room 1; the menu keeps the floor at state+0x289DC
+// (0 B1F, 1 1F, 2 2F; before the choice it holds the floor of origin) and +74 gains 0x1000 on the confirm, then the ride
+// runs 5-7 s and the script changes room. A ride writes no lasting state (system block diff before/after each of the six
+// rides), so the same door request the script makes at the end of the ride gives the same result. The script's request,
+// logged at +2A6A0 on natural rides: kind 2, area 7, the floor's room and variant, door animation 0x29.
+void elevator_skip(ppu_context* ctx) {
+    static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
+    if(!on||!mapped(state_base,0x289E0))return;
+    static bool confirmed=false;
+    const uint32_t f74=vm_read32(state_base+0x74);
+    const bool now=(f74&0x1000)!=0;
+    const bool edge=now&&!confirmed;
+    confirmed=now;
+    if(!edge||vm_read8(state_base+0x95)!=7||vm_read8(state_base+0x96)!=1||(f74&7)!=4||!live_character())return;
+    // entry: the arrival point, the byte +97 the script writes beside its door request (+94 reads 01 area room entry);
+    // 2F has its elevator door at entry 1, the other floors at 0. Without it the character lands at 0,0,0.
+    struct Arrival {uint8_t room,variant,entry;};
+    static constexpr Arrival arrivals[3]={{0x06,2,0},{0x13,2,0},{0x03,1,1}};   // B1F rm_706, 1F rm_713, 2F rm_703
+    const uint32_t floor=vm_read32(state_base+0x289DC);
+    if(floor>2) {std::printf("[EVENT-SKIP] elevator: floor value %u unknown, ride left as is\n",floor);std::fflush(stdout);return;}
+    const Arrival& a=arrivals[floor];
+    // At the end of a natural ride the script clears bit 4 of +70 and +74 in the same frame as its door request.
+    vm_write32(state_base+0x70,vm_read32(state_base+0x70)&~4u);
+    vm_write32(state_base+0x74,vm_read32(state_base+0x74)&~4u);
+    vm_write8(state_base+0x97,a.entry);
+    call_door(ctx,2,7,a.room,a.variant,0x29);
+    std::printf("[EVENT-SKIP] elevator: floor %u chosen, ride skipped\n",floor);std::fflush(stdout);
+}
+// CV_SKIP_EVENTS=1: the submarine between area 1 and area 4. Inside it (rm_10E at Rockfort, rm_405 at the far dock) its
+// panel asks for the other side's inside in variant 1 (door request kind 0: 04 05 01 FF or 01 0E 01 FF), whose room script
+// plays the ~10 s voyage and flips the submarine's two lasting flags on its first frame (state+B4 bit 0x00200000 "at
+// Rockfort", state+270 bit 0x00800000 "at the far dock"); its ladder then leads out to that side's dock (04 03 01 10 or
+// 01 0D 01 10). Mapped with CV_EVENT_LOG (US, Claire, 2026-11-26). Sending the panel straight to the dock set both flags
+// right, yet the far dock's hatch stayed shut: the voyage room sets more than those two. So the voyage room is loaded as the
+// game loads it, and once its script has started (+2A6A0 3, the flags already flipped) the same inside is loaded again in
+// variant 0 (no voyage; its arrival point is the ladder's foot), and the character is put at the panel (15, 0, 36.5), where
+// the voyage leaves her. Variant 0 at the far side has its ladder lead to Rockfort (01 0D 01 10); while the submarine is at
+// the far dock (+270 bit 0x00800000) that request is turned into the voyage room's own (04 03 01 10).
+void write_guest_float(uint32_t address,float value) {uint32_t bits;std::memcpy(&bits,&value,4);vm_write32(address,bits);}
+void submarine_skip(ppu_context* ctx) {
+    static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
+    static bool place=false;   // variant 0 was loaded by this skip: put the character at the panel once it is there
+    if(!on||!mapped(state_base,0x2A6AC)||!live_character())return;
+    const uint32_t area=vm_read8(state_base+0x95),room=vm_read8(state_base+0x96),variant=vm_read8(state_base+0x98);
+    const bool far_side=area==4&&room==0x05,rockfort=area==1&&room==0x0E;
+    const uint32_t step=vm_read32(state_base+0x2A6A0),f74=vm_read32(state_base+0x74);
+    if(!far_side&&!rockfort){place=false;return;}
+    if(variant==1) {
+        if(step!=3||(f74&7)!=4)return;   // the voyage's script running
+        // The flags the voyage flips in its first frame: wait for them, so the rest is reached with its own values.
+        const bool flipped=far_side?!(vm_read32(state_base+0xB4)&0x00200000u)&&(vm_read32(state_base+0x270)&0x00800000u)
+                                   :(vm_read32(state_base+0xB4)&0x00200000u)&&!(vm_read32(state_base+0x270)&0x00800000u);
+        if(!flipped)return;
+        vm_write32(state_base+0x70,vm_read32(state_base+0x70)&~4u);
+        vm_write32(state_base+0x74,f74&~4u);
+        vm_write8(state_base+0x97,0);
+        call_door(ctx,0,area,room,0,0x10);
+        place=true;
+        std::printf("[EVENT-SKIP] submarine: voyage skipped, same inside without it\n");std::fflush(stdout);
+        return;
+    }
+    if(place&&step==3&&(f74&7)==0) {   // arrived in variant 0 and in control: to the panel, as after the voyage
+        const uint32_t actor=vm_read32(CV_SCENE_ACTOR);
+        if(actor) {write_guest_float(actor+0x10,15.0f);write_guest_float(actor+0x14,0.0f);write_guest_float(actor+0x18,36.5f);}
+        place=false;
+    }
+    // The far side's ladder in variant 0 while the submarine is there: out to the far dock, as the voyage room's ladder.
+    if(far_side&&step==0&&vm_read32(state_base+0x2A6A4)==0&&(f74&1)&&vm_read32(state_base+0x2A6A8)==0x010D0110u&&
+       (vm_read32(state_base+0x270)&0x00800000u))
+        vm_write32(state_base+0x2A6A8,0x04030110u);
+}
 // One game frame of "Maps" from the title: accept the request, start the new game, wait for control, warp.
 void title_flow_frame(ppu_context* ctx,bool title,bool game_ready) {
     using cv_title_flow::Step;
@@ -565,6 +651,8 @@ void TEST_FRAME(ppu_context* ctx) {
     cv_quick::frame(ctx);
     if(!cv_quick::consumes_stick())cv_manual_reload_frame(ctx);
     cv_items::frame();   // the F6 item menu's one write, between game frames
+    elevator_skip(ctx);
+    submarine_skip(ctx);
     if(enabled) {
         bool valid=active_game()&&!tool_load;ready=valid;
         room_known=live_character();

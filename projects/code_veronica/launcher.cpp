@@ -281,7 +281,7 @@ struct Settings {
     int contrast = 100;   /* 50..180 percent */
     int saturation = 100; /* 0..200 percent */
     int sharpness = 0;    /* FSR 1 RCAS, 0..100 percent in steps of 10; 0 off */
-    bool enhancements[6] = {}; // opt-in; applied at the next game start
+    bool enhancements[7] = {}; // opt-in; applied at the next game start
     bool patch[8] = {};    /* k_patches on/off */
     int door_skip_mode = 0;/* 0 off, 1 classic, 2 fast, 3 supreme (mutually exclusive) */
     int layout = 2;        /* button icons: 0 PlayStation, 1 Xbox, 2 automatic, 3 keyboard, 4 Nintendo Switch */
@@ -354,9 +354,12 @@ const PatchOpt k_patches[] = {
     { "cv_infinite_ammo", S_CHEAT_AMMO_T, S_CHEAT_AMMO_D, S_PATCH_LOGO_C },
 };
 const int NPATCHES = sizeof k_patches / sizeof k_patches[0];
-enum Enhancement { E_SMOOTH, E_INPUT, E_NOTICES, E_DOF, E_AMMO, E_HIDE, E_COUNT };
-const char* const enhancement_env[E_COUNT]={"CV_SMOOTH_ANIMATION","CV_INPUT_COMFORT","CV_SKIP_START_NOTICES","CV_DISABLE_DOF","CV_AMMO_READOUT","CV_HIDE_LAUNCHER"};
-const wchar_t* const enhancement_keys[E_COUNT]={L"smooth_animation",L"input_comfort",L"skip_start_notices",L"disable_dof",L"ammo_readout",L"hide_launcher"};
+enum Enhancement { E_SMOOTH, E_INPUT, E_NOTICES, E_DOF, E_AMMO, E_HIDE, E_SKIP_TRANSITIONS, E_COUNT };
+static_assert(E_COUNT==sizeof(Settings::enhancements)/sizeof(bool),"one stored switch per enhancement");
+/* E_SKIP_TRANSITIONS: cv_test_tools.cpp elevator_skip (the area 7 elevator goes straight to the chosen floor) and
+ * submarine_skip (the area 1 / area 4 voyage is not played; the character is inside, at the panel). */
+const char* const enhancement_env[E_COUNT]={"CV_SMOOTH_ANIMATION","CV_INPUT_COMFORT","CV_SKIP_START_NOTICES","CV_DISABLE_DOF","CV_AMMO_READOUT","CV_HIDE_LAUNCHER","CV_SKIP_EVENTS"};
+const wchar_t* const enhancement_keys[E_COUNT]={L"smooth_animation",L"input_comfort",L"skip_start_notices",L"disable_dof",L"ammo_readout",L"hide_launcher",L"skip_transitions"};
 
 /* Infinite health and ammunition: shown on the Inventario page, beside the
  * item menu, rather than with the game patches. */
@@ -1917,6 +1920,7 @@ void draw_patches(Graphics& gr, const Font& head, const Font& body, const Font& 
         y += 56;
     }
     draw_enhancement(gr,x,y,w,E_NOTICES,body,fsm);
+    draw_enhancement(gr,x,y,w,E_SKIP_TRANSITIONS,body,fsm);
     /* patches from files: made by the player or shared by others */
     y += 10;
     section(gr, T(S_PATCH_CUSTOM_T), x, y, w, head);

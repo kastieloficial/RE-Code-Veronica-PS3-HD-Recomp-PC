@@ -3409,7 +3409,7 @@ static const wchar_t* const k_original_language_text[LANG_COUNT][4] = {
 
 // Order matches Lang and Enhancement.
 inline const wchar_t* enhancement_text(int language,int option,bool description) {
-    static const wchar_t* const texts[LANG_COUNT][6][2]={
+    static const wchar_t* const texts[LANG_COUNT][7][2]={
         {
             {L"Animações suaves a 60 FPS",L"Câmeras, personagens, objetos e cenas. Selecione também 60 FPS."},
             {L"Confirmação aprimorada",L"Preserva toques curtos e permite confirmar textos enquanto corre e na tela inicial. Reinicie o jogo."},
@@ -3417,6 +3417,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"Profundidade de campo",L"Remove o desfoque de profundidade original."},
             {L"Contador de munição legível",L"Exibe munição carregada e reserva abaixo da arma. Reinicie o jogo."},
             {L"Ocultar launcher ao jogar",L"Oculta ao jogar ou retomar. As configurações continuam acessíveis; reaparece ao sair."},
+            {L"Pular cenas de transição",L"Pula a viagem do elevador e do submarino; você chega direto ao destino. Reinicie o jogo."},
         },
         {
             {L"Smooth 60 FPS animation",L"Cameras, actors, objects and cutscenes. Also select 60 FPS."},
@@ -3425,6 +3426,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"Depth of field",L"Remove the original depth-of-field blur."},
             {L"Readable ammunition counter",L"Show loaded rounds and carried reserve below the weapon. Restart the game."},
             {L"Hide launcher while playing",L"Hide on Play or Resume. Settings remain accessible; the launcher returns after exiting."},
+            {L"Skip transition scenes",L"Skip the elevator and submarine rides; you arrive straight at the destination. Restart the game."},
         },
         {
             {L"Animaciones fluidas a 60 FPS",L"Cámaras, personajes, objetos y escenas. Selecciona también 60 FPS."},
@@ -3433,6 +3435,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"Profundidad de campo",L"Elimina el desenfoque de profundidad original."},
             {L"Contador de munición legible",L"Muestra la munición cargada y la reserva bajo el arma. Reinicia el juego."},
             {L"Ocultar launcher al jugar",L"Se oculta al jugar o reanudar. Los ajustes siguen accesibles; reaparece al salir."},
+            {L"Omitir escenas de transición",L"Omite los viajes del ascensor y del submarino; llegas directo al destino. Reinicia el juego."},
         },
         {
             {L"滑らかな60 FPSアニメーション",L"カメラ、キャラクター、オブジェクト、イベントシーン。フレーム上限も60 FPSに設定してください。"},
@@ -3441,6 +3444,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"被写界深度",L"元の被写界深度によるぼかしを除去します。"},
             {L"見やすい弾数表示",L"装填済みの弾数と所持する予備弾数を武器の下に表示します。ゲームの再起動が必要です。"},
             {L"プレイ中はランチャーを隠す",L"開始・再開時に非表示にします。設定は引き続き開けます。終了後に再表示されます。"},
+            {L"移動シーンをスキップ",L"エレベーターと潜水艇の移動をスキップし、目的地へ直接到着します。ゲームの再起動が必要です。"},
         },
         {
             {L"Animations fluides à 60 FPS",L"Caméras, personnages, objets et cinématiques. Sélectionnez aussi 60 FPS."},
@@ -3449,6 +3453,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"Profondeur de champ",L"Supprime le flou de profondeur de champ d’origine."},
             {L"Compteur de munitions lisible",L"Affiche les munitions chargées et la réserve sous l’arme. Redémarrez le jeu."},
             {L"Masquer le lanceur en jouant",L"Masqué au lancement et à la reprise. Les réglages restent accessibles ; il revient après la fermeture du jeu."},
+            {L"Passer les scènes de transition",L"Passe les trajets de l’ascenseur et du sous-marin ; vous arrivez directement à destination. Redémarrez le jeu."},
         },
         {
             {L"Flüssige 60-FPS-Animationen",L"Kamera, Figuren, Objekte und Zwischensequenzen. Zusätzlich 60 FPS auswählen."},
@@ -3457,6 +3462,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"Tiefenunschärfe",L"Den ursprünglichen Tiefenunschärfeeffekt entfernen."},
             {L"Lesbare Munitionsanzeige",L"Geladene Munition und mitgeführte Reserve unter der Waffe anzeigen. Spielneustart nötig."},
             {L"Launcher beim Spielen ausblenden",L"Beim Starten und Fortsetzen ausblenden. Einstellungen bleiben erreichbar; nach Spielende erscheint er wieder."},
+            {L"Übergangsszenen überspringen",L"Überspringt die Fahrten mit Aufzug und U-Boot; man kommt direkt am Ziel an. Spielneustart nötig."},
         },
         {
             {L"Animazioni fluide a 60 FPS",L"Telecamere, personaggi, oggetti e filmati di gioco. Seleziona anche 60 FPS."},
@@ -3465,6 +3471,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"Profondità di campo",L"Rimuove la sfocatura della profondità di campo originale."},
             {L"Contatore munizioni leggibile",L"Mostra munizioni caricate e riserva sotto l’arma. Riavvia il gioco."},
             {L"Nascondi launcher durante il gioco",L"Si nasconde all’avvio e alla ripresa. Le impostazioni restano accessibili; riappare all’uscita."},
+            {L"Salta le scene di transizione",L"Salta i viaggi dell’ascensore e del sottomarino; arrivi direttamente a destinazione. Riavvia il gioco."},
         },
         {
             {L"Płynne animacje 60 FPS",L"Kamery, postacie, obiekty i przerywniki. Wybierz również 60 FPS."},
@@ -3473,6 +3480,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"Głębia ostrości",L"Usuwa oryginalne rozmycie głębi ostrości."},
             {L"Czytelny licznik amunicji",L"Pokazuje załadowaną amunicję i zapas pod bronią. Uruchom grę ponownie."},
             {L"Ukryj launcher podczas gry",L"Ukrywa przy starcie i wznowieniu. Ustawienia pozostają dostępne; launcher wraca po wyjściu."},
+            {L"Pomiń sceny przejścia",L"Pomija jazdę windą i rejs łodzią podwodną; trafiasz od razu do celu. Uruchom grę ponownie."},
         },
         {
             {L"Akıcı 60 FPS animasyonlar",L"Kameralar, karakterler, nesneler ve ara sahneler. Ayrıca 60 FPS seçin."},
@@ -3481,6 +3489,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"Alan derinliği",L"Orijinal alan derinliği bulanıklığını kaldırır."},
             {L"Okunaklı mühimmat sayacı",L"Silahtaki mühimmatı ve taşınan yedeği silahın altında gösterir. Oyunu yeniden başlatın."},
             {L"Oynarken başlatıcıyı gizle",L"Başlatırken ve devam ederken gizlenir. Ayarlar erişilebilir kalır; çıkışta yeniden görünür."},
+            {L"Geçiş sahnelerini atla",L"Asansör ve denizaltı yolculuklarını atlar; doğrudan hedefe varırsınız. Oyunu yeniden başlatın."},
         },
         {
             {L"حركة سلسة بمعدل 60 FPS",L"الكاميرات والشخصيات والعناصر والمشاهد. اختر أيضًا حد 60 FPS."},
@@ -3489,6 +3498,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"عمق المجال",L"يزيل ضبابية عمق المجال الأصلية."},
             {L"عداد ذخيرة واضح",L"يعرض الذخيرة المحشوة والاحتياطية أسفل السلاح. أعد تشغيل اللعبة."},
             {L"إخفاء المشغّل أثناء اللعب",L"يختفي عند البدء والاستئناف. تبقى الإعدادات متاحة ويظهر مجددًا بعد الخروج."},
+            {L"تخطي مشاهد الانتقال",L"يتخطى رحلات المصعد والغواصة لتصل مباشرة إلى الوجهة. أعد تشغيل اللعبة."},
         },
         {
             {L"流畅的60 FPS动画",L"摄像机、角色、物件和即时演算过场。请同时将帧率上限设为60 FPS。"},
@@ -3497,6 +3507,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"景深",L"移除原版景深模糊效果。"},
             {L"清晰的弹药计数",L"在武器下方显示已装填弹药和携带的备用弹药。需要重启游戏。"},
             {L"游戏时隐藏启动器",L"开始或继续游戏时隐藏。仍可打开设置，退出游戏后会重新显示。"},
+            {L"跳过过渡场景",L"跳过电梯和潜艇的行程，直接到达目的地。需要重启游戏。"},
         },
         {
             {L"부드러운 60 FPS 애니메이션",L"카메라, 캐릭터, 사물 및 실시간 컷신. 프레임 제한도 60 FPS로 설정하세요."},
@@ -3505,6 +3516,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"피사계 심도",L"원래의 피사계 심도 흐림 효과를 제거합니다."},
             {L"읽기 쉬운 탄약 표시",L"무기 아래에 장전된 탄약과 소지한 예비 탄약을 표시합니다. 게임을 재시작하세요."},
             {L"플레이 중 런처 숨기기",L"시작하거나 재개할 때 숨깁니다. 설정은 계속 열 수 있으며 게임 종료 후 다시 표시됩니다."},
+            {L"전환 장면 건너뛰기",L"엘리베이터와 잠수정 이동을 건너뛰고 바로 목적지에 도착합니다. 게임을 재시작하세요."},
         },
         {
             {L"Плавные анимации 60 FPS",L"Камеры, персонажи, объекты и игровые сцены. Также выберите 60 FPS."},
@@ -3513,6 +3525,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"Глубина резкости",L"Убирает исходное размытие глубины резкости."},
             {L"Читаемый счётчик патронов",L"Показывает заряженные патроны и запас под оружием. Перезапустите игру."},
             {L"Скрывать лаунчер во время игры",L"Скрывает при запуске и продолжении. Настройки остаются доступны; после выхода лаунчер возвращается."},
+            {L"Пропуск сцен перехода",L"Пропускает поездки на лифте и подводной лодке; вы сразу оказываетесь на месте. Перезапустите игру."},
         },
     };
     if(language<0||language>=LANG_COUNT)language=LANG_EN;
