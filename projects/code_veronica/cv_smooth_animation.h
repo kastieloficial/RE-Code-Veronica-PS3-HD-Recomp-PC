@@ -205,11 +205,64 @@ void native_event_log() {
         wide.clear();
     }
     menu=menu_now;chosen=chosen_now;
+    // Self-destruct lift, rm_317 variant 0 (ride, then Alfred's scene, one script): whole-guest memory scan
+    // (cv_hang_watch.cpp) to find where the script keeps its position. Snapshots 1 s and 3 s into the ride (+70 gains
+    // 0x01000000), report when Alfred's scene starts (+70 gains 0x200), then the hits' values 1 s and 3 s later.
+    static const bool scan=[] {const char* e=std::getenv("CV_SCAN");return e&&std::strcmp(e,"1")==0;}();
+    if(scan) {
+        static int phase=0;static std::clock_t t0=0;
+        const std::clock_t t=std::clock();const uint32_t f70=now[4];
+        const bool here=now[sizeof watch/sizeof watch[0]]==0x031700u&&(now[5]&7);
+        if(!here&&phase>0&&phase<5){phase=0;cv_scan_free();}
+        if(here) {
+            if(phase==0&&(f70&0x01000000u)&&!(f70&0x200u)){phase=1;t0=t;std::fprintf(file,"[SCAN] ride start\n");}
+            else if(phase==1&&t-t0>=CLOCKS_PER_SEC){cv_scan_snapshot(0);phase=2;std::fprintf(file,"[SCAN] snapshot 0\n");}
+            else if(phase==2&&t-t0>=3*CLOCKS_PER_SEC&&!(f70&0x200u)){cv_scan_snapshot(1);phase=3;std::fprintf(file,"[SCAN] snapshot 1\n");}
+            else if(phase==3&&(f70&0x200u)){cv_scan_report(file);cv_scan_free();phase=4;t0=t;}
+            else if(phase==4&&t-t0>=CLOCKS_PER_SEC){cv_scan_followup(file,"PLUS1S");phase=5;}
+            else if(phase==5&&t-t0>=3*CLOCKS_PER_SEC){cv_scan_followup(file,"PLUS3S");phase=6;}
+            else if(phase==2&&(f70&0x200u)){phase=0;cv_scan_free();std::fprintf(file,"[SCAN] ride too short\n");}
+        }
+    }
+    std::fflush(file);
+}
+// CV_EVENT_LOG=1 (dev): script trace, every logic frame (native_event_log only writes on state changes).
+void native_script_trace() {
+    static const bool on=[] {const char* e=std::getenv("CV_EVENT_LOG");return e&&std::strcmp(e,"1")==0;}();
+    if(!on)return;
+    const uint32_t system=vm_read32(CV_SCENE_SYSTEM);
+    if(!system)return;
+    static std::FILE* file=std::fopen("script-trace.txt","w");
+    if(!file)return;
+    const uint32_t room=(vm_read8(CV_SRT_ROOM)<<16)|(vm_read8(CV_SRT_ROOM+1)<<8)|vm_read8(CV_SRT_ROOM+2);
+    const uint32_t f74=vm_read32(system+0x74);uint32_t now[6]={0,0,0,0,vm_read32(system+0x70),f74};
+    // Script trace (found by the scan, 2026-11-26): the work at 0x00CA7600..0x00CA7C40 holds the script's byte position
+    // (0xCA7978) and countdowns (0xCA7610...). Every logic frame in rm_317 v0 while busy: the words that changed and the
+    // script bytes around the position.
+    if(room==0x031700u&&(f74&7)) {
+        static uint32_t prev[0x680/4];static uint32_t last_pc[6]={};
+        std::fprintf(file,"[TRACE] t=%ld 70=%08X 74=%08X",(long)std::clock(),now[4],now[5]);
+        for(uint32_t i=0;i<0x680/4;i++) {
+            const uint32_t v=vm_read32(0x00CA75C0+4*i);
+            if(v!=prev[i]){std::fprintf(file," %04X=%08X",0x75C0+4*i,v);prev[i]=v;}
+        }
+        std::fputc('\n',file);
+        // Six script threads, 0x134 bytes apart from 0x00CA75D4: +8 byte position, +0x3C wait count.
+        for(unsigned k=0;k<6;k++) {
+            const uint32_t pc=vm_read32(0x00CA75D4+0x134*k+8);
+            if(pc==last_pc[k]||pc<0x40000000u||pc>=0x50000000u)continue;
+            last_pc[k]=pc;
+            std::fprintf(file,"[TRACE-PC%u] %08X:",k,pc);
+            for(uint32_t a=pc-0x20;a<pc+0x30;a++)std::fprintf(file,"%s%02X",a==pc?" [":(a==pc+1?"] ":" "),unsigned(vm_read8(a)));
+            std::fputc('\n',file);
+        }
+    }
     std::fflush(file);
 }
 void native_scene_before() {
     native_scene_log();
     native_event_log();
+    native_script_trace();
     const char* on=std::getenv("CV_SMOOTH_ANIMATION");
     inspection_before(on&&std::strcmp(on,"1")==0);
     scene_previous_valid=on&&std::strcmp(on,"1")==0&&native_scene_ready()&&scene_read(scene_scene);

@@ -35,6 +35,8 @@ extern "C" void ppu_register_function(uint64_t,void (*)(ppu_context*));
 extern "C" void rsx_d3d12_pose_scene(uint32_t);
 extern "C" void rsx_d3d12_camera_cut(void);
 extern "C" void rsx_d3d12_camera_hold(int);
+// CV_EVENT_LOG dev memory scan (cv_hang_watch.cpp).
+void cv_scan_snapshot(int);void cv_scan_report(std::FILE*);void cv_scan_followup(std::FILE*,const char*);void cv_scan_free();
 extern "C" int rsx_d3d12_pose_replay_enabled(void);
 extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 static void drain_scene(ppu_context* ctx) {

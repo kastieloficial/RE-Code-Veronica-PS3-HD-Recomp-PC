@@ -393,4 +393,69 @@ extern "C" void cv_hang_watch_init(void) {
     const char* tp = getenv("CV_TIMER_PROBE");
     if (tp && *tp == '1') { HANDLE ph = CreateThread(nullptr, 0, probe, nullptr, 0, nullptr); if (ph) CloseHandle(ph); }
 }
+/* CV_EVENT_LOG dev tool (cv_smooth_animation.h): whole-guest memory scan to find where a scene script keeps its
+ * position. Two snapshots of every committed guest page below 0xC0000000 while the script waits, then a report of
+ * the words that stayed put across both and changed when the next part started. */
+extern "C" uint8_t* vm_base;
+namespace {
+struct ScanRegion { uint32_t start, size; std::vector<uint32_t> s0, s1; };
+std::vector<ScanRegion> g_scan;
+std::vector<uint32_t> g_scan_hits;
+}
+void cv_scan_snapshot(int slot) {
+    if (slot == 0) {
+        g_scan.clear();
+        uint64_t a = 0x00010000;
+        while (a < 0xC0000000ull) {
+            MEMORY_BASIC_INFORMATION m{};
+            if (!VirtualQuery(vm_base + a, &m, sizeof m)) break;
+            const uint64_t base = (uint64_t)((uint8_t*)m.BaseAddress - vm_base), end = base + m.RegionSize;
+            if (m.State == MEM_COMMIT && !(m.Protect & (PAGE_NOACCESS | PAGE_GUARD))) {
+                ScanRegion r; r.start = (uint32_t)a; r.size = (uint32_t)(std::min<uint64_t>(end, 0xC0000000ull) - a) & ~3u;
+                if (r.size) g_scan.push_back(std::move(r));
+            }
+            a = end;
+        }
+    }
+    for (auto& r : g_scan) {
+        auto& s = slot == 0 ? r.s0 : r.s1;
+        s.resize(r.size / 4);
+        std::memcpy(s.data(), vm_base + r.start, r.size);
+    }
+}
+void cv_scan_report(std::FILE* f) {
+    size_t total = 0;
+    for (auto& r : g_scan) total += r.size;
+    std::fprintf(f, "[SCAN] %u regions, %zu MB\n", (unsigned)g_scan.size(), total >> 20);
+    g_scan_hits.clear();
+    unsigned counters = 0;
+    for (auto& r : g_scan) {
+        if (r.s1.size() != r.size / 4) continue;
+        const uint32_t* now = (const uint32_t*)(vm_base + r.start);
+        for (uint32_t i = 0; i < r.size / 4; i++) {
+            const uint32_t a = r.s0[i], b = r.s1[i], c = now[i];
+            if (c == b) continue;
+            if (a == b) {
+                if (g_scan_hits.size() < 20000) g_scan_hits.push_back(r.start + 4 * i);
+            } else if (counters < 3000) {
+                const uint32_t va = _byteswap_ulong(a), vb = _byteswap_ulong(b), vc = _byteswap_ulong(c);
+                if (va < 0x10000 && vb < 0x10000 && vc < 0x10000) {
+                    std::fprintf(f, "[SCAN-COUNTER] %08X %08X %08X %08X\n", r.start + 4 * i, va, vb, vc); counters++;
+                }
+            }
+        }
+    }
+    for (uint32_t a : g_scan_hits) {
+        uint32_t b = 0;
+        for (auto& r : g_scan) if (a >= r.start && a < r.start + r.size) { b = _byteswap_ulong(r.s1[(a - r.start) / 4]); break; }
+        std::fprintf(f, "[SCAN-HIT] %08X %08X %08X\n", a, b, vm_read32(a));
+    }
+    std::fprintf(f, "[SCAN] %zu hits, %u counters\n", g_scan_hits.size(), counters);
+}
+void cv_scan_followup(std::FILE* f, const char* tag) {
+    std::fprintf(f, "[SCAN-%s]", tag);
+    for (uint32_t a : g_scan_hits) std::fprintf(f, " %08X", vm_read32(a));
+    std::fputc('\n', f);
+}
+void cv_scan_free() { g_scan.clear(); g_scan.shrink_to_fit(); }
 #endif

@@ -739,32 +739,67 @@ void steve_voyage_skip(ppu_context* ctx) {
 // arrival 1): its request is made on its first frame.
 void countdown_lift_skip(ppu_context* ctx) {
     static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
-    static bool a4_was=true,pending_c0=false;
+    static bool a4_was=true;
     if(!on||!mapped(state_base,0x2A6AC)||!live_character()){a4_was=true;return;}
-    {   // The whole lift sequence (countdown scene in the warehouse rm_404 variant 1/2, ride, Alfred's scene, last ride;
-        // the user asked for all of it to go, 2026-11-26). Its script sets state+A4 bit 0x08000000 on its first frame.
-        // The only lasting change the sequence leaves is +C0 bit 0x08000000 (the countdown itself was already running),
-        // so set it and make the sequence's own end request at once: rm_309 variant 1, entry 1.
-        const uint32_t w74=vm_read32(state_base+0x74),wv=vm_read8(state_base+0x98),wa4=vm_read32(state_base+0xA4);
-        const bool a4=(wa4&0x08000000u)!=0,started=a4&&!a4_was;a4_was=a4;
+    {   // Countdown scene in the warehouse (rm_404 variant 1/2): its script sets state+A4 bit 0x08000000 on its first
+        // frame; make its own end request at once (kind 0x62 → rm_317 variant 0, the room of the ride and Alfred's scene).
+        const uint32_t w74=vm_read32(state_base+0x74),wv=vm_read8(state_base+0x98);
+        const bool a4=(vm_read32(state_base+0xA4)&0x08000000u)!=0,started=a4&&!a4_was;a4_was=a4;
         if(vm_read8(state_base+0x95)==4&&vm_read8(state_base+0x96)==4&&(wv==1||wv==2)&&started&&(w74&7)==4) {
-            vm_write32(state_base+0xC0,vm_read32(state_base+0xC0)|0x08000000u);vm_write32(state_base+0xA4,wa4&~0x08000000u);
-            vm_write32(state_base+0x70,vm_read32(state_base+0x70)&~4u);vm_write32(state_base+0x74,w74&~0x10000006u);
-            vm_write8(state_base+0x97,1);pending_c0=true;
-            call_door(ctx,0x60,3,0x09,1,0x21);
-            std::printf("[EVENT-SKIP] countdown lift: whole sequence skipped\n");std::fflush(stdout);
+            vm_write32(state_base+0x70,vm_read32(state_base+0x70)&~4u);vm_write32(state_base+0x74,w74&~4u);vm_write8(state_base+0x97,0);
+            call_door(ctx,0x62,3,0x17,0,0x21);
+            std::printf("[EVENT-SKIP] countdown lift: countdown scene skipped\n");std::fflush(stdout);
             return;
         }
-        // Make sure the story flag survives the room load.
-        if(pending_c0&&vm_read8(state_base+0x95)==3&&vm_read8(state_base+0x96)==0x09&&(w74&7)==0) {
-            vm_write32(state_base+0xC0,vm_read32(state_base+0xC0)|0x08000000u);pending_c0=false;
-        }
+    }
+    {   // The ride before Alfred's scene (rm_317 variant 0): the room script waits 133 frames (bytecode F9 0085, then
+        // 19 01 01 2F, Alfred's first shot). Script thread at 0x00CA7978 (byte position) with its wait count at 0x00CA79AC;
+        // threads started with it count down at 0x00CA7744 / 7878 / 78CC / 7AE0 / 7C14. Leave one frame of the wait
+        // and take the same time off the others (the short ones down to 2 frames), so the script goes on by itself.
+        static uint32_t done_pc=0;static unsigned ride_thread=0;
+        if(vm_read8(state_base+0x95)==3&&vm_read8(state_base+0x96)==0x17&&vm_read8(state_base+0x98)==0&&
+           vm_read32(state_base+0x2A6A4)==0x62&&(vm_read32(state_base+0x70)&0x01010000u)&&!(vm_read32(state_base+0x70)&0x0200u)) {
+            const uint32_t pc=vm_read32(0x00CA7978),left=vm_read32(0x00CA79AC);
+            if(pc!=done_pc&&pc>=0x40000000u&&pc<0x50000000u&&vm_read8(pc)==0xF9&&vm_read8(pc+1)==0x00&&vm_read8(pc+2)==0x85&&
+               vm_read8(pc+3)==0x19&&vm_read8(pc+6)==0x2F&&left>1&&left<=0x85) {
+                const uint32_t cut=left-1;
+                vm_write32(0x00CA79AC,1);
+                static const uint32_t others[]={0x00CA7744,0x00CA7878,0x00CA78CC,0x00CA7AE0,0x00CA7C14};
+                for(uint32_t a:others){const uint32_t v=vm_read32(a);if(v>cut&&v<0x400)vm_write32(a,a==0x00CA7878||a==0x00CA78CC?v-cut:std::min(v-cut,2u));}
+                done_pc=pc;ride_thread=90;
+                std::printf("[EVENT-SKIP] countdown lift: ride before Alfred cut (%u frames)\n",cut);std::fflush(stdout);
+            }
+        } else done_pc=0;
+        // The car's own thread (count at 0x00CA7610 / 0x00CA7664, 0x84 frames) starts a few frames into the ride and
+        // shows the car going up; when it ends the camera goes to Alfred and his scene becomes skippable. Naturally it
+        // has about 0x0B left when Alfred's scene starts; after the cut it starts late, so end it on the next frame (the user wants none of the ride seen).
+        if(ride_thread&&vm_read8(state_base+0x95)==3&&vm_read8(state_base+0x96)==0x17&&vm_read8(state_base+0x98)==0) {
+            ride_thread--;
+            // Thread 0 (0x00CA75D4: +8 byte position, +0x3C wait) opens with short waits (F9 0002) before its loop;
+            // end each one on the next frame (the count goes down, then the thread goes on at 0: never write 0, it would
+            // wrap and stop the thread for good).
+            const uint32_t t0=vm_read32(0x00CA75DC);
+            if(t0>=0x40000000u&&t0<0x50000000u&&vm_read8(t0)==0xF9&&vm_read8(t0+1)==0x00&&vm_read8(t0+2)==0x02&&
+               vm_read32(0x00CA7610)>1&&vm_read32(0x00CA7610)<=2)vm_write32(0x00CA7610,1);
+            const uint32_t a=vm_read32(0x00CA7610),b=vm_read32(0x00CA7664);
+            if(a==b&&a>0x40&&a<=0x84) {
+                vm_write32(0x00CA7610,1);vm_write32(0x00CA7664,1);ride_thread=0;
+                std::printf("[EVENT-SKIP] countdown lift: car thread aligned (%u frames)\n",a-1);std::fflush(stdout);
+            }
+        } else ride_thread=0;
     }
     if(vm_read8(state_base+0x95)!=3||vm_read8(state_base+0x96)!=0x17||vm_read8(state_base+0x98)!=0)return;
     if(vm_read32(state_base+0x2A6A4)!=0x62||vm_read32(state_base+0x2A6A0)==0)return;
     const uint32_t f74=vm_read32(state_base+0x74),f70=vm_read32(state_base+0x70);
+    // Alfred's scene is skippable while state+78 bit 0x10000000 is set. The last ride: +70 0x4000 without 0x200, and
+    // either skipped (+74 without 0x2000) or played to the end (that bit of +78 gone, +74 keeps 0x2000).
+    static bool alfred_seen=false;
+    const uint32_t f78=vm_read32(state_base+0x78);
+    if(f78&0x10000000u)alfred_seen=true;
     if((f74&7)!=4&&(f74&7)!=6)return;
-    if(!(f70&0x01000000u)||!(f70&0x4000u)||(f70&0x0200u)||(f74&0x2000u))return;   // not the last ride
+    if(!(f70&0x01000000u)||!(f70&0x4000u)||(f70&0x0200u))return;
+    if((f74&0x2000u)&&!(alfred_seen&&!(f78&0x10000000u)))return;   // not the last ride
+    alfred_seen=false;
     vm_write32(state_base+0x70,f70&~4u);vm_write32(state_base+0x74,f74&~0x10000006u);vm_write8(state_base+0x97,1);
     call_door(ctx,0x60,3,0x09,1,0x21);
     std::printf("[EVENT-SKIP] countdown lift: last ride skipped\n");std::fflush(stdout);
