@@ -144,7 +144,7 @@ void native_event_log() {
     const uint32_t system=vm_read32(CV_SCENE_SYSTEM);
     if(!system)return;
     static constexpr uint32_t watch[]={0x50,0x64,0x68,0x6C,0x70,0x74,0x78,0x7C,0x94,0x98,0x2A6A0,0x2A6A4,0x2A6A8,
-        0xB4,0x270,0x28C,0x8A0,0xA4};   // submarine / area 8 lift: lasting flags seen changing across their rides
+        0xB4,0x270,0x28C,0x8A0,0xA4,0xB8,0xBC,0x13C,0x26C};   // submarine / area 8 lift: lasting flags seen changing across their rides
     uint32_t now[sizeof watch/sizeof watch[0]+1];
     for(unsigned i=0;i<sizeof watch/sizeof watch[0];i++)now[i]=vm_read32(system+watch[i]);
     now[sizeof watch/sizeof watch[0]]=(vm_read8(CV_SRT_ROOM)<<16)|(vm_read8(CV_SRT_ROOM+1)<<8)|vm_read8(CV_SRT_ROOM+2);
@@ -159,6 +159,7 @@ void native_event_log() {
     std::fprintf(file," door=%08X/%08X/%08X",vm_read32(system+0x2A6A0),vm_read32(system+0x2A6A4),vm_read32(system+0x2A6A8));
     std::fprintf(file," B4=%08X 270=%08X 28C=%08X 8A0=%08X A4=%08X",vm_read32(system+0xB4),vm_read32(system+0x270),vm_read32(system+0x28C),
         vm_read32(system+0x8A0),vm_read32(system+0xA4));
+    std::fprintf(file," B8=%08X BC=%08X 13C=%08X 26C=%08X",vm_read32(system+0xB8),vm_read32(system+0xBC),vm_read32(system+0x13C),vm_read32(system+0x26C));
     const uint32_t actor=vm_read32(CV_SCENE_ACTOR);
     if(actor)std::fprintf(file," pos=%.1f,%.1f,%.1f rot=%08X",read_float(actor+0x10),read_float(actor+0x14),read_float(actor+0x18),
         vm_read32(actor+0x1C));

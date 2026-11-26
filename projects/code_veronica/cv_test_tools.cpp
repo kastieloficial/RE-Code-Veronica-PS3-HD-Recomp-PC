@@ -680,6 +680,39 @@ void area9_second_lift_skip(ppu_context* ctx) {
     else call_door(ctx,8,9,0x10,4,0x4C);
     std::printf("[EVENT-SKIP] second area 9 lift: ride %s skipped\n",up?"up":"down");std::fflush(stdout);
 }
+// CV_SKIP_EVENTS=1: Claire's story ride in the floor elevator (rm_316, after the scene with Steve in rm_315; mapped with
+// CV_EVENT_LOG, US, 2026-11-26). The scene's door puts her in the car with +74 bit 0x80 (a scene's door, not a walk-in);
+// the car's script then rides up by itself (no floor menu, ~8 s): on its first frame it sets state+BC bit 0x00010000 and
+// room bits in +26C, and with its end request (kind 2, rm_30C variant 1, animation 0x29, arrival 0) it clears state+A4
+// bit 0x200. The arrival in rm_30C sets the rest itself. Once the car's script has started (the BC bit set), the A4 bit
+// is cleared and its end request made at once.
+void story_ride_skip(ppu_context* ctx) {
+    static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
+    static bool from_scene=false;
+    if(!on||!mapped(state_base,0x2A6AC)||!live_character())return;
+    const bool in_car=vm_read8(state_base+0x95)==3&&vm_read8(state_base+0x96)==0x16&&vm_read8(state_base+0x98)==0;
+    const uint32_t f74=vm_read32(state_base+0x74);
+    if(!in_car){from_scene=false;return;}
+    if(f74&0x80)from_scene=true;   // arrived by the scene's door
+    // +74 & 7 is 4 (script) or 6 (script and the fade in): the cut may land while the screen is still dark.
+    if(!from_scene||vm_read32(state_base+0x2A6A0)==0||((f74&7)!=4&&(f74&7)!=6))return;
+    const uint32_t a4=vm_read32(state_base+0xA4);
+    if(!(vm_read32(state_base+0xBC)&0x00010000u)||!(a4&0x200u))return;   // the ride's script not started, or already ended
+    // The script's opening (fade in, ~0.8 s) finishes switching the character from Steve to Claire: cutting on its first
+    // frame left Claire with Steve's voice (user's test, 2026-11-26); waiting for the end of the fade and y >= 3 fixed it but
+    // showed the start of the ride. Now: as soon as the car moves (the character rises with it, y 0 -> 80), screen still dark.
+    // If Steve's voice comes back, the earlier point was: (f74&2)==0 and y >= 3.
+    const uint32_t actor=vm_read32(CV_SCENE_ACTOR);
+    if(!actor)return;
+    {uint32_t bits=vm_read32(actor+0x14);float y;std::memcpy(&y,&bits,4);if(!(y>=0.05f))return;}
+    vm_write32(state_base+0xA4,a4&~0x200u);
+    vm_write32(state_base+0x70,vm_read32(state_base+0x70)&~4u);
+    vm_write32(state_base+0x74,f74&~6u);   // the script bit and, when the cut lands in it, the fade in
+    vm_write8(state_base+0x97,0);
+    call_door(ctx,2,3,0x0C,1,0x29);
+    from_scene=false;
+    std::printf("[EVENT-SKIP] Claire's story ride up skipped\n");std::fflush(stdout);
+}
 void write_guest_float(uint32_t address,float value) {uint32_t bits;std::memcpy(&bits,&value,4);vm_write32(address,bits);}
 void submarine_skip(ppu_context* ctx) {
     static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
@@ -763,6 +796,7 @@ void TEST_FRAME(ppu_context* ctx) {
         area9_lift_skip(ctx,previous);
     }
     area9_second_lift_skip(ctx);
+    story_ride_skip(ctx);
     if(enabled) {
         bool valid=active_game()&&!tool_load;ready=valid;
         room_known=live_character();

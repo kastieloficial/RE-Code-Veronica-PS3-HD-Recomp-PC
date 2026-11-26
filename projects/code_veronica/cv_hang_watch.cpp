@@ -36,6 +36,7 @@ extern "C" uint8_t vm_read8(uint64_t);
 extern "C" uint32_t vm_read32(uint64_t);
 
 extern "C" volatile LONG g_rsx_watch_frames;   /* rsx_d3d12_backend.c */
+extern "C" int cv_focus_pause_active(void);     /* cv_focus_pause.cpp */
 extern "C" volatile LONG g_rsx_watch_draws;
 extern "C" uint32_t      g_last_hle_nid;       /* ppu_hle.cpp */
 extern "C" const char*   g_last_hle_name;
@@ -219,6 +220,9 @@ DWORD WINAPI watch(LPVOID) {
     for (;;) {
         Sleep(1000);
         LONG f = g_rsx_watch_frames, d = g_rsx_watch_draws;
+        /* The focus pause (window in the background, or a port window such as F6 holding the game) stops the
+         * frames on purpose: not a freeze. Count again from zero once it ends. */
+        if (cv_focus_pause_active()) { still = 0; black = 0; last_frames = f; continue; }
         if (f != last_frames) { ever = 1; still = 0; if (d <= 12) black++; else { black = 0; reported = 0; } }
         else if (ever) still++;
         last_frames = f;

@@ -187,6 +187,9 @@ extern "C" void cv_focus_pause_enable(int on) { g_enabled.store(on ? 1 : 0); }
  * clock applies it on its next poll. */
 extern "C" void cv_focus_pause_hold(int on) { g_held.store(on ? 1 : 0); }
 
+/* Whether a pause is in effect now (read by the hang watchdog: no frame while paused is not a freeze). */
+extern "C" int cv_focus_pause_active(void) { return g_applied ? 1 : 0; }
+
 extern "C" void cv_focus_pause_label(const wchar_t* text)
 {
     AcquireSRWLockExclusive(&g_label_lock);
