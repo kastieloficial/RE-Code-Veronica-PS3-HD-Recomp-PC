@@ -730,6 +730,25 @@ void steve_voyage_skip(ppu_context* ctx) {
     call_door(ctx,0x40,4,0x03,1,0x10);
     std::printf("[EVENT-SKIP] Steve's submarine voyage skipped\n");std::fflush(stdout);
 }
+// CV_SKIP_EVENTS=1: Claire's airport lift during the self-destruct (mapped with CV_EVENT_LOG, US, 2026-11-26). In the
+// warehouse (rm_404) the countdown scene plays (kept), then Alfred's scene room (rm_317 variant 0, reached by kind 0x62)
+// plays one sequence: the car going up (+70 0x01000015, no 0x4000; part of the same scene as Alfred, so it is kept: no cut
+// there can leave Alfred in), Alfred (+70 with 0x4000 and 0x0200 set; the player's to watch or skip), and the car going up
+// again (+70 with 0x4000 and without 0x0200, and +74 without 0x2000: a one-frame mix of those inside Alfred's scene has
+// 0x2000). That last ride ignores the skip button and asks for the top (kind 0x60, rm_309 variant 1, animation 0x21,
+// arrival 1): its request is made on its first frame.
+void countdown_lift_skip(ppu_context* ctx) {
+    static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
+    if(!on||!mapped(state_base,0x2A6AC)||!live_character())return;
+    if(vm_read8(state_base+0x95)!=3||vm_read8(state_base+0x96)!=0x17||vm_read8(state_base+0x98)!=0)return;
+    if(vm_read32(state_base+0x2A6A4)!=0x62||vm_read32(state_base+0x2A6A0)==0)return;
+    const uint32_t f74=vm_read32(state_base+0x74),f70=vm_read32(state_base+0x70);
+    if((f74&7)!=4&&(f74&7)!=6)return;
+    if(!(f70&0x01000000u)||!(f70&0x4000u)||(f70&0x0200u)||(f74&0x2000u))return;   // not the last ride
+    vm_write32(state_base+0x70,f70&~4u);vm_write32(state_base+0x74,f74&~0x10000006u);vm_write8(state_base+0x97,1);
+    call_door(ctx,0x60,3,0x09,1,0x21);
+    std::printf("[EVENT-SKIP] countdown lift: last ride skipped\n");std::fflush(stdout);
+}
 void write_guest_float(uint32_t address,float value) {uint32_t bits;std::memcpy(&bits,&value,4);vm_write32(address,bits);}
 void submarine_skip(ppu_context* ctx) {
     static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
@@ -815,6 +834,7 @@ void TEST_FRAME(ppu_context* ctx) {
     area9_second_lift_skip(ctx);
     story_ride_skip(ctx);
     steve_voyage_skip(ctx);
+    countdown_lift_skip(ctx);
     if(enabled) {
         bool valid=active_game()&&!tool_load;ready=valid;
         room_known=live_character();
