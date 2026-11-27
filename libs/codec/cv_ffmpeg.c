@@ -68,7 +68,7 @@ void cv_video_close(CvVideoDecoder* d)
 void cv_video_stop(CvVideoDecoder* d)
 {if(!d)return;InterlockedExchange(&d->stopping,1);AcquireSRWLockExclusive(&d->lock);WakeAllConditionVariable(&d->space);ReleaseSRWLockExclusive(&d->lock);}
 void cv_video_reset_pacing(CvVideoDecoder* d)
-{if(!d)return;AcquireSRWLockExclusive(&d->lock);d->shown=0;d->started=0;d->timelineStarted=0;d->nextPts=0;d->lastLog=0;ReleaseSRWLockExclusive(&d->lock);}
+{if(!d)return;InterlockedExchange(&d->stopping,0);AcquireSRWLockExclusive(&d->lock);d->shown=0;d->started=0;d->timelineStarted=0;d->nextPts=0;d->lastLog=0;ReleaseSRWLockExclusive(&d->lock);}
 static int receive(CvVideoDecoder* d,u64 pts,u64 user,void (*notify)(void*),void* opaque)
 {
  int count=0;
@@ -170,6 +170,8 @@ CvAudioDecoder* cv_audio_open(void)
 }
 void cv_audio_stop(CvAudioDecoder* d)
 {if(!d)return;InterlockedExchange(&d->stopping,1);AcquireSRWLockExclusive(&d->lock);WakeAllConditionVariable(&d->space);ReleaseSRWLockExclusive(&d->lock);}
+void cv_audio_reset(CvAudioDecoder* d)
+{if(!d)return;InterlockedExchange(&d->stopping,0);}
 void cv_audio_close(CvAudioDecoder* d)
 {
  if(!d)return;

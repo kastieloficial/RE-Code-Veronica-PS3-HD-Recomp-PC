@@ -33,8 +33,8 @@ typedef struct {
     CvVideoDecoder* decoder;
     u32 itemBase, itemSlots, itemIndex, frameRate, pictureType;
     SRWLOCK commandLock;
-    HANDLE commandEvent, worker;
-    volatile LONG stopping;
+    HANDLE commandEvent, idleEvent, worker;
+    volatile LONG stopping, seqEnding;
     VdecCommand commands[4];
     unsigned commandRead, commandWrite;
     u32 auCount;        /* total AUs decoded */
@@ -77,7 +77,7 @@ static void vdec_notify(CellVdecHandle handle, u32 msg_type, s32 msg_data)
 static void vdec_picture_ready(void* argument)
 {
     u32 h=(u32)(uintptr_t)argument;
-    if(h<MAX_VDEC&&!InterlockedCompareExchange(&s_vdec[h].stopping,0,0))
+    if(h<MAX_VDEC&&!InterlockedCompareExchange(&s_vdec[h].stopping,0,0)&&!InterlockedCompareExchange(&s_vdec[h].seqEnding,0,0))
         vdec_notify(h,CELL_VDEC_MSG_TYPE_PICOUT,CELL_OK);
 }
 static DWORD WINAPI vdec_worker(LPVOID argument)
@@ -88,19 +88,26 @@ static DWORD WINAPI vdec_worker(LPVOID argument)
         for(;;){
             VdecCommand command = {0};
             AcquireSRWLockExclusive(&v->commandLock);
-            if(v->commandRead!=v->commandWrite)command=v->commands[v->commandRead++%4];
+            if(v->commandRead!=v->commandWrite && !InterlockedCompareExchange(&v->stopping,0,0) && !InterlockedCompareExchange(&v->seqEnding,0,0))
+                command=v->commands[v->commandRead++%4];
+            if(!command.data) SetEvent(v->idleEvent);
             ReleaseSRWLockExclusive(&v->commandLock);
             if(!command.data)break;
             CellVdecAuInfo au = command.info;
             int pictures=cv_video_decode(v->decoder,command.data,au.size,au.pts,au.userData,vdec_picture_ready,(void*)(uintptr_t)h);
             free(command.data);
-            if (InterlockedCompareExchange(&v->stopping,0,0)) break;
+            if (InterlockedCompareExchange(&v->stopping,0,0) || InterlockedCompareExchange(&v->seqEnding,0,0)) {
+                AcquireSRWLockExclusive(&v->commandLock);
+                SetEvent(v->idleEvent);
+                ReleaseSRWLockExclusive(&v->commandLock);
+                break;
+            }
             vdec_notify(h,CELL_VDEC_MSG_TYPE_AUDONE,CELL_OK);
             if(pictures<0){vdec_notify(h,CELL_VDEC_MSG_TYPE_ERROR,(s32)CELL_VDEC_ERROR_AU);continue;}
             v->auCount++;
 
         }
-        if(v->stopping)break;
+        if(InterlockedCompareExchange(&v->stopping,0,0))break;
     }
     return 0;
 }
@@ -122,7 +129,7 @@ s32 cellVdecQueryAttr(const CellVdecType* type, void* attr)
     u32 ea = (u32)(uintptr_t)attr;
     if (!type || !ea)
         return (s32)CELL_VDEC_ERROR_ARG;
-    vm_write32(ea + 0x0, 0x100000);   /* memSize: 1 MB */
+    vm_write32(ea + 0x0, 0x20000);    /* memSize: 128 KB (holds 64 x 0x400 pic items) */
     vm_write8 (ea + 0x4, 4);          /* cmdDepth */
     vm_write32(ea + 0x8, 0x00010000); /* decoderVerUpper */
     vm_write32(ea + 0xC, 0);          /* decoderVerLower */
@@ -163,8 +170,9 @@ s32 cellVdecOpen(const CellVdecType* type, const CellVdecResource* res,
             s_vdec[i].cbArg  = cb_ea ? vm_read32(cb_ea + 4) : 0;
             InitializeSRWLock(&s_vdec[i].commandLock);
             s_vdec[i].commandEvent=CreateEventA(NULL,FALSE,FALSE,NULL);
+            s_vdec[i].idleEvent=CreateEventA(NULL,TRUE,TRUE,NULL);
             s_vdec[i].worker=CreateThread(NULL,0,vdec_worker,(LPVOID)(uintptr_t)i,0,NULL);
-            if(!s_vdec[i].commandEvent||!s_vdec[i].worker){s_vdec[i].in_use=0;return (s32)CELL_VDEC_ERROR_FATAL;}
+            if(!s_vdec[i].commandEvent||!s_vdec[i].idleEvent||!s_vdec[i].worker){s_vdec[i].in_use=0;return (s32)CELL_VDEC_ERROR_FATAL;}
             vm_write32((u32)(uintptr_t)handle, (u32)i);
             printf("[cellVdec] Open -> handle=%u\n", i);
             return CELL_OK;
@@ -190,7 +198,7 @@ s32 cellVdecClose(CellVdecHandle handle)
     ReleaseSRWLockExclusive(&v->commandLock);
     cv_video_stop(v->decoder);SetEvent(v->commandEvent);
     WaitForSingleObject(s_vdec[handle].worker,INFINITE);
-    CloseHandle(s_vdec[handle].worker);CloseHandle(s_vdec[handle].commandEvent);
+    CloseHandle(s_vdec[handle].worker);CloseHandle(s_vdec[handle].commandEvent);CloseHandle(s_vdec[handle].idleEvent);
     cv_video_close(s_vdec[handle].decoder);
     s_vdec[handle].in_use = 0;
     return CELL_OK;
@@ -203,6 +211,7 @@ s32 cellVdecStartSeq(CellVdecHandle handle)
     if (handle >= MAX_VDEC || !s_vdec[handle].in_use)
         return (s32)CELL_VDEC_ERROR_ARG;
 
+    InterlockedExchange(&s_vdec[handle].seqEnding, 0);
     cv_video_reset_pacing(s_vdec[handle].decoder);
     s_vdec[handle].seqStarted = 1;
     return CELL_OK;
@@ -215,7 +224,21 @@ s32 cellVdecEndSeq(CellVdecHandle handle)
     if (handle >= MAX_VDEC || !s_vdec[handle].in_use)
         return (s32)CELL_VDEC_ERROR_ARG;
 
-    s_vdec[handle].seqStarted = 0;
+    VdecSlot* v = &s_vdec[handle];
+    InterlockedExchange(&v->seqEnding, 1);
+    AcquireSRWLockExclusive(&v->commandLock);
+    while (v->commandRead != v->commandWrite) {
+        VdecCommand* command = &v->commands[v->commandRead++ % 4];
+        free(command->data);
+        command->data = NULL;
+    }
+    ReleaseSRWLockExclusive(&v->commandLock);
+    cv_video_stop(v->decoder);
+    SetEvent(v->commandEvent);
+    if (GetCurrentThreadId() != GetThreadId(v->worker))
+        WaitForSingleObject(v->idleEvent, 2000);
+
+    v->seqStarted = 0;
 
     /* Notify sequence done */
     vdec_notify(handle, CELL_VDEC_MSG_TYPE_SEQDONE, CELL_OK);
@@ -260,6 +283,7 @@ s32 cellVdecDecodeAu(CellVdecHandle handle, s32 mode, const CellVdecAuInfo* auIn
     VdecCommand* command = &v->commands[v->commandWrite++%4];
     command->info = au;
     command->data = owned;
+    ResetEvent(v->idleEvent);
     ReleaseSRWLockExclusive(&v->commandLock);
     SetEvent(v->commandEvent);
 

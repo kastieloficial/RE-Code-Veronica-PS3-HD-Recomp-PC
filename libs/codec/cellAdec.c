@@ -70,10 +70,10 @@ typedef struct { CellAdecAuInfo info; u32 auEa; u8* data; } AdecCommand;
 typedef struct {
     int in_use;
     CvAudioDecoder* decoder;
-    HANDLE worker,event;
+    HANDLE worker,event,idleEvent;
     SRWLOCK lock;
     AdecCommand commands[4]; unsigned read,write;
-    volatile LONG stopping;
+    volatile LONG stopping,seqEnding;
     u32 bw,lastAuAddr,lastAuSize;
     u32 codecType;
     u32 cbFunc;         /* guest EA of the callback's OPD */
@@ -117,24 +117,33 @@ static void adec_notify(CellAdecHandle handle, u32 msg_type, s32 msg_data)
 }
 
 static void adec_real_ready(void* arg)
-{adec_notify((u32)(uintptr_t)arg,CELL_ADEC_MSG_TYPE_PCMOUT,CELL_OK);}
+{
+    u32 h=(u32)(uintptr_t)arg;
+    if(h<MAX_ADEC&&!InterlockedCompareExchange(&s_adec[h].stopping,0,0)&&!InterlockedCompareExchange(&s_adec[h].seqEnding,0,0))
+        adec_notify(h,CELL_ADEC_MSG_TYPE_PCMOUT,CELL_OK);
+}
 static DWORD WINAPI adec_worker(LPVOID arg)
 {
  u32 h=(u32)(uintptr_t)arg;AdecSlot* a=&s_adec[h];
  for(;;){WaitForSingleObject(a->event,INFINITE);
   for(;;){AdecCommand command={0};
    AcquireSRWLockExclusive(&a->lock);
-   if(a->read!=a->write)command=a->commands[a->read++%4];
+   if(a->read!=a->write&&!InterlockedCompareExchange(&a->stopping,0,0)&&!InterlockedCompareExchange(&a->seqEnding,0,0))
+       command=a->commands[a->read++%4];
+   if(!command.data)SetEvent(a->idleEvent);
    ReleaseSRWLockExclusive(&a->lock);if(!command.data)break;
    CellAdecAuInfo au=command.info;u32 ea=command.auEa;
    a->lastAuAddr=au.startAddr;a->lastAuSize=au.size;
    int ret=cv_audio_decode(a->decoder,command.data,au.size,au.pts,au.userData,adec_real_ready,(void*)(uintptr_t)h);
    free(command.data);
-   if(a->stopping)break;   /* Close is waiting: no more guest callbacks */
+   if(InterlockedCompareExchange(&a->stopping,0,0)||InterlockedCompareExchange(&a->seqEnding,0,0)){
+       AcquireSRWLockExclusive(&a->lock);SetEvent(a->idleEvent);ReleaseSRWLockExclusive(&a->lock);
+       break;
+   }
    adec_notify(h,CELL_ADEC_MSG_TYPE_AUDONE,(s32)ea);
    if(ret<0)adec_notify(h,CELL_ADEC_MSG_TYPE_ERROR,(s32)CELL_ADEC_ERROR_AU);
   }
-  if(a->stopping)break;
+  if(InterlockedCompareExchange(&a->stopping,0,0))break;
  }
  return 0;
 }
@@ -152,7 +161,7 @@ s32 cellAdecQueryAttr(const CellAdecType* type, void* attr)
     u32 ea = (u32)(uintptr_t)attr;
     if (!type || !ea)
         return (s32)CELL_ADEC_ERROR_ARG;
-    vm_write32(ea + 0x0, 0x40000);    /* workMemSize: 256 KB */
+    vm_write32(ea + 0x0, 0x10000);    /* workMemSize: 64 KB (decoding is host-side) */
     vm_write32(ea + 0x4, 0x00010000); /* adecVerUpper */
     vm_write32(ea + 0x8, 0);          /* adecVerLower */
     return CELL_OK;
@@ -191,8 +200,9 @@ s32 cellAdecOpen(const CellAdecType* type, const CellAdecResource* res,
                 s_adec[i].decoder=cv_audio_open();if(!s_adec[i].decoder){s_adec[i].in_use=0;return (s32)CELL_ADEC_ERROR_FATAL;}
                 s_adec[i].bw=0x84;InitializeSRWLock(&s_adec[i].lock);
                 s_adec[i].event=CreateEventA(NULL,FALSE,FALSE,NULL);
+                s_adec[i].idleEvent=CreateEventA(NULL,TRUE,TRUE,NULL);
                 s_adec[i].worker=CreateThread(NULL,0,adec_worker,(LPVOID)(uintptr_t)i,0,NULL);
-                if(!s_adec[i].event||!s_adec[i].worker)return (s32)CELL_ADEC_ERROR_FATAL;
+                if(!s_adec[i].event||!s_adec[i].idleEvent||!s_adec[i].worker)return (s32)CELL_ADEC_ERROR_FATAL;
             }
             if (cb_ea) {
                 s_adec[i].cbFunc = vm_read32(cb_ea + 0);
@@ -223,9 +233,16 @@ s32 cellAdecClose(CellAdecHandle handle)
         /* Skipping a movie closes the decoder while AUs are still queued and
          * nobody drains the PCM: wake a worker blocked on a full queue, and do
          * not hang the caller if it is stuck in a guest callback anyway. */
-        s_adec[handle].stopping=1;cv_audio_stop(s_adec[handle].decoder);SetEvent(s_adec[handle].event);
+        InterlockedExchange(&s_adec[handle].stopping,1);
+        AcquireSRWLockExclusive(&s_adec[handle].lock);
+        while(s_adec[handle].read!=s_adec[handle].write){
+            AdecCommand* c=&s_adec[handle].commands[s_adec[handle].read++%4];
+            free(c->data);c->data=NULL;
+        }
+        ReleaseSRWLockExclusive(&s_adec[handle].lock);
+        cv_audio_stop(s_adec[handle].decoder);SetEvent(s_adec[handle].event);
         if(WaitForSingleObject(s_adec[handle].worker,2000)==WAIT_OBJECT_0){
-            CloseHandle(s_adec[handle].worker);CloseHandle(s_adec[handle].event);
+            CloseHandle(s_adec[handle].worker);CloseHandle(s_adec[handle].event);CloseHandle(s_adec[handle].idleEvent);
             cv_audio_close(s_adec[handle].decoder);
         } else fprintf(stderr,"[cellAdec] Close(handle=%u): worker did not stop; leaving it\n",handle);
     }
@@ -241,9 +258,13 @@ s32 cellAdecStartSeq(CellAdecHandle handle, void* param)
     if (handle >= MAX_ADEC || !s_adec[handle].in_use)
         return (s32)CELL_ADEC_ERROR_ARG;
 
-    if(s_adec[handle].decoder&&param){
-        u32 ea=GUEST_EA(param);s_adec[handle].bw=vm_read32(ea+20);
-        fprintf(stderr,"[cellAdec] ATRAC_PARAMS rate=%u config=%u out=%u bytes=%u bw=%u header=%u\n",vm_read32(ea),vm_read32(ea+4),vm_read32(ea+8),vm_read32(ea+12),vm_read32(ea+20),vm_read8(ea+25));
+    if(s_adec[handle].decoder){
+        InterlockedExchange(&s_adec[handle].seqEnding,0);
+        cv_audio_reset(s_adec[handle].decoder);
+        if(param){
+            u32 ea=GUEST_EA(param);s_adec[handle].bw=vm_read32(ea+20);
+            fprintf(stderr,"[cellAdec] ATRAC_PARAMS rate=%u config=%u out=%u bytes=%u bw=%u header=%u\n",vm_read32(ea),vm_read32(ea+4),vm_read32(ea+8),vm_read32(ea+12),vm_read32(ea+20),vm_read8(ea+25));
+        }
     }
     s_adec[handle].seqStarted = 1;
     return CELL_OK;
@@ -270,6 +291,22 @@ s32 cellAdecEndSeq(CellAdecHandle handle)
 
     if (handle >= MAX_ADEC || !s_adec[handle].in_use)
         return (s32)CELL_ADEC_ERROR_ARG;
+
+    if (s_adec[handle].decoder) {
+        AdecSlot* a = &s_adec[handle];
+        InterlockedExchange(&a->seqEnding, 1);
+        AcquireSRWLockExclusive(&a->lock);
+        while (a->read != a->write) {
+            AdecCommand* c = &a->commands[a->read++ % 4];
+            free(c->data);
+            c->data = NULL;
+        }
+        ReleaseSRWLockExclusive(&a->lock);
+        cv_audio_stop(a->decoder);
+        SetEvent(a->event);
+        if (GetCurrentThreadId() != GetThreadId(a->worker))
+            WaitForSingleObject(a->idleEvent, 2000);
+    }
 
     s_adec[handle].seqStarted = 0;
 
@@ -300,6 +337,7 @@ s32 cellAdecDecodeAu(CellAdecHandle handle, const CellAdecAuInfo* auInfo)
         AcquireSRWLockExclusive(&a->lock);
         if(a->write-a->read>=4){ReleaseSRWLockExclusive(&a->lock);free(owned);return (s32)CELL_ADEC_ERROR_BUSY;}
         unsigned i=a->write++%4;a->commands[i].info=au;a->commands[i].auEa=ea;a->commands[i].data=owned;
+        ResetEvent(a->idleEvent);
         ReleaseSRWLockExclusive(&a->lock);SetEvent(a->event);return CELL_OK;
     }
 

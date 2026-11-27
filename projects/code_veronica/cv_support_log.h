@@ -59,8 +59,27 @@ inline void startup(const char* region){
  previous_filter=SetUnhandledExceptionFilter(terminal);
 }
 inline void settings(){
- static const char* keys[]={"RES_SCALE","VBLANK_HZ","CV_FPS_TEST_60","CV_RENDER_INTERPOLATION","CV_POSE_COMPUTE","CV_FSR_FRAME_GENERATION","CV_FSR_ASYNC","CV_SHARPNESS","AA_MODE","RSX_ANISO","VSYNC","RSX_GPU_VFETCH","SPU_MAX_RUNNING","SPU_TASK_POOL","CV_MUSIC_VOLUME","CV_SFX_VOLUME"};
+ static const char* keys[]={"WINDOW_MODE","RES_SCALE","VBLANK_HZ","CV_FPS_TEST_60","CV_SMOOTH_ANIMATION","CV_RENDER_INTERPOLATION","CV_POSE_COMPUTE","CV_FSR_FRAME_GENERATION","CV_FSR_ASYNC","CV_SHARPNESS","AA_MODE","RSX_ANISO","VSYNC","CV_NO_LETTERBOX","CV_DEPTH_OF_FIELD","CV_SKIP_EVENTS","CV_SKIP_START_NOTICES","SRT","PS3_PATCHES","RSX_GPU_VFETCH","SPU_MAX_RUNNING","SPU_TASK_POOL","CV_MUSIC_VOLUME","CV_SFX_VOLUME"};
  for(const char* key:keys){const char* value=getenv(key);fprintf(stderr,"[SUPPORT-SETTING] %s=%s\n",key,value&&*value?value:"<default>");}
+ const char* patches=getenv("PS3_PATCHES");
+ auto has=[](const char* list,const char* token){
+  if(!list||!*list)return false;
+  size_t len=strlen(token);
+  for(const char* p=list;(p=strstr(p,token))!=nullptr;p+=len){
+   bool left=(p==list||p[-1]==','),right=(p[len]=='\0'||p[len]==',');
+   if(left&&right)return true;
+  }
+  return false;
+ };
+ const char* door=has(patches,"cv_door_supreme")?"supreme":has(patches,"cv_door_fast")?"fast":has(patches,"cv_door_skip")?"classic":"off";
+ const bool ch_hp=has(patches,"cv_infinite_health"),ch_ammo=has(patches,"cv_infinite_ammo"),ch_ohk=has(patches,"cv_one_hit_kill");
+ const char* skip_ev=getenv("CV_SKIP_EVENTS");
+ fprintf(stderr,"[SUPPORT-GAMEPLAY] door_skip=%s skip_events=%s skip_logos=%d cheats=%s%s%s%s\n",
+  door,skip_ev&&*skip_ev?skip_ev:"0",int(has(patches,"cv_skip_logos")),
+  (!ch_hp&&!ch_ammo&&!ch_ohk)?"none":"",
+  ch_hp?"health":"",
+  ch_ammo?(ch_hp?",ammo":"ammo"):"",
+  ch_ohk?((ch_hp||ch_ammo)?",one_hit_kill":"one_hit_kill"):"");
  fprintf(stderr,"[SUPPORT] startup facts only; no performance sampling enabled by this header\n");
 }
 }

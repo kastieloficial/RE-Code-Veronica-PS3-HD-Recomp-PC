@@ -22,8 +22,8 @@
 
 typedef struct {
     int in_use;
-    HANDLE event,worker;
-    volatile LONG busy,stopping;
+    HANDLE event,idleEvent,worker;
+    volatile LONG busy,stopping,resetting;
     b8 discontinuity;
     u32 cbFunc;
     u32 cbArg;
@@ -68,23 +68,53 @@ static DWORD WINAPI dmux_worker(LPVOID arg)
     DmuxSlot* d = &s_dmux[h];
     for (;;) {
         WaitForSingleObject(d->event, INFINITE);
-        if (d->stopping) break;
-        if (!InterlockedCompareExchange(&d->busy, 0, 0)) continue;
+        if (InterlockedCompareExchange(&d->stopping, 0, 0)) {
+            InterlockedExchange(&d->busy, 0);
+            SetEvent(d->idleEvent);
+            break;
+        }
+        if (InterlockedCompareExchange(&d->resetting, 0, 0)) {
+            InterlockedExchange(&d->busy, 0);
+            SetEvent(d->idleEvent);
+            continue;
+        }
+        if (!InterlockedCompareExchange(&d->busy, 0, 0)) {
+            SetEvent(d->idleEvent);
+            continue;
+        }
 
         /* Keep the asynchronous input buffer pinned while prior ES AUs are
-         * outstanding. A rejected short final SetStream can otherwise be lost. */
-        while (!d->stopping && dmux_has_unreleased_au(h))
+         * outstanding. A rejected short final SetStream can otherwise be lost.
+         * Mark idle while waiting here so DisableEs(es=1) does not stall on
+         * idleEvent while es=0 still holds an unreleased AU during movie skip. */
+        SetEvent(d->idleEvent);
+        while (!InterlockedCompareExchange(&d->stopping, 0, 0) &&
+               !InterlockedCompareExchange(&d->resetting, 0, 0) &&
+               dmux_has_unreleased_au(h))
             WaitForSingleObject(d->event, INFINITE);
-        if (d->stopping) break;
-        if (!InterlockedCompareExchange(&d->busy, 0, 0)) continue;
+        if (InterlockedCompareExchange(&d->stopping, 0, 0)) {
+            InterlockedExchange(&d->busy, 0);
+            SetEvent(d->idleEvent);
+            break;
+        }
+        if (InterlockedCompareExchange(&d->resetting, 0, 0) ||
+            !InterlockedCompareExchange(&d->busy, 0, 0)) {
+            InterlockedExchange(&d->busy, 0);
+            SetEvent(d->idleEvent);
+            continue;
+        }
 
+        ResetEvent(d->idleEvent);
         s32 ret = dmux_process_stream(h, d->streamAddr, d->streamSize,
                                       d->discontinuity, d->userData);
         if (ret != CELL_OK) {
             InterlockedExchange(&d->busy, 0);
             fprintf(stderr, "[cellDmux] PROCESS_ERROR=%08X\n", (u32)ret);
-            dmux_notify(h, CELL_DMUX_MSG_TYPE_FATAL_ERR);
+            if (!InterlockedCompareExchange(&d->stopping, 0, 0) &&
+                !InterlockedCompareExchange(&d->resetting, 0, 0))
+                dmux_notify(h, CELL_DMUX_MSG_TYPE_FATAL_ERR);
         }
+        SetEvent(d->idleEvent);
     }
     return 0;
 }
@@ -124,7 +154,12 @@ s32 cellDmuxQueryEsAttr(const CellDmuxType* type, const CellDmuxEsFilterId* filt
     (void)specific;
     if (!type || !filter || !attr || vm_read32(GUEST_EA(type)) != CELL_DMUX_TYPE_PAMF)
         return (s32)CELL_DMUX_ERROR_ARG;
-    vm_write32(GUEST_EA(attr),0x400000);
+    u32 major = vm_read32(GUEST_EA(filter) + (u32)offsetof(CellDmuxEsFilterId, filterIdMajor));
+    /* Size each ES buffer for its stream type (video ~2 MB chunks -> 2.5 MB,
+     * audio ~32 KB chunks -> 256 KB) instead of 4 MB per stream, saving >5 MB
+     * on the tight 202 MB guest heap when movies open on a fragmented heap. */
+    u32 memSize = (major >= 0xE0u && major <= 0xEFu) ? 0x280000u : 0x40000u;
+    vm_write32(GUEST_EA(attr), memSize);
     return CELL_OK;
 }
 s32 cellDmuxOpenEx(const CellDmuxType* type, const void* res, const void* cb, CellDmuxHandle* handle)
@@ -152,8 +187,9 @@ s32 cellDmuxOpen(const CellDmuxType* type, const CellDmuxResource* res,
             memset(&s_dmux[i],0,sizeof(s_dmux[i]));
             s_dmux[i].in_use = 1;
             s_dmux[i].event=CreateEventA(NULL,FALSE,FALSE,NULL);
+            s_dmux[i].idleEvent=CreateEventA(NULL,TRUE,TRUE,NULL);
             s_dmux[i].worker=CreateThread(NULL,0,dmux_worker,(LPVOID)(uintptr_t)i,0,NULL);
-            if(!s_dmux[i].event||!s_dmux[i].worker)return (s32)CELL_DMUX_ERROR_FATAL;
+            if(!s_dmux[i].event||!s_dmux[i].idleEvent||!s_dmux[i].worker)return (s32)CELL_DMUX_ERROR_FATAL;
             s_dmux[i].cbFunc = cb ? vm_read32(GUEST_EA(cb)) : 0;
             s_dmux[i].cbArg = cb ? vm_read32(GUEST_EA(cb)+4) : 0;
             s_dmux[i].streamType = vm_read32(GUEST_EA(type));
@@ -176,9 +212,9 @@ s32 cellDmuxClose(CellDmuxHandle handle)
     if (handle >= CELL_DMUX_MAX_HANDLES || !s_dmux[handle].in_use)
         return (s32)CELL_DMUX_ERROR_ARG;
 
-    s_dmux[handle].stopping=1;SetEvent(s_dmux[handle].event);
+    InterlockedExchange(&s_dmux[handle].stopping,1);SetEvent(s_dmux[handle].event);
     WaitForSingleObject(s_dmux[handle].worker,INFINITE);
-    CloseHandle(s_dmux[handle].worker);CloseHandle(s_dmux[handle].event);
+    CloseHandle(s_dmux[handle].worker);CloseHandle(s_dmux[handle].event);CloseHandle(s_dmux[handle].idleEvent);
     /* Close associated ES handles */
     for (int i = 0; i < CELL_DMUX_MAX_ES; i++) {
         if (s_es[i].in_use && s_es[i].dmuxId == handle)
@@ -241,7 +277,14 @@ s32 cellDmuxDisableEs(CellDmuxEsHandle esHandle)
     if (esHandle >= CELL_DMUX_MAX_ES || !s_es[esHandle].in_use)
         return (s32)CELL_DMUX_ERROR_ARG;
 
+    u32 dmux = s_es[esHandle].dmuxId;
     s_es[esHandle].in_use = 0;
+    s_es[esHandle].hasAu = 0;
+    if (dmux < CELL_DMUX_MAX_HANDLES && s_dmux[dmux].in_use) {
+        SetEvent(s_dmux[dmux].event);
+        if (GetCurrentThreadId() != GetThreadId(s_dmux[dmux].worker))
+            WaitForSingleObject(s_dmux[dmux].idleEvent, 2000);
+    }
     return CELL_OK;
 }
 
@@ -304,7 +347,12 @@ static s32 dmux_process_stream(CellDmuxHandle handle, u32 streamAddr, u32 stream
     }
     dmux->pendingSize=total-at;memmove(data,data+at,dmux->pendingSize);
     for(int i=0;i<CELL_DMUX_MAX_ES;i++)if(output[i]){
-        DmuxEsSlot* es=&s_es[i];es->hasAu=1;es->acquired=0;
+        if (InterlockedCompareExchange(&dmux->stopping, 0, 0) ||
+            InterlockedCompareExchange(&dmux->resetting, 0, 0))
+            break;
+        DmuxEsSlot* es=&s_es[i];
+        if (!es->in_use) continue;
+        es->hasAu=1;es->acquired=0;
         es->currentAu.auAddr=es->resource+0x100;es->currentAu.auSize=output[i];
         es->currentAu.pts=pts[i];es->currentAu.dts=dts[i];es->currentAu.userData=userData;
         fprintf(stderr,"[cellDmux] ES_PAYLOAD es=%d bytes=%u pts=%llu\n",i,output[i],(unsigned long long)pts[i]);
@@ -312,9 +360,12 @@ static s32 dmux_process_stream(CellDmuxHandle handle, u32 streamAddr, u32 stream
     }
     dmux->auSeqNo++;
     InterlockedExchange(&dmux->busy, 0);
-    dmux_notify(handle, CELL_DMUX_MSG_TYPE_DEMUX_DONE);
-    if (programEnd)
-        dmux_notify(handle, CELL_DMUX_MSG_TYPE_PROG_END_CODE);
+    if (!InterlockedCompareExchange(&dmux->stopping, 0, 0) &&
+        !InterlockedCompareExchange(&dmux->resetting, 0, 0)) {
+        dmux_notify(handle, CELL_DMUX_MSG_TYPE_DEMUX_DONE);
+        if (programEnd)
+            dmux_notify(handle, CELL_DMUX_MSG_TYPE_PROG_END_CODE);
+    }
 
     return CELL_OK;
 }
@@ -323,8 +374,11 @@ s32 cellDmuxSetStream(CellDmuxHandle h,u32 addr,u32 size,b8 discontinuity,u64 us
 {
  if(h>=CELL_DMUX_MAX_HANDLES||!s_dmux[h].in_use||!addr||!size)return (s32)CELL_DMUX_ERROR_ARG;
  DmuxSlot* d=&s_dmux[h];
+ if(InterlockedCompareExchange(&d->stopping,0,0)||InterlockedCompareExchange(&d->resetting,0,0))
+     return (s32)CELL_DMUX_ERROR_BUSY;
  if(InterlockedCompareExchange(&d->busy,1,0))return (s32)CELL_DMUX_ERROR_BUSY;
  d->streamAddr=addr;d->streamSize=size;d->discontinuity=discontinuity;d->userData=user;
+ ResetEvent(d->idleEvent);
  SetEvent(d->event);return CELL_OK;
 }
 
@@ -335,15 +389,25 @@ s32 cellDmuxResetStream(CellDmuxHandle handle)
     if (handle >= CELL_DMUX_MAX_HANDLES || !s_dmux[handle].in_use)
         return (s32)CELL_DMUX_ERROR_ARG;
 
+    DmuxSlot* d = &s_dmux[handle];
+    InterlockedExchange(&d->resetting, 1);
+    SetEvent(d->event);
+    if (GetCurrentThreadId() != GetThreadId(d->worker))
+        WaitForSingleObject(d->idleEvent, 2000);
+
     /* Clear pending AUs from all ES handles and reset stream tracking */
     for (int i = 0; i < CELL_DMUX_MAX_ES; i++) {
-        if (s_es[i].in_use && s_es[i].dmuxId == handle)
+        if (s_es[i].in_use && s_es[i].dmuxId == handle) {
             s_es[i].hasAu = 0;
+            s_es[i].acquired = 0;
+        }
     }
-    s_dmux[handle].pendingSize = 0;
-    s_dmux[handle].streamAddr = 0;
-    s_dmux[handle].streamSize = 0;
-    s_dmux[handle].auSeqNo = 0;
+    d->pendingSize = 0;
+    d->streamAddr = 0;
+    d->streamSize = 0;
+    d->auSeqNo = 0;
+    InterlockedExchange(&d->busy, 0);
+    InterlockedExchange(&d->resetting, 0);
 
     return CELL_OK;
 }
