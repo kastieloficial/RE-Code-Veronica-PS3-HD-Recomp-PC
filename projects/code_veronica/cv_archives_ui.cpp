@@ -147,8 +147,18 @@ void header(Graphics& g,const View& v) {
     pause_bars(g,right-pw-10-10,cy);
 }
 void tabs(Graphics& g,const View& v,int kind) {
-    const wchar_t* names[3]={ts(v,cv_archives_i18n::LOAD_TAB),ts(v,cv_archives_i18n::SAVE_TAB),ts(v,cv_archives_i18n::MAPS_TAB)};
-    for(int i=0;i<3;i++)ui::plate_label(g,lay::tab(i),v.page==i,names[i],v.language,19,2,state(v,HIT_TAB,i));
+    const wchar_t* names[PAGE_COUNT]={
+        ts(v,cv_archives_i18n::LOAD_TAB),
+        ts(v,cv_archives_i18n::ORIGINAL_TAB),
+        ts(v,cv_archives_i18n::SAVE_TAB),
+        ts(v,cv_archives_i18n::MAPS_TAB),
+    };
+    for(int i=0;i<PAGE_COUNT;i++) {
+        const RectF r=lay::tab(i);
+        float px=19.f,tr=2.f;
+        while(px>13.f&&ui::text_width(g,names[i],F(v,Role::BODY600,px),tr)>r.Width-22.f){px-=0.5f;tr=std::max(0.5f,tr-0.15f);}
+        ui::plate_label(g,r,v.page==i,names[i],v.language,px,tr,state(v,HIT_TAB,i));
+    }
     side_glyph(g,v,kind,lay::TAB_PREV,HIT_TAB_PREV,true);
     side_glyph(g,v,kind,lay::TAB_NEXT,HIT_TAB_NEXT,false);
 }
@@ -252,7 +262,8 @@ void filter_and_now(Graphics& g,const View& v) {   // Maps: the search field's f
     }
 }
 void library_header(Graphics& g,const View& v) {
-    txt(g,ts(v,cv_archives_i18n::LIBRARY),lay::LIBRARY_LABEL,F(v,Role::BODY600,16),C_LIB,StringAlignmentNear,StringAlignmentCenter,false,2.5f);
+    const auto title_id=v.page==PAGE_ORIGINAL?cv_archives_i18n::ORIGINAL_TAB:cv_archives_i18n::LIBRARY;
+    txt(g,ts(v,title_id),lay::LIBRARY_LABEL,F(v,Role::BODY600,16),C_LIB,StringAlignmentNear,StringAlignmentCenter,false,2.5f);
     txt(g,std::to_wstring(v.files)+L" "+ts(v,cv_archives_i18n::FILES),lay::LIBRARY_LABEL,F(v,Role::BODY500,17),C_LIB,StringAlignmentFar,StringAlignmentCenter);
 }
 void detail(Graphics& g,const View& v) {
@@ -346,7 +357,7 @@ void footer(Graphics& g,const View& v,int kind) {
     const Glyph slash{GlyphKind::SLASH,0,L""};
     std::vector<ui::FooterGroup> groups={
         {{kbd('Q'),kbd('E')},{pad(PB_L1),pad(PB_R1)},ps(v,pt::TABS)},
-        {{Glyph{GlyphKind::ARROWS,3,L""},slash,kbd(VK_PRIOR),kbd(VK_NEXT)},{Glyph{GlyphKind::DPAD,0,L""},slash,pad(PB_L2),pad(PB_R2)},ps(v,pt::SCROLL_LIST)},
+        {{Glyph{GlyphKind::ARROWS,3,L""},slash,kbd('W'),kbd('S'),slash,kbd(VK_PRIOR),kbd(VK_NEXT)},{Glyph{GlyphKind::DPAD,0,L""},slash,pad(PB_L2),pad(PB_R2)},ps(v,pt::SCROLL_LIST)},
         {{},{},ps(v,pt::HOLD_FAST),true},
         {{kbd(VK_ESCAPE)},{pad(PB_EAST)},ps(v,pt::BACK)},
     };
@@ -376,7 +387,7 @@ std::vector<Hit> hits(const View& v) {
     std::vector<Hit> out;
     if(v.confirming){out.push_back({lay::DIALOG_CANCEL,HIT_DIALOG_CANCEL,0});out.push_back({lay::DIALOG_YES,HIT_DIALOG_YES,0});return out;}
     if(v.busy)return out;
-    for(int i=0;i<3;i++)out.push_back({lay::tab(i),HIT_TAB,i});
+    for(int i=0;i<PAGE_COUNT;i++)out.push_back({lay::tab(i),HIT_TAB,i});
     out.push_back({lay::TAB_PREV,HIT_TAB_PREV,0});out.push_back({lay::TAB_NEXT,HIT_TAB_NEXT,0});
     for(int slot=0;slot<int(v.rows.size())&&slot<ROWS_VISIBLE;slot++)out.push_back({lay::row(slot),HIT_ROW,v.scroll+slot});
     if(v.page==PAGE_MAPS){

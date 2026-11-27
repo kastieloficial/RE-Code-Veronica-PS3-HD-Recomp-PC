@@ -17,6 +17,17 @@
 #include <ctime>
 #include <chrono>
 #include <atomic>
+#include <string>
+#include <vector>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 void CV_OG_FRAME_PACE(ppu_context*);
 // These methods are invoked virtually through the guest function registry.
 // There are no direct call sites in any of the three lifted images.
@@ -37,6 +48,7 @@ extern "C" void rsx_d3d12_camera_cut(void);
 extern "C" void rsx_d3d12_camera_hold(int);
 // CV_EVENT_LOG dev memory scan (cv_hang_watch.cpp).
 void cv_scan_snapshot(int);void cv_scan_report(std::FILE*);void cv_scan_followup(std::FILE*,const char*);void cv_scan_free();
+extern "C" void perf_overlay_toast(const wchar_t*,int);
 extern "C" int rsx_d3d12_pose_replay_enabled(void);
 extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 static void drain_scene(ppu_context* ctx) {
@@ -112,6 +124,44 @@ void CV_FN_FRAME_PACE(ppu_context* ctx) {
 
 namespace {
 #include "cv_smooth_animation.h"
+// CV_SKIP_EVENTS=1: in rm_317 v0 (self-destruct airport lift), fast-forward the ~4.5 s unskippable
+// lift ride before Alfred's skippable scene inside a single frame so no ride frames are shown and
+// all room-script threads stay in lockstep across EU/US/JP.
+void fast_forward_alfred_lift(ppu_context* ctx) {
+    static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
+    if(!on)return;
+    const uint32_t system=vm_read32(CV_SCENE_SYSTEM);
+    if(!system)return;
+    if(vm_read8(CV_SRT_ROOM)!=3||vm_read8(CV_SRT_ROOM+1)!=0x17||vm_read8(CV_SRT_ROOM+2)!=0)return;
+    if(vm_read32(system+0x2A6A4)!=0x62||vm_read32(system+0x2A6A0)==0)return;
+    const uint32_t f74=vm_read32(system+0x74),f70=vm_read32(system+0x70),f78=vm_read32(system+0x78);
+    if(((f74&7)!=4&&(f74&7)!=6)||!(f70&0x01010000u)||(f70&0x00004200u)||(f78&0x10000000u))return;
+    const uint32_t timer_on=vm_read32(system+0x1B170),saved_left=vm_read32(system+0x1B174);
+    const ppu_context base=*ctx;
+    unsigned ticks=0;
+    for(;ticks<180;ticks++) {
+        *ctx=base;
+        CV_BIO_UPDATE(ctx);
+        drain_scene(ctx);
+        if(vm_read8(CV_SRT_ROOM)!=3||vm_read8(CV_SRT_ROOM+1)!=0x17||vm_read8(CV_SRT_ROOM+2)!=0)break;
+        const uint32_t n70=vm_read32(system+0x70),n78=vm_read32(system+0x78),n74=vm_read32(system+0x74);
+        if((n78&0x10000000u)||((n74&7)!=4&&(n74&7)!=6)||(n70&0x4000u))break;
+    }
+    if(timer_on&&saved_left&&vm_read32(system+0x1B170))vm_write32(system+0x1B174,saved_left);
+    if(ticks) {
+        rsx_d3d12_camera_cut();
+        char note[96];std::snprintf(note,sizeof note,"[EVENT-SKIP] countdown lift: pre-Alfred ride fast-forwarded (%u ticks)",ticks);
+        std::printf("%s\n",note);std::fflush(stdout);
+        native_event_log_note(note);
+    }
+}
+void bio_update_skip_only(ppu_context* ctx) {
+    const ppu_context incoming=*ctx;
+    CV_BIO_UPDATE(ctx);
+    drain_scene(ctx);
+    *ctx=incoming;
+    fast_forward_alfred_lift(ctx);
+}
 void bio_update_30hz(ppu_context* ctx) {
     const bool smooth=cv_options::enabled("CV_SMOOTH_ANIMATION");
     const bool input_fix=cv_options::enabled("CV_INPUT_COMFORT");
@@ -124,7 +174,11 @@ void bio_update_30hz(ppu_context* ctx) {
     unsigned count=1;float elapsed_ticks=1;
     if(!(sample>>32)) {
         // Native pacing (replay or unrecognised object): one update a frame.
+        const ppu_context incoming=*ctx;
         clock.reset();input.reset();cv_item_interpolation::reset();cv_inventory_ui::reset();CV_BIO_UPDATE(ctx);
+        drain_scene(ctx);
+        *ctx=incoming;
+        fast_forward_alfred_lift(ctx);
         if(!replay())return;
     }else {
         uint32_t bits=static_cast<uint32_t>(sample);std::memcpy(&elapsed_ticks,&bits,4);
@@ -139,6 +193,9 @@ void bio_update_30hz(ppu_context* ctx) {
             cv_inventory_ui::begin();
             native_scene_before();
             CV_BIO_UPDATE(ctx);
+            drain_scene(ctx);
+            *ctx=incoming;
+            fast_forward_alfred_lift(ctx);
             if(input_fix)input.end_tick();
             native_scene_after();
             if(smooth)cv_item_interpolation::capture();
@@ -189,9 +246,15 @@ void bio_update_30hz(ppu_context* ctx) {
 extern "C" int cv_native_scene_replacing(void) {
     return enabled()&&cv_options::enabled("CV_SMOOTH_ANIMATION")&&scene_replacing_active.load(std::memory_order_relaxed)?1:0;
 }
+extern "C" void cv_event_log_note(const char* text) {
+    native_event_log_note(text);
+}
 extern "C" void cv_fps_register_game_update() {
     const char* raw=std::getenv("CV_FPS_BENCHMARK_RAW");
-    if(!enabled())return;
+    if(!enabled()) {
+        if(cv_options::enabled("CV_SKIP_EVENTS"))ppu_register_function(bio_update_address,bio_update_skip_only);
+        return;
+    }
     if(raw&&std::strcmp(raw,"1")==0) {
         std::fprintf(stderr,"[FPS60] RAW benchmark: game logic still runs once per rendered frame\n");return;
     }

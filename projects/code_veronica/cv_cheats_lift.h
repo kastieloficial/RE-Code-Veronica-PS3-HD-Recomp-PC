@@ -8,7 +8,9 @@ static inline uint32_t cv_cheats_store_value(uint64_t a,uint32_t v,unsigned widt
     if(__builtin_expect(flags!=0,0)) {
         const bool hp=(flags&CV_CHEAT_HEALTH)&&a>=CV_SRT_HEALTH&&a<CV_SRT_HEALTH+4;
         const bool ammo=(flags&CV_CHEAT_AMMO)&&a>=CV_SRT_INVENTORY+4&&a<CV_SRT_INVENTORY+4*0x40;
-        if(hp||ammo)return cv_cheats_filter(a,v,width,flags);
+        const bool one_hit=(flags&CV_CHEAT_ONE_HIT)&&a>=CV_SRT_ENEMIES&&a<CV_SRT_ENEMIES+64u*0x578u&&
+            ((uint32_t(a)-CV_SRT_ENEMIES)%0x578u)>=0x574u;
+        if(hp||ammo||one_hit)return cv_cheats_filter(a,v,width,flags);
     }
     return v;
 }

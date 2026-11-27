@@ -4471,6 +4471,7 @@ void CV_FD_FN_DRAW_EFFECT(ppu_context* ctx)
 
     const uint32_t mesh_cnt = read_be32_fast(vm_base + obj + 0x20u);
     if (mesh_cnt == 0u || obj == 0u) return;
+    const uint32_t orig_obj44 = read_be32_fast(vm_base + obj + 0x44u);
 
     const float f31         = read_bef32_fast(kc + 0x08u);
     const float f30         = read_bef32_fast(kc + 0x0Cu);
@@ -4680,6 +4681,9 @@ void CV_FD_FN_DRAW_EFFECT(ppu_context* ctx)
             }
         }
     }
+    /* Restore obj+0x44 so translucent submeshes (flag_a0 != 0 -> |= 2) don't leak into
+     * reused 60 FPS intermediate frames where CV_BIO_UPDATE did not re-enqueue obj. */
+    write_be32_fast(vm_base + obj + 0x44u, orig_obj44);
 }
 
 /* Hook 36: 4-byte global parameter sync (EU/US/JP 0x000102AC) */

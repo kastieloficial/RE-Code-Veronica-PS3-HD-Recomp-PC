@@ -10,7 +10,7 @@
 namespace cv_item_interpolation {
 constexpr uint32_t menu=CV_SCENE_INVENTORY;
 struct Mesh {
-    uint32_t command,model,vertices,normals,count;
+    uint32_t command,model,vertices,normals,count,flags44;
     std::vector<uint32_t> words;
 };
 struct Pose {
@@ -42,9 +42,11 @@ inline bool same_target(const Pose& p) {
     return true;
 }
 inline void restore() {
-    if(borrowed&&same_target(current))for(const auto& m:current.meshes)
+    if(borrowed&&same_target(current))for(const auto& m:current.meshes) {
+        vm_write32(m.command+0x44,m.flags44);
         for(unsigned a=0;a<2;a++)for(unsigned i=0;i<m.count*4;i++)
             vm_write32((a?m.normals:m.vertices)+4*i,m.words[a*m.count*4+i]);
+    }
     borrowed=false;
 }
 inline void reset() {current={};previous={};paired=false;}
@@ -59,7 +61,7 @@ inline void capture() {
     for(unsigned n=0;n<count;n++) {
         const uint32_t command=vm_read32(list+4*n);
         if(!command||vm_read32(command)!=CV_SCENE_MESH_VTABLE){reset();return;}
-        Mesh m{command,vm_read32(command+0x30),vm_read32(command+4),vm_read32(command+12),vm_read32(command+16),{}};
+        Mesh m{command,vm_read32(command+0x30),vm_read32(command+4),vm_read32(command+12),vm_read32(command+16),vm_read32(command+0x44),{}};
         total+=m.count;
         if(!m.model||!m.count||m.count>8192||total>65536||vm_read32(command+20)!=m.count||
            !m.vertices||!m.normals||m.vertices>0xFFFFFFFFu-m.count*16||
@@ -85,6 +87,7 @@ inline void render(double phase) {
     const float alpha=static_cast<float>(phase);
     for(unsigned m=0;m<current.meshes.size();m++) {
         const auto& now=current.meshes[m];const auto& before=previous.meshes[m];
+        vm_write32(now.command+0x44,now.flags44);
         for(unsigned a=0;a<2;a++)for(unsigned i=0;i<now.count*4;i++) {
             // Preserve homogeneous/padding words exactly.
             if(i%4==3)continue;

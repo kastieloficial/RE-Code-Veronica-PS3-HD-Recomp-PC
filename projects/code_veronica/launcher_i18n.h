@@ -82,6 +82,7 @@ enum StrId {
     S_NAV_SHORTCUTS, S_SC_TITLE, S_SC_HINT, S_SC_COL_KEY, S_SC_COL_PAD, S_SC_COL_ACTION, S_SC_MENU, S_SC_ITEMS, S_SC_MAPS, S_SC_SRT, S_SC_TEX, S_SC_SHOT, S_SC_TITLE_RET, S_SC_PAD_NOTE,
     S_FPS_NOTE_30, S_FPS_NOTE_60, S_FPS_NOTE_FG,
     S_VSYNC, S_VSYNC_OFF, S_VSYNC_ON, S_FPS_NOTE_VSYNC,
+    S_CHEAT_OHK_T, S_CHEAT_OHK_D,
     S_COUNT
 };
 
@@ -298,6 +299,7 @@ static const wchar_t* const k_str_pt[] = {
     L"Atalhos", L"ATALHOS DO JOGO", L"Atalhos que funcionam durante a partida, no teclado e no controle.", L"Teclado", L"Controle", L"O que faz", L"Abre o menu de opções do jogo (tela, áudio, SRT, sair).", L"Abre o menu de itens para pôr armas e itens no inventário. Ative em %s.", L"Abre a janela de mapas de teste para ir a uma sala. Ative em %s.", L"Mostra ou esconde o painel SRT (vida, inventário e inimigos).", L"Liga ou desliga as texturas do mod na hora.", L"Tira uma screenshot; ela fica na pasta screenshots, ao lado do jogo.", L"Volta para a tela de título (pede confirmação; só durante o jogo).", L"No controle: segure os quatro botões de ombro primeiro e depois aperte o botão indicado.",
     L"30 FPS é o original: a mesma experiência do PlayStation 3, onde o jogo roda a 30 FPS em 720p.", L"60 FPS ativa automaticamente as anima\u00e7\u00f5es e transi\u00e7\u00f5es suaves. Com gera\u00e7\u00e3o de quadros FSR 3.1, a sa\u00edda pode chegar a 120 FPS.", L"Com a geração de quadros (FSR 3.1), se o PC mantiver os 60 FPS, o jogo pode chegar a até 120 FPS.",
     L"VSync", L"Desligado", L"Ligado", L"Com VSync, a imagem não rasga; se o PC não mantiver os 60 FPS, alguns quadros esperam a próxima atualização da tela. Não funciona junto com a geração de quadros.",
+    L"Matar com um golpe", L"Derrota inimigos com um único ataque de qualquer arma ou faca. Pode ligar e desligar durante a partida.",
 };
 static_assert(sizeof k_str_pt / sizeof k_str_pt[0] == S_COUNT, "k_str_pt: one text per StrId");
 
@@ -514,6 +516,7 @@ static const wchar_t* const k_str_en[] = {
     L"Shortcuts", L"GAME SHORTCUTS", L"Shortcuts that work during play, on the keyboard and on a controller.", L"Keyboard", L"Controller", L"What it does", L"Opens the game options menu (display, audio, SRT, quit).", L"Opens the item menu to put weapons and items in the inventory. Enable it in %s.", L"Opens the test map window to go to a room. Enable it in %s.", L"Shows or hides the SRT panel (health, inventory and enemies).", L"Turns mod textures on or off at once.", L"Takes a screenshot; it goes to the screenshots folder next to the game.", L"Returns to the title screen (asks first; only during play).", L"On a controller: hold the four shoulder buttons first, then press the button shown.",
     L"30 FPS is the original: the same experience as on PlayStation 3, where the game runs at 30 FPS in 720p.", L"60 FPS automatically enables smooth animations and transitions. FSR 3.1 Frame Generation can raise output up to 120 FPS.", L"With frame generation (FSR 3.1), if your PC holds 60 FPS, the game can reach up to 120 FPS.",
     L"VSync", L"Off", L"On", L"With VSync the image never tears; if the PC can't hold 60 FPS, some frames wait for the next screen refresh. It can't be used with frame generation.",
+    L"One-hit kill", L"Defeats enemies in a single hit from any weapon or knife. Can be toggled during gameplay.",
 };
 static_assert(sizeof k_str_en / sizeof k_str_en[0] == S_COUNT, "k_str_en: one text per StrId");
 
@@ -730,6 +733,7 @@ static const wchar_t* const k_str_es[] = {
     L"Atajos", L"ATAJOS DEL JUEGO", L"Atajos que funcionan durante la partida, en el teclado y en el mando.", L"Teclado", L"Mando", L"Qué hace", L"Abre el menú de opciones del juego (pantalla, audio, SRT, salir).", L"Abre el menú de objetos para poner armas y objetos en el inventario. Actívalo en %s.", L"Abre la ventana de mapas de prueba para ir a una sala. Actívala en %s.", L"Muestra u oculta el panel SRT (vida, inventario y enemigos).", L"Activa o desactiva las texturas del mod al instante.", L"Hace una captura; se guarda en la carpeta screenshots, junto al juego.", L"Vuelve a la pantalla de título (pide confirmación; solo durante el juego).", L"En el mando: mantén primero los cuatro botones de hombro y luego pulsa el botón indicado.",
     L"30 FPS es el original: la misma experiencia que en PlayStation 3, donde el juego va a 30 FPS en 720p.", L"60 FPS activa autom\u00e1ticamente las animaciones y transiciones suaves. La generaci\u00f3n de fotogramas FSR 3.1 permite hasta 120 FPS.", L"Con la generación de fotogramas (FSR 3.1), si el PC mantiene los 60 FPS, el juego puede llegar a hasta 120 FPS.",
     L"VSync", L"Desactivado", L"Activado", L"Con VSync la imagen no se corta; si el PC no mantiene los 60 FPS, algunos fotogramas esperan al siguiente refresco de la pantalla. No funciona junto con la generación de fotogramas.",
+    L"Matar de un golpe", L"Derrota a los enemigos de un solo ataque con cualquier arma o cuchillo. Se puede activar o desactivar durante la partida.",
 };
 static_assert(sizeof k_str_es / sizeof k_str_es[0] == S_COUNT, "k_str_es: one text per StrId");
 
@@ -946,6 +950,7 @@ static const wchar_t* const k_str_ja[] = {
     L"ショートカット", L"ゲーム中のショートカット", L"プレイ中にキーボードとコントローラーで使えるショートカットです。", L"キーボード", L"コントローラー", L"機能", L"ゲームのオプションメニューを開きます（画面、音声、SRT、終了）。", L"アイテムメニューを開き、武器やアイテムをインベントリに入れます。「%s」で有効にしてください。", L"テストマップのウィンドウを開き、部屋へ移動します。「%s」で有効にしてください。", L"SRTパネル（体力、インベントリ、敵）を表示・非表示にします。", L"MODテクスチャをすぐにオン・オフします。", L"スクリーンショットを撮ります。ゲームの横のscreenshotsフォルダーに保存されます。", L"タイトル画面に戻ります（確認あり。プレイ中のみ）。", L"コントローラー：先に4つのショルダーボタンを押したまま、表示のボタンを押します。",
     L"30 FPSはオリジナルです。PlayStation 3と同じ体験で、ゲームは720p・30 FPSで動作します。", L"60 FPS\u3067\u306f\u30a2\u30cb\u30e1\u30fc\u30b7\u30e7\u30f3\u3068\u753b\u9762\u9077\u79fb\u306e\u6ed1\u3089\u304b\u3055\u304c\u81ea\u52d5\u7684\u306b\u5411\u4e0a\u3057\u307e\u3059\u3002FSR 3.1\u30d5\u30ec\u30fc\u30e0\u751f\u6210\u3067\u6700\u5927120 FPS\u306e\u51fa\u529b\u304c\u53ef\u80fd\u3067\u3059\u3002", L"フレーム生成（FSR 3.1）を使うと、PCが60 FPSを保てれば、ゲームは最大120 FPSに達します。",
     L"垂直同期", L"オフ", L"オン", L"垂直同期をオンにすると画面の裂け（ティアリング）がなくなります。PCが60 FPSを維持できない場合、一部のフレームは次の画面更新を待ちます。フレーム生成とは併用できません。",
+    L"一撃必殺", L"あらゆる武器やナイフの一撃で敵を倒します。プレイ中でも切り替えられます。",
 };
 static_assert(sizeof k_str_ja / sizeof k_str_ja[0] == S_COUNT, "k_str_ja: one text per StrId");
 
@@ -1216,6 +1221,7 @@ static const wchar_t* const k_str_fr[] = {
     L"Raccourcis", L"RACCOURCIS DU JEU", L"Raccourcis utilisables pendant la partie, au clavier et à la manette.", L"Clavier", L"Manette", L"Action", L"Ouvre le menu des options du jeu (affichage, audio, SRT, quitter).", L"Ouvre le menu des objets pour mettre armes et objets dans l'inventaire. À activer dans %s.", L"Ouvre la fenêtre des cartes de test pour aller dans une salle. À activer dans %s.", L"Affiche ou masque le panneau SRT (santé, inventaire et ennemis).", L"Active ou désactive les textures du mod immédiatement.", L"Prend une capture d'écran ; elle va dans le dossier screenshots, à côté du jeu.", L"Retourne à l’écran titre (demande confirmation ; en jeu uniquement).", L"À la manette : maintenez d'abord les quatre gâchettes et boutons d'épaule, puis appuyez sur le bouton indiqué.",
     L"30 FPS est l'original : la même expérience que sur PlayStation 3, où le jeu tourne à 30 FPS en 720p.", L"60 FPS active automatiquement les animations et transitions fluides. La g\u00e9n\u00e9ration d\u2019images FSR 3.1 permet une sortie jusqu\u2019\u00e0 120 FPS.", L"Avec la génération d'images (FSR 3.1), si le PC tient 60 FPS, le jeu peut atteindre jusqu'à 120 FPS.",
     L"VSync", L"Désactivée", L"Activée", L"Avec la VSync, l'image ne se déchire plus ; si le PC ne tient pas 60 FPS, certaines images attendent le rafraîchissement suivant de l'écran. Incompatible avec la génération d'images.",
+    L"Élimination en un coup", L"Élimine les ennemis en un seul coup avec n'importe quelle arme ou le couteau. Activé ou désactivé en cours de partie.",
 };
 static_assert(sizeof k_str_fr / sizeof k_str_fr[0] == S_COUNT, "k_str_fr: one text per StrId");
 
@@ -1486,6 +1492,7 @@ static const wchar_t* const k_str_de[] = {
     L"Tastenkürzel", L"TASTENKÜRZEL IM SPIEL", L"Kürzel, die während des Spiels auf Tastatur und Controller funktionieren.", L"Tastatur", L"Controller", L"Funktion", L"Öffnet das Optionsmenü des Spiels (Anzeige, Audio, SRT, Beenden).", L"Öffnet das Gegenstandsmenü, um Waffen und Gegenstände ins Inventar zu legen. Unter %s aktivieren.", L"Öffnet das Testkarten-Fenster, um in einen Raum zu gehen. Unter %s aktivieren.", L"Zeigt oder verbirgt das SRT-Panel (Gesundheit, Inventar und Gegner).", L"Schaltet Mod-Texturen sofort ein oder aus.", L"Macht einen Screenshot; er landet im Ordner screenshots neben dem Spiel.", L"Zurück zum Titelbildschirm (mit Rückfrage; nur im Spiel).", L"Am Controller: zuerst die vier Schultertasten halten, dann die angezeigte Taste drücken.",
     L"30 FPS ist das Original: dasselbe Erlebnis wie auf der PlayStation 3, wo das Spiel mit 30 FPS in 720p läuft.", L"60 FPS aktiviert automatisch fl\u00fcssige Animationen und \u00dcberg\u00e4nge. FSR 3.1 Frame-Generierung erm\u00f6glicht eine Ausgabe mit bis zu 120 FPS.", L"Mit Frame-Generierung (FSR 3.1) kann das Spiel bis zu 120 FPS erreichen, wenn der PC 60 FPS hält.",
     L"VSync", L"Aus", L"An", L"Mit VSync reißt das Bild nicht mehr; hält der PC keine 60 FPS, warten manche Bilder auf die nächste Bildschirmaktualisierung. Nicht zusammen mit der Bildgenerierung nutzbar.",
+    L"Mit einem Treffer töten", L"Besiegt Gegner mit einem einzigen Treffer jeder Waffe oder des Messers. Kann im Spiel umgeschaltet werden.",
 };
 static_assert(sizeof k_str_de / sizeof k_str_de[0] == S_COUNT, "k_str_de: one text per StrId");
 
@@ -1756,6 +1763,7 @@ static const wchar_t* const k_str_it[] = {
     L"Scorciatoie", L"SCORCIATOIE DI GIOCO", L"Scorciatoie che funzionano durante il gioco, da tastiera e controller.", L"Tastiera", L"Controller", L"Cosa fa", L"Apre il menu opzioni del gioco (schermo, audio, SRT, esci).", L"Apre il menu oggetti per mettere armi e oggetti nell'inventario. Attivalo in %s.", L"Apre la finestra delle mappe di prova per andare in una stanza. Attivala in %s.", L"Mostra o nasconde il pannello SRT (salute, inventario e nemici).", L"Attiva o disattiva subito le texture della mod.", L"Scatta uno screenshot; finisce nella cartella screenshots, accanto al gioco.", L"Torna alla schermata del titolo (chiede conferma; solo durante il gioco).", L"Con il controller: tieni prima premuti i quattro tasti dorsali, poi premi il tasto indicato.",
     L"30 FPS è l'originale: la stessa esperienza di PlayStation 3, dove il gioco gira a 30 FPS in 720p.", L"60 FPS attiva automaticamente animazioni e transizioni fluide. La generazione dei fotogrammi FSR 3.1 permette fino a 120 FPS in uscita.", L"Con la generazione dei fotogrammi (FSR 3.1), se il PC mantiene i 60 FPS, il gioco può arrivare fino a 120 FPS.",
     L"VSync", L"Disattivato", L"Attivato", L"Con il VSync l'immagine non si strappa; se il PC non mantiene i 60 FPS, alcuni fotogrammi attendono il successivo aggiornamento dello schermo. Non funziona insieme alla generazione di fotogrammi.",
+    L"Uccisione con un colpo", L"Sconfigge i nemici con un solo colpo di qualsiasi arma o coltello. Attivabile e disattivabile durante la partita.",
 };
 static_assert(sizeof k_str_it / sizeof k_str_it[0] == S_COUNT, "k_str_it: one text per StrId");
 
@@ -2026,6 +2034,7 @@ static const wchar_t* const k_str_pl[] = {
     L"Skróty", L"SKRÓTY W GRZE", L"Skróty działające podczas gry, na klawiaturze i kontrolerze.", L"Klawiatura", L"Kontroler", L"Działanie", L"Otwiera menu opcji gry (obraz, dźwięk, SRT, wyjście).", L"Otwiera menu przedmiotów, by dodać broń i przedmioty do ekwipunku. Włącz w: %s.", L"Otwiera okno map testowych, by przejść do pokoju. Włącz w: %s.", L"Pokazuje lub ukrywa panel SRT (zdrowie, ekwipunek i wrogowie).", L"Od razu włącza lub wyłącza tekstury moda.", L"Robi zrzut ekranu; trafia do folderu screenshots obok gry.", L"Wraca do ekranu tytułowego (z potwierdzeniem; tylko w trakcie gry).", L"Na kontrolerze: najpierw przytrzymaj cztery przyciski ramion, potem naciśnij wskazany przycisk.",
     L"30 FPS to oryginał: to samo doświadczenie co na PlayStation 3, gdzie gra działa w 30 FPS i 720p.", L"60 FPS automatycznie w\u0142\u0105cza p\u0142ynne animacje i przej\u015bcia. Generowanie klatek FSR 3.1 umo\u017cliwia wy\u015bwietlanie do 120 FPS.", L"Z generowaniem klatek (FSR 3.1), jeśli PC utrzyma 60 FPS, gra może osiągnąć do 120 FPS.",
     L"VSync", L"Wyłączona", L"Włączona", L"Z VSync obraz się nie rwie; jeśli komputer nie utrzyma 60 FPS, niektóre klatki czekają na kolejne odświeżenie ekranu. Nie działa razem z generowaniem klatek.",
+    L"Zabójstwo jednym ciosem", L"Pokonuje wrogów jednym trafieniem dowolną bronią lub nożem. Można włączać i wyłączać w trakcie gry.",
 };
 static_assert(sizeof k_str_pl / sizeof k_str_pl[0] == S_COUNT, "k_str_pl: one text per StrId");
 
@@ -2296,6 +2305,7 @@ static const wchar_t* const k_str_tr[] = {
     L"Kısayollar", L"OYUN KISAYOLLARI", L"Oyun sırasında klavyede ve kontrolcüde çalışan kısayollar.", L"Klavye", L"Kontrolcü", L"Ne yapar", L"Oyunun seçenekler menüsünü açar (ekran, ses, SRT, çıkış).", L"Silah ve eşyaları envantere koymak için eşya menüsünü açar. %s bölümünden etkinleştirin.", L"Bir odaya gitmek için test haritaları penceresini açar. %s bölümünden etkinleştirin.", L"SRT panelini (sağlık, envanter ve düşmanlar) gösterir veya gizler.", L"Mod dokularını anında açar veya kapatır.", L"Ekran görüntüsü alır; oyunun yanındaki screenshots klasörüne kaydedilir.", L"Başlık ekranına döner (onay ister; yalnızca oyun sırasında).", L"Kontrolcüde: önce dört omuz tuşunu basılı tutun, sonra gösterilen tuşa basın.",
     L"30 FPS orijinaldir: oyunun 720p'de 30 FPS çalıştığı PlayStation 3 ile aynı deneyim.", L"60 FPS, ak\u0131c\u0131 animasyonlar\u0131 ve ge\u00e7i\u015fleri otomatik a\u00e7ar. FSR 3.1 kare olu\u015fturma ile \u00e7\u0131k\u0131\u015f 120 FPS\u2019ye ula\u015fabilir.", L"Kare oluşturma (FSR 3.1) ile PC 60 FPS'yi korursa oyun 120 FPS'ye kadar çıkabilir.",
     L"VSync", L"Kapalı", L"Açık", L"VSync ile görüntü yırtılmaz; bilgisayar 60 FPS'yi koruyamazsa bazı kareler ekranın bir sonraki yenilemesini bekler. Kare oluşturma ile birlikte kullanılamaz.",
+    L"Tek vuruşta öldürme", L"Herhangi bir silah veya bıçakla düşmanları tek vuruşta yener. Oyun sırasında açılıp kapatılabilir.",
 };
 static_assert(sizeof k_str_tr / sizeof k_str_tr[0] == S_COUNT, "k_str_tr: one text per StrId");
 
@@ -2566,6 +2576,7 @@ static const wchar_t* const k_str_ar[] = {
     L"الاختصارات", L"اختصارات اللعبة", L"اختصارات تعمل أثناء اللعب على لوحة المفاتيح ووحدة التحكم.", L"لوحة المفاتيح", L"وحدة التحكم", L"الوظيفة", L"يفتح قائمة خيارات اللعبة (الشاشة، الصوت، SRT، الخروج).", L"يفتح قائمة العناصر لوضع الأسلحة والعناصر في المخزون. فعّلها من %s.", L"يفتح نافذة الخرائط التجريبية للانتقال إلى غرفة. فعّلها من %s.", L"يُظهر لوحة SRT (الصحة والمخزون والأعداء) أو يخفيها.", L"يشغّل خامات التعديل أو يوقفها فورًا.", L"يلتقط صورة للشاشة وتُحفظ في مجلد screenshots بجوار اللعبة.", L"العودة إلى شاشة العنوان (يطلب التأكيد؛ أثناء اللعب فقط).", L"على وحدة التحكم: اضغط أولًا مع الاستمرار على أزرار الكتف الأربعة ثم اضغط الزر المذكور.",
     L"30 FPS هو الأصلي: نفس تجربة PlayStation 3 حيث تعمل اللعبة بدقة 720p و30 إطارًا في الثانية.", L"\u064a\u064f\u0641\u0639\u0651\u0644 \u0648\u0636\u0639 60 FPS \u0627\u0644\u0631\u0633\u0648\u0645 \u0627\u0644\u0645\u062a\u062d\u0631\u0643\u0629 \u0648\u0627\u0644\u0627\u0646\u062a\u0642\u0627\u0644\u0627\u062a \u0627\u0644\u0633\u0644\u0633\u0629 \u062a\u0644\u0642\u0627\u0626\u064a\u064b\u0627. \u0642\u062f \u064a\u0635\u0644 \u0627\u0644\u0639\u0631\u0636 \u0625\u0644\u0649 120 FPS \u0628\u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u062a\u0648\u0644\u064a\u062f \u0627\u0644\u0625\u0637\u0627\u0631\u0627\u062a FSR 3.1.", L"مع توليد الإطارات (FSR 3.1)، إذا حافظ الحاسوب على 60 FPS يمكن أن تصل اللعبة إلى 120 FPS.",
     L"المزامنة العمودية", L"متوقفة", L"مفعّلة", L"مع المزامنة العمودية لا تتمزق الصورة؛ وإذا لم يحافظ الحاسوب على 60 إطارًا في الثانية فإن بعض الإطارات تنتظر التحديث التالي للشاشة. لا تعمل مع توليد الإطارات.",
+    L"القتل بضربة واحدة", L"يقضي على الأعداء بضربة واحدة بأي سلاح أو سكين. يمكن تشغيله وإيقافه أثناء اللعب.",
 };
 static_assert(sizeof k_str_ar / sizeof k_str_ar[0] == S_COUNT, "k_str_ar: one text per StrId");
 
@@ -2836,6 +2847,7 @@ static const wchar_t* const k_str_zh[] = {
     L"快捷键", L"游戏快捷键", L"游戏中可在键盘和手柄上使用的快捷键。", L"键盘", L"手柄", L"功能", L"打开游戏选项菜单（画面、音频、SRT、退出）。", L"打开物品菜单，把武器和物品放入物品栏。需在“%s”中启用。", L"打开测试地图窗口以前往某个房间。需在“%s”中启用。", L"显示或隐藏 SRT 面板（体力、物品栏和敌人）。", L"立即开启或关闭模组纹理。", L"截图，保存在游戏旁边的 screenshots 文件夹中。", L"返回标题画面（需确认，仅限游戏进行中）。", L"手柄：先按住四个肩键，再按所示按键。",
     L"30 FPS 是原版：与 PlayStation 3 相同的体验，游戏以 720p、30 FPS 运行。", L"\u9009\u62e960 FPS\u4f1a\u81ea\u52a8\u542f\u7528\u6d41\u7545\u52a8\u753b\u548c\u8fc7\u6e21\u3002\u4f7f\u7528FSR 3.1\u5e27\u751f\u6210\uff0c\u8f93\u51fa\u6700\u9ad8\u53ef\u8fbe120 FPS\u3002", L"开启帧生成（FSR 3.1）后，如果电脑能稳定在 60 FPS，游戏最高可达 120 FPS。",
     L"垂直同步", L"关闭", L"开启", L"开启垂直同步后画面不会撕裂；如果电脑无法保持 60 FPS，部分帧会等待屏幕的下一次刷新。不能与帧生成同时使用。",
+    L"一击必杀", L"使用任何武器或匕首一击击败敌人。可在游戏过程中随时开关。",
 };
 static_assert(sizeof k_str_zh / sizeof k_str_zh[0] == S_COUNT, "k_str_zh: one text per StrId");
 
@@ -3106,6 +3118,7 @@ static const wchar_t* const k_str_ko[] = {
     L"단축키", L"게임 단축키", L"플레이 중 키보드와 컨트롤러에서 쓸 수 있는 단축키입니다.", L"키보드", L"컨트롤러", L"기능", L"게임 옵션 메뉴를 엽니다(화면, 오디오, SRT, 종료).", L"아이템 메뉴를 열어 무기와 아이템을 인벤토리에 넣습니다. %s에서 켜세요.", L"테스트 맵 창을 열어 방으로 이동합니다. %s에서 켜세요.", L"SRT 패널(체력, 인벤토리, 적)을 표시하거나 숨깁니다.", L"모드 텍스처를 즉시 켜거나 끕니다.", L"스크린샷을 찍습니다. 게임 옆 screenshots 폴더에 저장됩니다.", L"타이틀 화면으로 돌아갑니다(확인 후, 플레이 중에만).", L"컨트롤러: 먼저 숄더 버튼 네 개를 누른 채로 표시된 버튼을 누르세요.",
     L"30 FPS는 원본입니다. 게임이 720p, 30 FPS로 실행되는 PlayStation 3과 같은 경험입니다.", L"60 FPS\ub97c \uc120\ud0dd\ud558\uba74 \ubd80\ub4dc\ub7ec\uc6b4 \uc560\ub2c8\uba54\uc774\uc158\uacfc \uc804\ud658\uc774 \uc790\ub3d9\uc73c\ub85c \uc801\uc6a9\ub429\ub2c8\ub2e4. FSR 3.1 \ud504\ub808\uc784 \uc0dd\uc131\uc73c\ub85c \ucd5c\ub300 120 FPS \ucd9c\ub825\uc774 \uac00\ub2a5\ud569\ub2c8\ub2e4.", L"프레임 생성(FSR 3.1)을 켜면 PC가 60 FPS를 유지할 경우 게임이 최대 120 FPS까지 나올 수 있습니다.",
     L"수직 동기화", L"끔", L"켬", L"수직 동기화를 켜면 화면이 찢어지지 않습니다. PC가 60 FPS를 유지하지 못하면 일부 프레임은 다음 화면 갱신을 기다립니다. 프레임 생성과 함께 사용할 수 없습니다.",
+    L"한 방에 처치", L"모든 무기나 나이프로 적을 한 방에 처치합니다. 게임 중 언제든 켜고 끌 수 있습니다.",
 };
 static_assert(sizeof k_str_ko / sizeof k_str_ko[0] == S_COUNT, "k_str_ko: one text per StrId");
 
@@ -3376,6 +3389,7 @@ static const wchar_t* const k_str_ru[] = {
     L"Горячие клавиши", L"ГОРЯЧИЕ КЛАВИШИ ИГРЫ", L"Сочетания, которые работают во время игры на клавиатуре и геймпаде.", L"Клавиатура", L"Геймпад", L"Действие", L"Открывает меню настроек игры (экран, звук, SRT, выход).", L"Открывает меню предметов, чтобы положить оружие и предметы в инвентарь. Включите в разделе «%s».", L"Открывает окно тестовых карт, чтобы перейти в комнату. Включите в разделе «%s».", L"Показывает или скрывает панель SRT (здоровье, инвентарь и враги).", L"Сразу включает или выключает текстуры мода.", L"Делает скриншот; он сохраняется в папку screenshots рядом с игрой.", L"Возврат на титульный экран (с подтверждением; только во время игры).", L"На геймпаде: сначала зажмите четыре плечевые кнопки, затем нажмите указанную кнопку.",
     L"30 FPS — оригинал: тот же опыт, что на PlayStation 3, где игра идёт в 720p при 30 FPS.", L"60 FPS \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438 \u0432\u043a\u043b\u044e\u0447\u0430\u0435\u0442 \u043f\u043b\u0430\u0432\u043d\u044b\u0435 \u0430\u043d\u0438\u043c\u0430\u0446\u0438\u0438 \u0438 \u043f\u0435\u0440\u0435\u0445\u043e\u0434\u044b. \u0413\u0435\u043d\u0435\u0440\u0430\u0446\u0438\u044f \u043a\u0430\u0434\u0440\u043e\u0432 FSR 3.1 \u043f\u043e\u0437\u0432\u043e\u043b\u044f\u0435\u0442 \u0432\u044b\u0432\u043e\u0434\u0438\u0442\u044c \u0434\u043e 120 FPS.", L"С генерацией кадров (FSR 3.1), если ПК держит 60 FPS, игра может достигать 120 FPS.",
     L"VSync", L"Выкл.", L"Вкл.", L"С VSync изображение не разрывается; если ПК не держит 60 FPS, некоторые кадры ждут следующего обновления экрана. Не работает вместе с генерацией кадров.",
+    L"Убийство с одного удара", L"Уничтожает врагов с одного попадания любым оружием или ножом. Можно включать и выключать во время игры.",
 };
 static_assert(sizeof k_str_ru / sizeof k_str_ru[0] == S_COUNT, "k_str_ru: one text per StrId");
 

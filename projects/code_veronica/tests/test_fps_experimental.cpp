@@ -37,6 +37,7 @@ extern "C" void cv_fps_register_game_update();
 extern "C" {PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*)=nullptr;}
 extern "C" int rsx_d3d12_pose_replay_enabled(){return 0;}
 void cv_scan_snapshot(int){}void cv_scan_report(std::FILE*){}void cv_scan_followup(std::FILE*,const char*){}void cv_scan_free(){}
+extern "C" void perf_overlay_toast(const wchar_t*,int){}
 extern "C" void rsx_d3d12_camera_cut(){std::abort();}
 extern "C" void rsx_d3d12_camera_hold(int on){assert(!on);}
 void CV_SCENE_FN_000155D0(ppu_context*){std::abort();}

@@ -83,7 +83,22 @@ int main() {
         vm_write32(CV_SRT_RDX,0);const auto loading=memory;cv_cheats_frame();assert(memory==loading);
         vm_write32(CV_SRT_HEALTH,1);assert(vm_read32(CV_SRT_HEALTH)==1); // outside gameplay
     }
-    for(int lang=0;lang<LANG_COUNT;++lang)
+    for(int lang=0;lang<LANG_COUNT;++lang) {
         for(int id=S_CHEAT_HP_T;id<=S_CHEAT_AMMO_D;++id)assert(k_str[lang][id]&&*k_str[lang][id]);
-    std::printf("[CHEAT-TEST %s] PASS: off/live toggles, HP/death, enemies untouched, all weapons/reserves/percent/4 characters, byte-half-word stores, items/moves/loading/native flags, 13 locales\n",CV_TITLE_ID);
+        assert(k_str[lang][S_CHEAT_OHK_T]&&*k_str[lang][S_CHEAT_OHK_T]);
+        assert(k_str[lang][S_CHEAT_OHK_D]&&*k_str[lang][S_CHEAT_OHK_D]);
+    }
+    begin(0);
+    const uint32_t e0=CV_SRT_ENEMIES, e63=CV_SRT_ENEMIES+63u*0x578u, e64=CV_SRT_ENEMIES+64u*0x578u;
+    vm_write32(e0+0x574,12);assert(vm_read32(e0+0x574)==12); // off
+    cv_cheats_set(false,false,true);
+    vm_write32(e0+0x574,0);assert(vm_read32(e0+0x574)==0); // per-frame clear untouched
+    vm_write32(e0+0x41c,500);assert(vm_read32(e0+0x41c)==500); // spawn HP untouched
+    vm_write32(e0+0x574,12);assert(vm_read32(e0+0x574)==10000); // slot 0 boosted
+    vm_write32(e63+0x574,7);assert(vm_read32(e63+0x574)==10000); // slot 63 boosted
+    vm_write32(e64+0x574,7);assert(vm_read32(e64+0x574)==7); // past array untouched
+    vm_write32(CV_SRT_RDX,0);
+    vm_write32(e0+0x574,15);assert(vm_read32(e0+0x574)==15); // outside gameplay untouched
+    cv_cheats_set(false,false,false);
+    std::printf("[CHEAT-TEST %s] PASS: off/live toggles, HP/death, one-hit kill, all weapons/reserves/percent/4 characters, byte-half-word stores, items/moves/loading/native flags, 13 locales\n",CV_TITLE_ID);
 }

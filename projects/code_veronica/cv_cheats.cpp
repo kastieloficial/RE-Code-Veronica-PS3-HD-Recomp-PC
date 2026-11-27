@@ -11,10 +11,10 @@ void vm_write16(uint64_t,uint16_t);
 void vm_write32(uint64_t,uint32_t);
 }
 std::atomic<unsigned> cv_cheats_flags{0};
-extern "C" void cv_cheats_set(bool health,bool ammo) {
-    const unsigned next=(health?CV_CHEAT_HEALTH:0)|(ammo?CV_CHEAT_AMMO:0);
+extern "C" void cv_cheats_set(bool health,bool ammo,bool one_hit) {
+    const unsigned next=(health?CV_CHEAT_HEALTH:0)|(ammo?CV_CHEAT_AMMO:0)|(one_hit?CV_CHEAT_ONE_HIT:0);
     const unsigned before=cv_cheats_flags.exchange(next,std::memory_order_relaxed);
-    if(before!=next)std::fprintf(stderr,"[CHEATS %s] health=%u ammo=%u\n",CV_TITLE_ID,unsigned(health),unsigned(ammo));
+    if(before!=next)std::fprintf(stderr,"[CHEATS %s] health=%u ammo=%u one_hit=%u\n",CV_TITLE_ID,unsigned(health),unsigned(ammo),unsigned(one_hit));
 }
 namespace {
 int character() {
@@ -46,7 +46,8 @@ uint32_t cv_cheats_filter(uint64_t a64,uint32_t value,unsigned width,unsigned fl
     const uint32_t a=uint32_t(a64);
     const bool health=(flags&CV_CHEAT_HEALTH)&&a>=CV_SRT_HEALTH&&a64+width<=uint64_t(CV_SRT_HEALTH)+4;
     const bool inventory=(flags&CV_CHEAT_AMMO)&&a>=CV_SRT_INVENTORY+4&&a<CV_SRT_INVENTORY+4*0x40;
-    if(!health&&!inventory)return value;
+    const bool one_hit=(flags&CV_CHEAT_ONE_HIT)&&a>=CV_SRT_ENEMIES&&a<CV_SRT_ENEMIES+64u*0x578u;
+    if(!health&&!inventory&&!one_hit)return value;
     const int c=character();if(c<0)return value;
     if(health) {
         const int32_t old=int32_t(vm_read32(CV_SRT_HEALTH));
@@ -55,7 +56,7 @@ uint32_t cv_cheats_filter(uint64_t a64,uint32_t value,unsigned width,unsigned fl
         // Protect the live player only. Do not resurrect a game-over state,
         // or affect an enemy that happens to use the same actor HP offset.
         if(old>0&&old<=10000&&next<old)return part(uint32_t(old),offset,width);
-    } else {
+    } else if(inventory) {
         const uint32_t first=CV_SRT_INVENTORY+uint32_t(c)*0x40+4;
         if(a<first||a64+width>uint64_t(first)+11*4)return value;
         const unsigned offset=(a-first)%4;if(offset+width>4)return value;
@@ -64,6 +65,16 @@ uint32_t cv_cheats_filter(uint64_t a64,uint32_t value,unsigned width,unsigned fl
         // ammo use. Preserve these operations and all non-ammunition consumables.
         if((old&0xffff0000u)==(next&0xffff0000u)&&ammunition((old>>16)&255)&&
            (next&0xffffu)<(old&0xffffu))return part(old,offset,width);
+    } else if(one_hit) {
+        const uint32_t slot_off=(a-CV_SRT_ENEMIES)%0x578u;
+        if(slot_off<0x574u||slot_off+width>0x578u)return value;
+        const unsigned offset=slot_off-0x574u;
+        const uint32_t base=a-offset,old=vm_read32(base);
+        const int32_t next=int32_t(merge(old,value,offset,width));
+        // Boost any positive hit damage written to the enemy's pending damage
+        // field (+0x574) so any weapon (including the knife) defeats enemies in
+        // one hit without affecting spawns or per-frame zero clears.
+        if(next>0&&next<10000)return part(10000u,offset,width);
     }
     return value;
 }

@@ -6117,7 +6117,12 @@ static int fp_build_pso(FpJob* j)
      * unconditional behaviour -- geometry that vanishes under culling is a
      * winding/front-face problem, not a missing draw. */
     { static int _co = -1; if (_co < 0) _co = getenv("CULL_OFF") ? 1 : 0;
-      pd.RasterizerState.CullMode = (!_co && (cull & 1u))
+      /* Translucent non-depth-writing effects with CULL_FRONT (e.g. Code
+       * Veronica's Albinoid water lightning ribbons, cull=0x133207) get culled
+       * under D3D12_CULL_MODE_FRONT; draw them double-sided while keeping all
+       * opaque and CULL_BACK geometry untouched. */
+      const int translucent_front_cull = ((cull & 3u) == 3u) && (blend & 1) && !(cull & 0x4000u);
+      pd.RasterizerState.CullMode = (!_co && !translucent_front_cull && (cull & 1u))
           ? ((cull & 2u) ? D3D12_CULL_MODE_FRONT : D3D12_CULL_MODE_BACK)
           : D3D12_CULL_MODE_NONE;
       /* CULL_FLIP=1: invert the front-face convention. Our VP path may hand

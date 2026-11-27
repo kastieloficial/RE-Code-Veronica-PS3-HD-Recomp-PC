@@ -13,13 +13,13 @@
 
 namespace cv_archives_ui {
 constexpr int W = 1400, H = 820;
-enum Page { PAGE_LOAD = 0, PAGE_SAVE = 1, PAGE_MAPS = 2, PAGE_COUNT = 3 };   // tab order: Load, Save, Maps
+enum Page { PAGE_LOAD = 0, PAGE_ORIGINAL = 1, PAGE_SAVE = 2, PAGE_MAPS = 3, PAGE_COUNT = 4 };   // tab order: Load, Original Saves, Save, Maps
 constexpr int ROWS_VISIBLE = 5;
 constexpr unsigned THUMB_W = 320, THUMB_H = 180;   // the saved pictures (ARGB)
 
 namespace layout {
 using Gdiplus::RectF;
-constexpr float TAB_W = (W - 48 - 92 - 20) / 3.0f;   // 413.3
+constexpr float TAB_W = (W - 48 - 92 - 30) / 4.0f;   // 307.5
 inline RectF tab(int i) { return RectF(70 + i * (TAB_W + 10), 80, TAB_W, 44); }
 inline const RectF HEADER_BAND(3, 3, W - 6, 65);
 inline const RectF TAB_PREV(24, 88, 30, 28), TAB_NEXT(W - 24 - 30, 88, 30, 28);   // the Q / E (L1 / R1) glyphs

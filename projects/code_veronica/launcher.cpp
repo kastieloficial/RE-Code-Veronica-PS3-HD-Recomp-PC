@@ -352,6 +352,7 @@ const PatchOpt k_patches[] = {
     { "cv_skip_logos", S_PATCH_LOGO_T, S_PATCH_LOGO_D, S_PATCH_LOGO_C },   /* boot_skip.cpp */
     { "cv_infinite_health", S_CHEAT_HP_T, S_CHEAT_HP_D, S_PATCH_LOGO_C },
     { "cv_infinite_ammo", S_CHEAT_AMMO_T, S_CHEAT_AMMO_D, S_PATCH_LOGO_C },
+    { "cv_one_hit_kill", S_CHEAT_OHK_T, S_CHEAT_OHK_D, S_PATCH_LOGO_C },
 };
 const int NPATCHES = sizeof k_patches / sizeof k_patches[0];
 enum Enhancement { E_SMOOTH, E_INPUT, E_NOTICES, E_DOF, E_AMMO, E_HIDE, E_SKIP_TRANSITIONS, E_COUNT };
@@ -364,7 +365,7 @@ const wchar_t* const enhancement_keys[E_COUNT]={L"smooth_animation",L"input_comf
 
 /* Infinite health and ammunition: shown on the Inventario page, beside the
  * item menu, rather than with the game patches. */
-bool is_cheat(int i) { return !strncmp(k_patches[i].id, "cv_infinite_", 12); }
+bool is_cheat(int i) { return !strncmp(k_patches[i].id, "cv_infinite_", 12) || !strcmp(k_patches[i].id, "cv_one_hit_kill"); }
 
 /* The SHADERS switches on the Desempenho page (read by the game at start):
  * the pipeline library (PSO_LIBRARY), loading the saved shaders while the
@@ -1112,7 +1113,7 @@ void section(Graphics& gr, const std::wstring& t, float x, float y, float w, con
 
 
 /* Release shown under the sidebar, beside the credit. Bump it per release. */
-const wchar_t* const k_launcher_version = L"v2.1.0";
+const wchar_t* const k_launcher_version = L"v2.2.0";
 extern "C" const wchar_t* cv_launcher_version(void) { return k_launcher_version; }   /* cv_discord.cpp */
 
 /* ---------------------------------------------------------------- updates
@@ -3122,7 +3123,7 @@ void apply_live(bool restore_menu = true)
     cv_trophy_popup::corner(g.s.trophy_corner);
     cv_test_tools_enable(g.s.test_tools);
     cv_item_menu_enable(g.s.items_menu);
-    cv_cheats_set(g.s.patch[2],g.s.patch[3]);
+    cv_cheats_set(g.s.patch[2],g.s.patch[3],g.s.patch[4]);
     cv_enhanced_set(8,g.s.music_volume);cv_enhanced_set(9,g.s.sfx_volume);cv_enhanced_set(10,g.s.battle_unlocked);cv_enhanced_set(11,g.s.film_filter);cv_enhanced_set(12,g.s.dynamic_shadows);cv_enhanced_set(13,g.s.combat_hud);cv_enhanced_set(14,g.s.manual_reload);cv_manual_reload_bindings_set(g.s.reload_key,g.s.reload_button);cv_quick::configure(g.s.quick);
     cv_focus_pause_enable(g.s.focus_pause);
     cv_focus_pause_label(T(S_PAUSED));
@@ -4190,7 +4191,7 @@ void start_game()
     if (s.door_skip_mode >= 2) pl += (pl.empty() ? "" : ",") + std::string("cv_door_fast");
     if (s.door_skip_mode >= 3) pl += (pl.empty() ? "" : ",") + std::string("cv_door_supreme");
     set_env("PS3_PATCHES", pl);
-    cv_cheats_set(s.patch[2],s.patch[3]);
+    cv_cheats_set(s.patch[2],s.patch[3],s.patch[4]);
     cv_item_menu_enable(s.items_menu);
     cv_focus_pause_enable(s.focus_pause);   /* also when nothing changed before Jogar */
     cv_focus_pause_label(T(S_PAUSED));

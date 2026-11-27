@@ -39,6 +39,7 @@ extern "C" PPU_THREAD_LOCAL ppu_context* g_active_ctx;
 extern "C" PPU_THREAD_LOCAL void (*g_trampoline_fn)(void*);
 extern "C" void* rsx_d3d12_window(void);
 extern "C" void perf_overlay_toast(const wchar_t*,int);   // the notice in the game's corner
+extern "C" void cv_event_log_note(const char*);           // appends a note to event-log.txt when CV_EVENT_LOG=1
 // JP/US: the same functions as EU, matched by their normalized lifted bodies;
 // they differ only in global addresses, with the same state and save-object
 // offsets (CONTINUAR-MAPAS-E-SAVES.md).
@@ -569,12 +570,18 @@ void elevator_skip(ppu_context* ctx) {
     const uint32_t floor=vm_read32(state_base+0x289DC);
     if(floor>2) {std::printf("[EVENT-SKIP] elevator: floor value %u unknown, ride left as is\n",floor);std::fflush(stdout);return;}
     const Arrival& a=(chris?chris_floors:claire_floors)[floor];
+    uint8_t entry=a.entry;
+    // Chris 1F (rm_713 v2): rm_7010 runs `04 01 01 5d 00 01` (RE:CVX bytecode: 00 01 = bit clear, 00 00 = bit set)
+    // on event flag 0x15D (state+0xC8 bit 0x04, set by Wesker scene rm_70B/rm_710, cleared by rm_7191):
+    // 0 -> rm_7190 (entry 0, zombies), 1 -> rm_7191 (entry 1, Seeker/Hunter).
+    if(chris&&floor==1)entry=(vm_read32(state_base+0xC8)&0x00000004u)?1:0;
     // At the end of a natural ride the script clears bit 4 of +70 and +74 in the same frame as its door request.
     vm_write32(state_base+0x70,vm_read32(state_base+0x70)&~4u);
     vm_write32(state_base+0x74,vm_read32(state_base+0x74)&~4u);
-    vm_write8(state_base+0x97,a.entry);
+    vm_write8(state_base+0x97,entry);
     call_door(ctx,2,area,a.room,a.variant,0x29);
     std::printf("[EVENT-SKIP] elevator: floor %u chosen, ride skipped\n",floor);std::fflush(stdout);
+    char note[96];std::snprintf(note,sizeof note,"[EVENT-SKIP] elevator (%s): floor %u -> rm_%X%02X v%u entry=%u",chris?"Chris":"Claire",floor,area,a.room,a.variant,unsigned(entry));cv_event_log_note(note);
 }
 // CV_SKIP_EVENTS=1: the submarine between area 1 and area 4. Inside it (rm_10E at Rockfort, rm_405 at the far dock) its
 // panel asks for the other side's inside in variant 1 (door request kind 0: 04 05 01 FF or 01 0E 01 FF), whose room script
@@ -609,6 +616,7 @@ void lift_skip(ppu_context* ctx) {
     if(chris) {if(up)call_door(ctx,0,7,0x0D,0,0x21);else call_door(ctx,0,8,0x04,1,0x21);}
     else {if(up)call_door(ctx,0x60,3,0x09,1,0x21);else call_door(ctx,0x60,4,0x04,1,0x21);}
     std::printf("[EVENT-SKIP] airport lift (%s): ride %s skipped\n",chris?"Chris":"Claire",up?"up":"down");std::fflush(stdout);
+    char note[96];std::snprintf(note,sizeof note,"[EVENT-SKIP] airport lift (%s): ride %s skipped",chris?"Chris":"Claire",up?"up":"down");cv_event_log_note(note);
 }
 // CV_SKIP_EVENTS=1: the area 7 cave lift (rm_717, Chris; mapped with CV_EVENT_LOG, US, 2026-11-26). Two scenes:
 //  - calling it at the bottom ("Call the elevator? Yes"): +74 becomes 0x3044 and ~8 s later the script sends the character
@@ -631,6 +639,7 @@ void cave_lift_skip(ppu_context* ctx) {
         vm_write32(state_base+0x74,f74&~4u);
         call_door(ctx,8,7,0x17,2,0x35);
         std::printf("[EVENT-SKIP] cave lift: call skipped\n");std::fflush(stdout);
+        cv_event_log_note("[EVENT-SKIP] cave lift: call skipped");
     } else {
         const bool up=variant==2;const uint32_t f274=vm_read32(state_base+0x274);
         vm_write32(state_base+0x274,up?f274|0x10u:f274&~0x10u);
@@ -638,6 +647,7 @@ void cave_lift_skip(ppu_context* ctx) {
         if(up)call_door(ctx,0x0A,7,0x0C,4,0x35);
         else call_door(ctx,0x0A,7,0x17,1,0x35);
         std::printf("[EVENT-SKIP] cave lift: ride %s skipped\n",up?"up":"down");std::fflush(stdout);
+        cv_event_log_note(up?"[EVENT-SKIP] cave lift: ride up skipped":"[EVENT-SKIP] cave lift: ride down skipped");
     }
 }
 // CV_SKIP_EVENTS=1: the area 9 lift (rm_90A, Chris; mapped with CV_EVENT_LOG, US, 2026-11-26). Its car is rm_90A variant 2,
@@ -651,7 +661,7 @@ void area9_lift_skip(ppu_context* ctx,uint32_t previous_room) {
     if(vm_read8(state_base+0x95)!=9||vm_read8(state_base+0x96)!=0x0A||vm_read8(state_base+0x98)!=2)return;
     const uint32_t f74=vm_read32(state_base+0x74);
     if(vm_read32(state_base+0x2A6A0)==0||(f74&7)!=4)return;
-    const bool from_90d=(previous_room>>8)==0x090D,from_top=previous_room==0x090A03;
+    const bool from_90d=(previous_room>>8)==0x090D,from_top=(previous_room>>8)==0x090A&&(previous_room&0xFF)!=2;
     if(!from_90d&&!from_top)return;   // came in some other way: the ride plays as in the original
     const uint32_t d0=vm_read32(state_base+0xD0);
     vm_write32(state_base+0xD0,from_90d?d0&~0x2000u:d0|0x2000u);
@@ -661,6 +671,7 @@ void area9_lift_skip(ppu_context* ctx,uint32_t previous_room) {
     if(from_90d)call_door(ctx,8,9,0x0A,3,0x43);
     else call_door(ctx,8,9,0x0D,2,0x43);
     std::printf("[EVENT-SKIP] area 9 lift: ride skipped\n");std::fflush(stdout);
+    cv_event_log_note(from_90d?"[EVENT-SKIP] area 9 lift: ride to rm_90A v3 skipped":"[EVENT-SKIP] area 9 lift: ride to rm_90D v2 skipped");
 }
 // CV_SKIP_EVENTS=1: the second area 9 lift (rm_910, Chris; mapped with CV_EVENT_LOG, US, 2026-11-26). Its car is rm_910
 // variant 3 going up and variant 2 going down; the car's script plays the ride (+74 bit 4, ~6 s) and ends with kind 8,
@@ -679,6 +690,7 @@ void area9_second_lift_skip(ppu_context* ctx) {
     if(up)call_door(ctx,8,9,0x11,0,0x4C);
     else call_door(ctx,8,9,0x10,4,0x4C);
     std::printf("[EVENT-SKIP] second area 9 lift: ride %s skipped\n",up?"up":"down");std::fflush(stdout);
+    cv_event_log_note(up?"[EVENT-SKIP] second area 9 lift: ride up skipped":"[EVENT-SKIP] second area 9 lift: ride down skipped");
 }
 // CV_SKIP_EVENTS=1: Claire's story ride in the floor elevator (rm_316, after the scene with Steve in rm_315; mapped with
 // CV_EVENT_LOG, US, 2026-11-26). The scene's door puts her in the car with +74 bit 0x80 (a scene's door, not a walk-in);
@@ -711,6 +723,7 @@ void story_ride_skip(ppu_context* ctx) {
     call_door(ctx,2,3,0x0C,1,0x29);
     from_scene=false;
     std::printf("[EVENT-SKIP] Claire's story ride up skipped\n");std::fflush(stdout);
+    cv_event_log_note("[EVENT-SKIP] Claire's story ride up skipped");
 }
 // CV_SKIP_EVENTS=1: the story voyage with Steve (mapped with CV_EVENT_LOG, US, 2026-11-26). After Steve's wheel scene at
 // the Rockfort dock, a scene door (kind 0x41) takes Claire and Steve into the submarine (rm_10E variant 0); its script plays
@@ -729,9 +742,47 @@ void steve_voyage_skip(ppu_context* ctx) {
     vm_write8(state_base+0x97,0);
     call_door(ctx,0x40,4,0x03,1,0x10);
     std::printf("[EVENT-SKIP] Steve's submarine voyage skipped\n");std::fflush(stdout);
+    cv_event_log_note("[EVENT-SKIP] Steve's submarine voyage skipped");
 }
-// The self-destruct airport lift (rm_404 → rm_317 → rm_309, Alfred's scene) is left as the original: the user had it
-// removed, 2026-11-26 (see git history, commit 5ab21d4, for the script-wait cut).
+// CV_SKIP_EVENTS=1: Claire's self-destruct airport lift (rm_404 -> rm_317 -> rm_309; keeps only Alfred's skippable scene).
+//  1) Warehouse countdown intro (rm_404 v1/v2): sets state+A4 bit 0x08000000 on its first frame -> send kind 0x62 to rm_317 v0 at once.
+//  2) Pre-Alfred lift ride in rm_317 v0: fast-forwarded inside a single frame in cv_fps_experimental.cpp (all regions, no thread-address hacks).
+//  3) Post-Alfred lift ride in rm_317 v0: once Alfred's skippable scene (+78 bit 0x10000000) finishes or is skipped (+70 has 0x01004000,
+//     no 0x0200, and +78 bit 0x10000000 is gone), send its end request at once (kind 0x60 -> rm_309 v1, anim 0x21, entry 1).
+void countdown_lift_skip(ppu_context* ctx) {
+    static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
+    static bool a4_was=true,alfred_seen=false,pending_c0=false;
+    if(!on||!mapped(state_base,0x2A6AC)||!live_character()){a4_was=true;alfred_seen=false;return;}
+    const uint32_t area=vm_read8(state_base+0x95),room=vm_read8(state_base+0x96),variant=vm_read8(state_base+0x98);
+    const uint32_t f74=vm_read32(state_base+0x74),f70=vm_read32(state_base+0x70),f78=vm_read32(state_base+0x78);
+    const bool a4=(vm_read32(state_base+0xA4)&0x08000000u)!=0,started=a4&&!a4_was;
+    a4_was=a4;
+    // Phase 1: cut the ~3 s unskippable warehouse countdown scene straight into rm_317 v0.
+    if(area==4&&room==4&&(variant==1||variant==2)&&started&&(f74&7)==4) {
+        vm_write32(state_base+0x70,f70&~4u);vm_write32(state_base+0x74,f74&~4u);vm_write8(state_base+0x97,0);
+        call_door(ctx,0x62,3,0x17,0,0x21);
+        std::printf("[EVENT-SKIP] countdown lift: warehouse scene skipped\n");std::fflush(stdout);
+        cv_event_log_note("[EVENT-SKIP] countdown lift: warehouse scene skipped");
+        return;
+    }
+    // Ensure the story flag (+C0 bit 0x08000000) is present after arriving at rm_309 v1.
+    if(pending_c0&&area==3&&room==9&&(f74&7)==0) {
+        vm_write32(state_base+0xC0,vm_read32(state_base+0xC0)|0x08000000u);
+        pending_c0=false;
+    }
+    if(area!=3||room!=0x17||variant!=0){alfred_seen=false;return;}
+    if(vm_read32(state_base+0x2A6A4)!=0x62||vm_read32(state_base+0x2A6A0)==0)return;
+    if(f78&0x10000000u){alfred_seen=true;return;}
+    if(!alfred_seen)return;
+    if((f74&7)!=4&&(f74&7)!=6)return;
+    if((f70&0x01004000u)!=0x01004000u||(f70&0x0200u))return;
+    // Phase 3: Alfred's scene ended or was skipped -> cut the final lift ride straight to rm_309 v1.
+    alfred_seen=false;pending_c0=true;
+    vm_write32(state_base+0x70,f70&~4u);vm_write32(state_base+0x74,f74&~0x10000006u);vm_write8(state_base+0x97,1);
+    call_door(ctx,0x60,3,0x09,1,0x21);
+    std::printf("[EVENT-SKIP] countdown lift: post-Alfred ride skipped\n");std::fflush(stdout);
+    cv_event_log_note("[EVENT-SKIP] countdown lift: post-Alfred ride skipped");
+}
 void write_guest_float(uint32_t address,float value) {uint32_t bits;std::memcpy(&bits,&value,4);vm_write32(address,bits);}
 void submarine_skip(ppu_context* ctx) {
     static const bool on=cv_options::enabled("CV_SKIP_EVENTS");
@@ -750,14 +801,15 @@ void submarine_skip(ppu_context* ctx) {
         vm_write32(state_base+0x70,vm_read32(state_base+0x70)&~4u);
         vm_write32(state_base+0x74,f74&~4u);
         vm_write8(state_base+0x97,0);
-        call_door(ctx,0,area,room,0,0x10);
+        call_door(ctx,0,area,room,0,0xFF);
         place=true;
         std::printf("[EVENT-SKIP] submarine: voyage skipped, same inside without it\n");std::fflush(stdout);
+        cv_event_log_note(far_side?"[EVENT-SKIP] submarine: voyage to far dock skipped":"[EVENT-SKIP] submarine: voyage to Rockfort skipped");
         return;
     }
     if(place&&step==3&&(f74&7)==0) {   // arrived in variant 0 and in control: to the panel, as after the voyage
         const uint32_t actor=vm_read32(CV_SCENE_ACTOR);
-        if(actor) {write_guest_float(actor+0x10,15.0f);write_guest_float(actor+0x14,0.0f);write_guest_float(actor+0x18,36.5f);}
+        if(actor&&mapped(actor,0x1C)) {write_guest_float(actor+0x10,15.0f);write_guest_float(actor+0x14,0.0f);write_guest_float(actor+0x18,36.5f);}
         place=false;
     }
     // The far side's ladder in variant 0 while the submarine is there: out to the far dock, as the voyage room's ladder.
@@ -817,6 +869,7 @@ void TEST_FRAME(ppu_context* ctx) {
     area9_second_lift_skip(ctx);
     story_ride_skip(ctx);
     steve_voyage_skip(ctx);
+    countdown_lift_skip(ctx);
     if(enabled) {
         bool valid=active_game()&&!tool_load;ready=valid;
         room_known=live_character();

@@ -657,7 +657,7 @@ static void archives_previews(const std::string& dir) {
     {auto v=archives_view(0,PAD_INPUT_KEYBOARD,au::PAGE_LOAD,1);v.mouse.move(au::hit_id(au::HIT_TAB,2));export_archives_png(file("hover-aba"),v,1400,820,false);}
     {auto v=archives_view(0,PAD_INPUT_KEYBOARD,au::PAGE_LOAD,1);v.status=tx(0,cv_archives_i18n::UNAVAILABLE);v.tone=au::Tone::BAD;v.primary_enabled=false;v.mouse.move(au::hit_id(au::HIT_BACK));export_archives_png(file("hover-voltar"),v,1400,820,false);}
     for(int l:{9,10,11}){char tag[32];std::snprintf(tag,sizeof tag,"maps-%02d",l);auto v=archives_view(l,PAD_INPUT_KEYBOARD,au::PAGE_MAPS,3);v.status=tx(l,cv_archives_i18n::MAP_TITLE_NOTE);export_archives_png(file(tag),v,1400,820,false);}
-    for(int l=0;l<13;l++){char tag[32];std::snprintf(tag,sizeof tag,"lang-%02d",l);auto v=archives_view(l,PAD_KIND_XINPUT,l%3,2);if(v.page==au::PAGE_MAPS)v.status=tx(l,cv_archives_i18n::MAP_TITLE_NOTE);export_archives_png(file(tag),v,1400,820,false);}
+    for(int l=0;l<13;l++){char tag[32];std::snprintf(tag,sizeof tag,"lang-%02d",l);auto v=archives_view(l,PAD_KIND_XINPUT,l%au::PAGE_COUNT,2);if(v.page==au::PAGE_MAPS)v.status=tx(l,cv_archives_i18n::MAP_TITLE_NOTE);export_archives_png(file(tag),v,1400,820,false);}
 }
 #endif
 int main(int argc,char** argv) {

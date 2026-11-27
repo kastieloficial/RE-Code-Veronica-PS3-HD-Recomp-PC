@@ -416,7 +416,7 @@ std::vector<ui::FooterGroup> footer_groups(const View& v,int kind) {
     auto kb=[](int vk){return Glyph{GlyphKind::KEY,vk,L""};};
     auto pad=[](int pb){return Glyph{GlyphKind::PAD,pb,L""};};
     std::vector<ui::FooterGroup> out={
-        {{Glyph{GlyphKind::ARROWS,15,L""}},{Glyph{GlyphKind::DPAD,0,L""}},pt::tr(l,pt::NAVIGATE)},
+        {{Glyph{GlyphKind::ARROWS,15,L""},Glyph{GlyphKind::SLASH,0,L""},kb('W'),kb('A'),kb('S'),kb('D')},{Glyph{GlyphKind::DPAD,0,L""}},pt::tr(l,pt::NAVIGATE)},
         {{kb('Q'),kb('E')},{pad(PB_L1),pad(PB_R1)},pt::tr(l,pt::CATEGORY)},
         {{kb(VK_RETURN)},{pad(PB_SOUTH)},pt::tr(l,pt::PUT)},
         {{kb('R')},{pad(PB_WEST)},pt::tr(l,pt::REMOVE)},
@@ -974,7 +974,7 @@ LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM wp,LPARAM lp) {
     case WM_KEYDOWN:
         note_input(PAD_INPUT_KEYBOARD);
         switch(wp) {
-        case VK_UP:act(UP);break;case VK_DOWN:act(DOWN);break;case VK_LEFT:act(LEFT);break;case VK_RIGHT:act(RIGHT);break;
+        case VK_UP:case 'W':act(UP);break;case VK_DOWN:case 'S':act(DOWN);break;case VK_LEFT:case 'A':act(LEFT);break;case VK_RIGHT:case 'D':act(RIGHT);break;
         case 'Q':case VK_PRIOR:act(PREV);break;case 'E':case VK_NEXT:case VK_TAB:act(NEXT);break;
         case VK_RETURN:case VK_SPACE:act(CONFIRM);break;case VK_ESCAPE:case VK_BACK:act(BACK);break;
         case 'R':case VK_DELETE:act(REMOVE);break;
