@@ -11,12 +11,12 @@
 
 namespace cv_title_return_ui {
 constexpr int W = 900, H = 440;
-enum Choice { CHOICE_YES = 0, CHOICE_NO = 1 };   // Yes on the left, No on the right; No is the one chosen when the box opens
+enum Choice { CHOICE_YES = 0, CHOICE_NO = 1 };   // No on the left, Yes on the right; No is the one chosen when the box opens
 
 namespace layout {
 using Gdiplus::RectF;
 inline const RectF BAND(3, 3, W - 6, 56), HEADER(0, 0, W, 62), QUESTION(40, 96, W - 80, 48), WARNING(130, 176, W - 260, 62),
-    YES(130, 268, 310, 62), NO(460, 268, 310, 62), FOOTER(24, H - 62, W - 48, 42);
+    NO(130, 268, 310, 62), YES(460, 268, 310, 62), FOOTER(24, H - 62, W - 48, 42);
 }
 
 enum HitKind { HIT_YES = 0, HIT_NO = 1, HIT_BACK = 2 };   // also the MouseTrack ids

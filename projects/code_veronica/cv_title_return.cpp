@@ -157,8 +157,8 @@ LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM wp,LPARAM lp) {
     case WM_KEYDOWN:
         note_input(PAD_INPUT_KEYBOARD);
         switch(wp) {
-        case VK_LEFT:case 'A':select(ui::CHOICE_YES);break;
-        case VK_RIGHT:case 'D':select(ui::CHOICE_NO);break;
+        case VK_LEFT:case 'A':select(ui::CHOICE_NO);break;
+        case VK_RIGHT:case 'D':select(ui::CHOICE_YES);break;
         case VK_TAB:select(view.selected==ui::CHOICE_YES?ui::CHOICE_NO:ui::CHOICE_YES);break;
         case VK_RETURN:case VK_SPACE:if(!cv_port_modal::key_repeat(lp))confirm();break;
         case VK_ESCAPE:case VK_F2:if(!cv_port_modal::key_repeat(lp)){view.selected=ui::CHOICE_NO;close_box();}break;   // F2 again = No
@@ -192,8 +192,8 @@ LRESULT CALLBACK proc(HWND h,UINT msg,WPARAM wp,LPARAM lp) {
             if(cv_launcher_controls::chord_held(p.buttons))continue;
             if(edge)note_input(p.kind);
             if(edge&(1u<<PB_EAST)){view.selected=ui::CHOICE_NO;close_box();return 0;}
-            if(edge&(1u<<PB_LEFT))select(ui::CHOICE_YES);
-            if(edge&(1u<<PB_RIGHT))select(ui::CHOICE_NO);
+            if(edge&(1u<<PB_LEFT))select(ui::CHOICE_NO);
+            if(edge&(1u<<PB_RIGHT))select(ui::CHOICE_YES);
             if(edge&(1u<<PB_SOUTH)){confirm();return 0;}
         }
         return 0;}

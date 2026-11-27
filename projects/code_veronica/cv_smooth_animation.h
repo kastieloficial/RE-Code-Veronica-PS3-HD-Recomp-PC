@@ -23,7 +23,7 @@ bool native_scene_ready() {
     // not in a skippable story cutscene (+78 bit 0x10000000): allow any room
     // upper camera bits (0x40, 0x100, 0x200, 0x1000, 0x2000...) so unskippable
     // camera pans/mechanisms without dialogue interpolate at 60 FPS everywhere.
-    const bool skippable_cutscene=(vm_read32(system+0x78)&0x10000000u)!=0;
+    const bool skippable_cutscene=(vm_read32(system+0x78)&0x10000000u)!=0||(camera_mode&0x10000000u)!=0;
     const bool scripted_camera=(((camera_mode&7)==4&&!skippable_cutscene)||camera_mode==0x44||camera_mode==0x46||camera_mode==0x204||camera_mode==0x2004)&&(control&4);
     // 001AF3E0/00146F90 call message update/draw routine 001611C8 for bit 9.
     // Scene preparation would free its text lists. Keep the original frame

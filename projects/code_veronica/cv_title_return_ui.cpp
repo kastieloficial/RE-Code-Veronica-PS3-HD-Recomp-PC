@@ -103,7 +103,7 @@ void choice(Graphics& g,const View& v,const Metrics& m,RectF r,bool chosen,const
 void footer(Graphics& g,const View& v,int kind) {
     namespace pt=cv_port_ui_i18n;
     const std::vector<ui::FooterGroup> groups={
-        {{Glyph{GlyphKind::ARROWS,4|8,L""}},{Glyph{GlyphKind::DPAD,0,L""}},pt::strings[std::clamp(v.language,0,12)][pt::CHOOSE]},
+        {{Glyph{GlyphKind::ARROWS,4|8,L""},Glyph{GlyphKind::SLASH,0,L""},Glyph{GlyphKind::KEY,'A',L""},Glyph{GlyphKind::KEY,'D',L""}},{Glyph{GlyphKind::DPAD,0,L""}},pt::strings[std::clamp(v.language,0,12)][pt::CHOOSE]},
         {{Glyph{GlyphKind::KEY,VK_RETURN,L""}},{Glyph{GlyphKind::PAD,PB_SOUTH,L""}},pt::strings[std::clamp(v.language,0,12)][pt::CONFIRM]},
         {{Glyph{GlyphKind::KEY,VK_ESCAPE,L""}},{Glyph{GlyphKind::PAD,PB_EAST,L""}},pt::strings[std::clamp(v.language,0,12)][pt::BACK]},
     };
