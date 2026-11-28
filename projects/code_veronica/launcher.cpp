@@ -274,7 +274,7 @@ struct Settings {
     int res = 1;           /* index into k_res */
     int aa = 0;            /* anti-aliasing: 0 off, 1 FXAA, 2 SMAA */
     int frame_generation = 0; /* opt-in FSR 3.1, restart required */
-    int vsync = 0;         /* 60 FPS only, never with frame generation; switches live */
+    int vsync = 0;         /* 30 FPS or 60 FPS, never with frame generation; switches live */
     int pose_device = 0; /* CPU default; GPU compute requires restart, 60 FPS only */
     int fps = 0;           /* 0 original 30; 1 experimental 60 with render-only interpolation */
     int brightness = 0;   /* -80..80, zero leaves the image unchanged */
@@ -1113,7 +1113,7 @@ void section(Graphics& gr, const std::wstring& t, float x, float y, float w, con
 
 
 /* Release shown under the sidebar, beside the credit. Bump it per release. */
-const wchar_t* const k_launcher_version = L"v2.2.7";
+const wchar_t* const k_launcher_version = L"v2.2.8";
 extern "C" const wchar_t* cv_launcher_version(void) { return k_launcher_version; }   /* cv_discord.cpp */
 
 /* ---------------------------------------------------------------- updates
@@ -1582,12 +1582,13 @@ void draw_inicio(Graphics& gr,const Font& head,const Font& body,const Font&,cons
    toggle(1,3,bars[g_lang>=0&&g_lang<LANG_COUNT?g_lang:1],g.s.no_letterbox,ID_GRAPHICS_LETTERBOX,!g.running); }
  setting(2,0,T(S_FRAME_LIMIT),fps_name(g.s.fps),g.running||opt30_comparison()?-1:ID_DD_FPS,!g.running&&!opt30_comparison());
  if((g.s.fps==1||pose_device_override()>=0)&&!opt30_comparison())toggle(2,1,std::wstring(T(S_FRAME_GEN))+L" (FSR 3.1)",frame_generation_allowed()&&g.s.frame_generation,ID_GRAPHICS_FRAME_GEN,!g.running&&frame_generation_allowed());
- /* VSync switches live, except in a session running frame generation (its swapchain paces itself). */
- if((g.s.fps==1||pose_device_override()>=0)&&!opt30_comparison()){const bool fg_running=g.running&&g.s.frame_generation&&frame_generation_allowed();
-  toggle(2,2,T(S_VSYNC),!fg_running&&g.s.vsync,ID_GRAPHICS_VSYNC,!fg_running);}
+ /* VSync switches live in both 30 FPS and 60 FPS modes, except when frame generation is running (its swapchain paces itself). */
+ if(!opt30_comparison()){const bool show_fg=(g.s.fps==1||pose_device_override()>=0);
+  const bool fg_running=g.running&&g.s.fps==1&&g.s.frame_generation&&frame_generation_allowed();
+  toggle(2,show_fg?2:1,T(S_VSYNC),!fg_running&&g.s.vsync,ID_GRAPHICS_VSYNC,!fg_running);}
  text(gr,cv_enhanced_text::get(g_lang,cv_enhanced_text::RestartApply),x,688,hint_font,C_DIM,StringAlignmentNear,w,24);
  text(gr,cv_dof_help(g_lang),x,718,hint_font,C_DIM,StringAlignmentNear,w,32);
- std::wstring note=T(g.s.fps?S_FPS_NOTE_60:S_FPS_NOTE_30);if(g.s.fps&&g.s.frame_generation&&frame_generation_allowed())note+=L"\n"+std::wstring(T(S_FPS_NOTE_FG));if(g.s.fps&&g.s.vsync)note+=L"\n"+std::wstring(T(S_FPS_NOTE_VSYNC));
+ std::wstring note=T(g.s.fps?S_FPS_NOTE_60:S_FPS_NOTE_30);if(g.s.fps&&g.s.frame_generation&&frame_generation_allowed())note+=L"\n"+std::wstring(T(S_FPS_NOTE_FG));if(g.s.vsync&&!(g.s.fps&&g.s.frame_generation&&frame_generation_allowed()))note+=L"\n"+std::wstring(T(S_FPS_NOTE_VSYNC));
  StringFormat sf;sf.SetLineAlignment(StringAlignmentNear);if(g_lang==LANG_AR)sf.SetFormatFlags(StringFormatFlagsDirectionRightToLeft);SolidBrush ink(C_DIM);gr.DrawString(note.c_str(),-1,&hint_font,RectF(x,748,w,60),&sf,&ink);g_page_end=808;
 }
 
@@ -3144,7 +3145,7 @@ void apply_live(bool restore_menu = true)
     rsx_d3d12_set_color_adjust(g.s.brightness, g.s.contrast);
     rsx_d3d12_set_saturation(g.s.saturation);
     rsx_d3d12_set_sharpness(g.s.sharpness);
-    if(g.s.fps==1&&!opt30_comparison()&&!(g.s.frame_generation&&frame_generation_allowed()))rsx_d3d12_set_vsync(g.s.vsync);
+    if(!opt30_comparison()&&!(g.s.fps==1&&g.s.frame_generation&&frame_generation_allowed()))rsx_d3d12_set_vsync(g.s.vsync);
     g_pad_shortcut_chords=1;
     cellpad_set_map(&g.s.btn[0][0], &g.s.key[0][0]);
     set_map_env();
@@ -3391,7 +3392,7 @@ void click(int id)
     else if(id==ID_GRAPHICS_LETTERBOX){g.s.no_letterbox=!g.s.no_letterbox;changed();}
     else if(id==ID_GRAPHICS_DOF&&!g.running){g.s.enhancements[E_DOF]=!g.s.enhancements[E_DOF];changed();}
     else if(id==ID_GRAPHICS_FRAME_GEN&&!g.running&&frame_generation_allowed()){g.s.frame_generation=!g.s.frame_generation;if(g.s.frame_generation)g.s.vsync=0;changed();}
-    else if(id==ID_GRAPHICS_VSYNC&&!(g.running&&g.s.frame_generation&&frame_generation_allowed())){g.s.vsync=!g.s.vsync;if(g.s.vsync&&!g.running)g.s.frame_generation=0;changed();}
+    else if(id==ID_GRAPHICS_VSYNC&&!(g.running&&g.s.fps==1&&g.s.frame_generation&&frame_generation_allowed())){g.s.vsync=!g.s.vsync;if(g.s.vsync&&!g.running)g.s.frame_generation=0;changed();}
     else if(id>=ID_ENHANCEMENT&&id<ID_ENHANCEMENT+int(E_COUNT)&&id!=ID_ENHANCEMENT+int(E_SMOOTH)&&(!g.running||id==ID_ENHANCEMENT+int(E_HIDE))){g.s.enhancements[id-ID_ENHANCEMENT]^=true;changed();}
     else if (id >= ID_DOOR_MODE && id < ID_DOOR_MODE + 4) {
         g.s.door_skip_mode = id - ID_DOOR_MODE;
@@ -4170,7 +4171,7 @@ void start_game()
         set_env("CV_FSR_FRAME_GENERATION",!fps_unlocked&&s.frame_generation&&frame_generation_allowed()?"1":"");
     }
     std::fprintf(stderr,"[FRAME-PACING] region=%s smooth=%d fps60=%d fg_requested=%d legacy_pose_interpolation=%s\n",CV_TITLE_ID,int(native_camera),int(s.fps==1),int(s.frame_generation),native_camera?"off":"on");
-    set_env("VSYNC",!opt30_comparison()&&!fps_diagnostic&&s.fps==1&&s.vsync&&!(s.frame_generation&&frame_generation_allowed())?"1":"");
+    set_env("VSYNC",!opt30_comparison()&&!fps_diagnostic&&s.vsync&&!(s.fps==1&&s.frame_generation&&frame_generation_allowed())?"1":"");
     if(!fps_diagnostic) {
         for(const char* name:{"CV_POSE_PROFILE","CV_POSE_SEARCH_PROFILE","CV_FRAME_PROFILE",
                              "CV_FRAME_DETAIL","CV_PRODUCER_PROFILE"})set_env(name,"");
