@@ -1,7 +1,10 @@
-# v2.2.7 — Fix for opaque square particles after OPTION menu & D3D12 GPU freeze on room/elevator transitions / Correção de partículas quadradas após o menu OPTION e congelamento de GPU DirectX 12 em transições de sala/elevador
+# v2.2.7 — Fix for opaque square particles after OPTION menu, D3D12 GPU freeze, & Windows HiDPI scaling / Correção de partículas quadradas após o menu OPTION, congelamento de GPU DirectX 12 e escala HiDPI do Windows
 
 ## English
 
+- **Fixed Windows HiDPI scaling making the game display at a lower virtualized resolution on 4K TVs / HiDPI monitors**:
+  - Previously, when Windows display scaling was above 100% (e.g., 125%–225% on a 4K TV or laptop), Windows virtualized the game window's dimensions (such as `1707x960` at 225% on a 4K screen), causing the game to render in 4K, downscale into the virtualized buffer, and then be stretched back by Windows.
+  - Enabled **Per-Monitor V2 DPI awareness** (`SetProcessDpiAwarenessContext` + `SetThreadDpiAwarenessContext`, with fallback to `SetProcessDPIAware`) right before creating the D3D12 game window (`libs/video/rsx_d3d12_backend.c`), so the game renders and presents at native physical pixels while keeping the separate launcher (`Code Veronica.exe`) comfortably scaled on HiDPI displays.
 - **Fixed particles/effects turning into opaque solid squares after opening and closing the in-game OPTION menu (`Select`) — including when switching character outfits**:
   - Root cause (native RECVX HD bug): closing the in-game OPTION menu (`adv/opt.arc`, `func_0003F768` → `func_001BFF18`) reset the room effect texture list counters (`sys+0x1ED24` and `sys+0x21980`) back to the base count, truncating away the current room's appended particle/effect texture slots (and leaving the global `njSetTexture` state pointing to the unloaded `opt.arc`). As a result, `TEX_LOOKUP` returned `0` and `DRAW_EFFECT` fell back to untextured solid squares (`PACK_VTX_NOTEX`) until the next room transition.
   - Added `option_menu_texture_guard()` (`projects/code_veronica/cv_test_tools.cpp`), which preserves and restores those counters and texture state when returning from OPTION to the same room across **EU, US and JP**, with zero FPS impact.
@@ -14,6 +17,9 @@ Downloads: extract the complete **CodeVeronica-PC-v2.2.7.zip** and open **Code V
 
 ## Português
 
+- **Correção da escala HiDPI do Windows (monitores/TVs 4K ou notebooks com zoom acima de 100%)**:
+  - Antes, quando a escala de tela do Windows estava acima de 100% (ex.: 125%–225% em TV 4K), o Windows reduzia o tamanho virtual da janela do jogo (por exemplo, `1707x960` a 225% em tela 4K), fazendo o jogo renderizar em 4K, encolher para a resolução virtual e depois ser esticado borrado de volta pelo Windows.
+  - Ativado o suporte a **DPI Per-Monitor V2** (`SetProcessDpiAwarenessContext` + `SetThreadDpiAwarenessContext`, com fallback para `SetProcessDPIAware`) na criação da janela DirectX 12 do jogo (`libs/video/rsx_d3d12_backend.c`), garantindo exibição na resolução física nativa sem borrar, mantendo o launcher (`Code Veronica.exe`) grande e legível em telas HiDPI.
 - **Correção das partículas/efeitos virando quadrados sólidos opacos após abrir e fechar o menu OPTION (`Select`) — inclusive ao trocar de roupa/personagem**:
   - Causa raiz (bug nativo do próprio Code Veronica HD): ao fechar o menu OPTION (`adv/opt.arc`, `func_0003F768` → `func_001BFF18`), o jogo sobrescrevia os contadores de texturas de efeito da sala (`sys+0x1ED24` e `sys+0x21980`) de volta para o tamanho base, cortando os slots de partículas da sala atual (além de deixar o estado global de textura apontando pro `opt.arc` descarregado). Com isso, `TEX_LOOKUP` retornava vazio e as partículas eram desenhadas como quadrados sólidos sem textura até você trocar de sala.
   - Adicionado `option_menu_texture_guard()` (`projects/code_veronica/cv_test_tools.cpp`), que preserva e restaura esses contadores e o estado de textura ao voltar do menu OPTION para a mesma sala em **EU, US e JP**, sem nenhum impacto de FPS.

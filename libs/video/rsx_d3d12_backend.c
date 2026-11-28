@@ -1898,8 +1898,32 @@ static LRESULT CALLBACK d3d12_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     return DefWindowProcA(hwnd, msg, wp, lp);
 }
 
+static void enable_hidpi_awareness(void)
+{
+    /* Make the game window use physical display pixels instead of Windows
+     * DPI-virtualized coordinates (e.g., 1707x960 on a 4K TV at 225% scaling).
+     * Called right before creating the D3D12 window so any separate launcher
+     * process (Code Veronica.exe) remains comfortably scaled for HiDPI screens. */
+    HMODULE u32 = GetModuleHandleW(L"user32.dll");
+    if (u32) {
+        typedef BOOL (WINAPI *SetProcDpiCtxFn)(void*);
+        typedef void* (WINAPI *SetThreadDpiCtxFn)(void*);
+        SetProcDpiCtxFn set_proc = (SetProcDpiCtxFn)(void*)GetProcAddress(u32, "SetProcessDpiAwarenessContext");
+        SetThreadDpiCtxFn set_thread = (SetThreadDpiCtxFn)(void*)GetProcAddress(u32, "SetThreadDpiAwarenessContext");
+        /* DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 == (DPI_AWARENESS_CONTEXT)-4 */
+        void* const pmv2 = (void*)(intptr_t)-4;
+        if (set_proc) set_proc(pmv2);
+        else SetProcessDPIAware();
+        if (set_thread) set_thread(pmv2);
+    } else {
+        SetProcessDPIAware();
+    }
+}
+
 static HWND create_window(u32 width, u32 height, const char* title)
 {
+    enable_hidpi_awareness();
+
     WNDCLASSEXA wc = {0};
     wc.cbSize = sizeof(wc);
     wc.style = CS_HREDRAW | CS_VREDRAW;
