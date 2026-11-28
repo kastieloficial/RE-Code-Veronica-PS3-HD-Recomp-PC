@@ -230,6 +230,8 @@ static inline int mfc_do_transfer(spu_context* spu, uint32_t lsa, uint64_t ea,
           int malformed = (size == 0) || (size > 0x4000)
                        || (size >= 16 && (size & 15))
                        || (((lsa ^ (uint32_t)ea) & 15) != 0)
+                       || (lsa >= SPU_LS_SIZE)
+                       || ((uint64_t)lsa + (uint64_t)size > (uint64_t)SPU_LS_SIZE)
                        || (mfc_is_put(cmd) && (uint32_t)ea < 0x10000u);
           if (malformed) {
               static int _n = 0;
