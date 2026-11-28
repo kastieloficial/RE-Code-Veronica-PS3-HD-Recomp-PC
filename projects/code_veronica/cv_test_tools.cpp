@@ -843,9 +843,114 @@ void title_flow_frame(ppu_context* ctx,bool title,bool game_ready) {
     }
     flow_busy=title_flow.busy();
 }
+#if defined(CV_REGION_JP)
+constexpr uint32_t kOptMatStatePtr = 0x00AAEB24u;
+constexpr uint32_t kOptTexIdAddr   = 0x00ADC968u;
+constexpr uint32_t kOptBlendBytes  = 0x00ADCA2Cu;
+#elif defined(CV_REGION_US)
+constexpr uint32_t kOptMatStatePtr = 0x00AAEA68u;
+constexpr uint32_t kOptTexIdAddr   = 0x00ADC8E8u;
+constexpr uint32_t kOptBlendBytes  = 0x00ADC9ACu;
+#else
+constexpr uint32_t kOptMatStatePtr = 0x00ABEDB4u;
+constexpr uint32_t kOptTexIdAddr   = 0x00AECBE8u;
+constexpr uint32_t kOptBlendBytes  = 0x00AECCACu;
+#endif
+
+// Native RECVX HD bug: when the in-game OPTION menu (adv/opt.arc) closes,
+// func_0003F768 -> func_001BFF18(base_obj) resets sys+0x1ED24 (the count of
+// entries in the default effect texture list sys+0x1ED20) and sys+0x21980 back
+// to base_obj+0x64, truncating away the current room's appended particle/effect
+// texture slots. Their entries remain valid in memory, so TEX_LOOKUP's loop
+// (for i = base_obj+0x64; i < cnt; ++i) runs 0 iterations -> returns 0 ->
+// DRAW_EFFECT falls back to PACK_VTX_NOTEX (solid opaque squares) until the
+// next room load re-registers them. Preserve and restore both counts (and the
+// global njSetTexture state) when returning from OPTION to the same room.
+void option_menu_texture_guard() {
+    constexpr uint32_t kMenuActive = (CV_MENU_CURSOR - 0x18u) + 0x94u;
+    constexpr uint32_t kOffTexCnt  = 0x1ED24u;
+    constexpr uint32_t kOffTexCnt2 = 0x21980u;
+    if (!mapped(kMenuActive, 1) || !mapped(state_base + kOffTexCnt, 4) ||
+        !mapped(state_base + kOffTexCnt2, 4) || !mapped(kOptMatStatePtr, 4) ||
+        !mapped(kOptTexIdAddr - 4u, 8) || !mapped(kOptBlendBytes, 2) ||
+        !mapped(CV_SRT_ROOM, 2))
+        return;
+
+    static bool     was_open      = false;
+    static bool     saved_valid   = false;
+    static uint16_t saved_room    = 0;
+    static uint32_t saved_cnt     = 0;
+    static uint32_t saved_cnt2    = 0;
+    static uint32_t saved_mat     = 0;
+    static uint32_t saved_list    = 0;
+    static uint32_t saved_tex     = 0;
+    static uint8_t  saved_b0      = 0;
+    static uint8_t  saved_b1      = 0;
+
+    const bool open = vm_read8(kMenuActive) != 0u;
+    if (open) {
+        was_open = true;
+        return;
+    }
+
+    if (was_open) {
+        was_open = false;
+        if (saved_valid && vm_read16(CV_SRT_ROOM) == saved_room) {
+            const uint32_t cur_cnt  = vm_read32(state_base + kOffTexCnt);
+            const uint32_t cur_cnt2 = vm_read32(state_base + kOffTexCnt2);
+            const uint32_t cur_mat  = vm_read32(kOptMatStatePtr);
+            const uint32_t cur_tex  = vm_read32(kOptTexIdAddr);
+            const uint8_t  cur_b0   = vm_read8(kOptBlendBytes);
+            const uint8_t  cur_b1   = vm_read8(kOptBlendBytes + 1u);
+            bool restored = false;
+            if (cur_cnt < saved_cnt) {
+                vm_write32(state_base + kOffTexCnt, saved_cnt);
+                restored = true;
+            }
+            if (cur_cnt2 < saved_cnt2) {
+                vm_write32(state_base + kOffTexCnt2, saved_cnt2);
+                restored = true;
+            }
+            if (saved_mat != 0u && (cur_mat != saved_mat || cur_tex != saved_tex || cur_b0 != saved_b0 || cur_b1 != saved_b1)) {
+                vm_write32(kOptMatStatePtr, saved_mat);
+                vm_write32(kOptTexIdAddr - 4u, saved_list);
+                vm_write32(kOptTexIdAddr, saved_tex);
+                vm_write8(kOptBlendBytes, saved_b0);
+                vm_write8(kOptBlendBytes + 1u, saved_b1);
+                restored = true;
+            }
+            if (restored) {
+                std::fprintf(stderr,
+                    "[OPTION-TEX-FIX] restored room effect textures after OPTION menu "
+                    "(room=%04X cnt=%u->%u cnt2=%u->%u mat=%08X->%08X)\n",
+                    unsigned(saved_room), cur_cnt, saved_cnt, cur_cnt2, saved_cnt2, cur_mat, saved_mat);
+            }
+        }
+        saved_valid = false;
+        return;
+    }
+
+    if (live_character()) {
+        const uint32_t cnt = vm_read32(state_base + kOffTexCnt);
+        if (cnt != 0u) {
+            saved_room  = vm_read16(CV_SRT_ROOM);
+            saved_cnt   = cnt;
+            saved_cnt2  = vm_read32(state_base + kOffTexCnt2);
+            saved_mat   = vm_read32(kOptMatStatePtr);
+            saved_list  = vm_read32(kOptTexIdAddr - 4u);
+            saved_tex   = vm_read32(kOptTexIdAddr);
+            saved_b0    = vm_read8(kOptBlendBytes);
+            saved_b1    = vm_read8(kOptBlendBytes + 1u);
+            saved_valid = true;
+        }
+    } else {
+        saved_valid = false;
+    }
+}
 }
 void TEST_FRAME(ppu_context* ctx) {
     cv_title_return_frame(ctx);   // the return to the title after the box's "Yes" (cv_title_return.cpp): before anything else of this frame
+    option_menu_texture_guard();
     const bool gameplay=enabled&&active_game()&&!tool_load&&!tool_save;
     const bool title=enabled&&!gameplay&&!tool_load&&cv_title_flow::title_menu_ready(title_snapshot());
     archives_context=cv_title_flow::context_of(gameplay,title);title_ready=title;

@@ -730,6 +730,8 @@ static int window_client(u32* w, u32* h)
     return 1;
 }
 
+static void defer_release(ID3D12Resource* r);
+
 /* Room for `count` quads in this frame's slot of `vbs`; the count that fits. */
 static u32 quad_vb_reserve(u32 fi, u32 count, QuadVb* vbs)
 {
@@ -755,7 +757,7 @@ static u32 quad_vb_reserve(u32 fi, u32 count, QuadVb* vbs)
             if(grown)grown->lpVtbl->Release(grown);
             return 0;
         }
-        if(vbs->vb[fi])vbs->vb[fi]->lpVtbl->Release(vbs->vb[fi]);
+        if(vbs->vb[fi])defer_release(vbs->vb[fi]);
         vbs->vb[fi]=grown;vbs->mapped[fi]=grown_mapped;vbs->quads[fi]=capacity;
     }
     return count<vbs->quads[fi]?count:vbs->quads[fi];
@@ -2873,9 +2875,11 @@ static void dred_report(const char* where)
     if (SUCCEEDED(d->lpVtbl->GetPageFaultAllocationOutput(d, &pf)) && pf.PageFaultVA) {
         fprintf(stderr, "[DRED] page fault at GPU VA 0x%llX\n", (unsigned long long)pf.PageFaultVA);
         for (const D3D12_DRED_ALLOCATION_NODE* a = pf.pHeadExistingAllocationNode; a; a = a->pNext)
-            fprintf(stderr, "[DRED]   live allocation there: type %d\n", (int)a->AllocationType);
+            fprintf(stderr, "[DRED]   live allocation there: type %d name=%ls\n",
+                    (int)a->AllocationType, a->ObjectNameW ? a->ObjectNameW : L"(unnamed)");
         for (const D3D12_DRED_ALLOCATION_NODE* a = pf.pHeadRecentFreedAllocationNode; a; a = a->pNext)
-            fprintf(stderr, "[DRED]   recently freed allocation there: type %d\n", (int)a->AllocationType);
+            fprintf(stderr, "[DRED]   recently freed allocation there: type %d name=%ls\n",
+                    (int)a->AllocationType, a->ObjectNameW ? a->ObjectNameW : L"(unnamed)");
     }
     d->lpVtbl->Release(d);
     fflush(stderr);
@@ -2924,12 +2928,20 @@ static void release_deferred(u32 fi)
 static void wait_for_gpu(void)
 {
     u32 fi = s_d3d.frame_index;
-    s_d3d.fence_values[fi]++;
-    s_d3d.cmd_queue->lpVtbl->Signal(s_d3d.cmd_queue, s_d3d.fence, s_d3d.fence_values[fi]);
+    u64 max_f = s_d3d.fence->lpVtbl->GetCompletedValue(s_d3d.fence);
+    for (u32 i = 0; i < FRAME_COUNT; i++)
+        if (s_d3d.fence_values[i] > max_f) max_f = s_d3d.fence_values[i];
+    const u64 wait_val = max_f + 1;
+    /* Reserve wait_val + 1 for the frame currently being recorded on slot fi so
+     * move_to_next_frame() signals a strictly newer fence instead of reusing the
+     * already-completed wait_val (which caused release_deferred() and allocator
+     * Reset() to run while the GPU was still executing slot fi). */
+    s_d3d.fence_values[fi] = wait_val + 1;
+    s_d3d.cmd_queue->lpVtbl->Signal(s_d3d.cmd_queue, s_d3d.fence, wait_val);
 
-    if (s_d3d.fence->lpVtbl->GetCompletedValue(s_d3d.fence) < s_d3d.fence_values[fi]) {
+    if (s_d3d.fence->lpVtbl->GetCompletedValue(s_d3d.fence) < wait_val) {
         s_d3d.fence->lpVtbl->SetEventOnCompletion(
-            s_d3d.fence, s_d3d.fence_values[fi], s_d3d.fence_event);
+            s_d3d.fence, wait_val, s_d3d.fence_event);
         /* NEVER wait unbounded here: this runs on the vblank ticker, which also
          * drives the guest's vblank handlers, the FIFO drain, and the fence
          * publication. A device removal (TDR) leaves the D3D12 fence unsignaled
@@ -2945,7 +2957,7 @@ static void wait_for_gpu(void)
             HRESULT rr = s_d3d.device->lpVtbl->GetDeviceRemovedReason(s_d3d.device);
             printf("[D3D12] wait_for_gpu STUCK %ds: want %llu got %llu removed=0x%08lX\n",
                    2 * (tries + 1),
-                   (unsigned long long)s_d3d.fence_values[fi],
+                   (unsigned long long)wait_val,
                    (unsigned long long)s_d3d.fence->lpVtbl->GetCompletedValue(s_d3d.fence),
                    (long)rr);
             fflush(stdout);
@@ -7492,6 +7504,7 @@ static int vp_upload_tex_slot_impl(u32 off, u32 w, u32 h, u32 fmt, int cube, u32
                 D3D12_RESOURCE_STATE_COPY_DEST, NULL,
                 &IID_ID3D12Resource, (void**)&t->res)))
             return -1;
+        t->res->lpVtbl->SetName(t->res, L"vp_tex.res");
         D3D12_HEAP_PROPERTIES hu = {0}; hu.Type = D3D12_HEAP_TYPE_UPLOAD;
         D3D12_RESOURCE_DESC bd = {0};
         bd.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
@@ -7505,6 +7518,7 @@ static int vp_upload_tex_slot_impl(u32 off, u32 w, u32 h, u32 fmt, int cube, u32
                 &IID_ID3D12Resource, (void**)&t->up))) {
             t->res->lpVtbl->Release(t->res); t->res = NULL; return -1;
         }
+        t->up->lpVtbl->SetName(t->up, L"vp_tex.up");
         fresh = 1;
     }
 
@@ -8508,6 +8522,7 @@ static int off_rt_get(u32 off, u32 w, u32 h, u32 rsx_fmt)
             D3D12_RESOURCE_STATE_COPY_DEST, &cv,
             &IID_ID3D12Resource, (void**)&r->res)))
         return -1;
+    r->res->lpVtbl->SetName(r->res, L"off_rt.res");
     r->off = off; r->w = w; r->h = h; r->dxgi = (u32)want_fmt;
     r->sc = sc; r->pw = pw; r->ph = ph;
     r->st = D3D12_RESOURCE_STATE_COPY_DEST;
@@ -9003,6 +9018,7 @@ static ID3D12Resource* vtex_get(const D3D12DrawRecord* dr, u32 u)
         if (FAILED(s_d3d.device->lpVtbl->CreateCommittedResource(s_d3d.device, &hp0,
                 D3D12_HEAP_FLAG_NONE, &td, D3D12_RESOURCE_STATE_COPY_DEST, NULL,
                 &IID_ID3D12Resource, (void**)&tex))) return NULL;
+        tex->lpVtbl->SetName(tex, L"vtex.tex");
     }
     D3D12_HEAP_PROPERTIES hp = {0};
     D3D12_PLACED_SUBRESOURCE_FOOTPRINT fp; UINT64 total = 0;
@@ -9031,6 +9047,7 @@ static ID3D12Resource* vtex_get(const D3D12DrawRecord* dr, u32 u)
                 else e->tex = NULL, tex->lpVtbl->Release(tex);
                 return NULL;
             }
+            s_vtex_up->lpVtbl->SetName(s_vtex_up, L"vtex.up");
             s_vtex_up_cap = cap; at = 0;
         }
         fp.Offset = at;
@@ -11360,6 +11377,7 @@ static void prepass_tex_units(D3D12DrawRecord* dr, SrvReq* _rq, int* pfb_risk, i
                     }
                     /* The converted zeta holds A8R8G8B8 bytes in memory order,
                      * so it takes the draw's remap like an uploaded texture. */
+                    s_d3d.off_rt[rt].used = 1;
                     srv_req(&_rq[_u], s_d3d.off_rt[rt].res, (DXGI_FORMAT)s_d3d.off_rt[rt].dxgi,
                               (rt == s_zview_slot)
                                   ? rsx_remap_to_d3d(dr->tex[_u].ctrl1, 0x85)
@@ -12091,8 +12109,8 @@ static void render_frame_impl(void)
         u32 w = s_d3d.tex_w, h = s_d3d.tex_h;
         u32 pitch = (w + 255) & ~255u;   /* D3D12 requires 256-byte row pitch */
 
-        if (s_d3d.tex_resource) { s_d3d.tex_resource->lpVtbl->Release(s_d3d.tex_resource); s_d3d.tex_resource = NULL; }
-        if (s_d3d.tex_upload)   { s_d3d.tex_upload->lpVtbl->Release(s_d3d.tex_upload);     s_d3d.tex_upload = NULL; }
+        if (s_d3d.tex_resource) { defer_release(s_d3d.tex_resource); s_d3d.tex_resource = NULL; }
+        if (s_d3d.tex_upload)   { defer_release(s_d3d.tex_upload);   s_d3d.tex_upload = NULL; }
 
         D3D12_HEAP_PROPERTIES hp_def = {0}; hp_def.Type = D3D12_HEAP_TYPE_DEFAULT;
         D3D12_RESOURCE_DESC td = {0};
