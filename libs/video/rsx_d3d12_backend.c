@@ -258,7 +258,7 @@ typedef struct {
 #define AA_SRV_BASE   (VTEX_SRV_BASE + MAX_DRAWS * 4)   /* anti-aliasing pass: 5 views */
 #define DISPLAY_SRV_BASE (AA_SRV_BASE + 8)   /* display pass: 5 views per frame slot */
 #define SPRITE_SRV    (DISPLAY_SRV_BASE + 5 * FRAME_COUNT)   /* the SRT's image atlas */
-#define SRV_HEAP_SIZE (SPRITE_SRV + 3 + FRAME_COUNT)   /* + the shader screen's textures */
+#define SRV_HEAP_SIZE (SPRITE_SRV + 3 + 2 * FRAME_COUNT)   /* + shader screen & modal mirror textures */
 
 /* Per-frame VP texture slot: a guest texture uploaded for this frame's VP
  * draws (re-uploaded every frame -- gcm/cube's plasma animates in guest
@@ -835,8 +835,12 @@ static void srv_write(u32 heap_slot, ID3D12Resource* res, DXGI_FORMAT fmt, UINT 
 #include "rsx_trophy_texture.h"
 static rsx_trophy_texture s_trophy_textures[FRAME_COUNT];
 static rsx_trophy_texture s_loading_textures[FRAME_COUNT];   /* the first-start shader screen */
+static rsx_trophy_texture s_modal_textures[FRAME_COUNT];     /* OBS/capture mirror of port modal panels (F6/F7/F2) */
 static QuadVb s_trophy_vbs;
 static QuadVb s_loading_vbs;
+static QuadVb s_modal_vbs;
+static u32 s_last_presented_fi;
+static int s_has_presented;
 static ID3D12PipelineState* s_spr_pso;
 static ID3D12Resource *s_spr_tex, *s_spr_up;
 static u64 s_spr_gen;
@@ -1013,6 +1017,25 @@ static void loading_screen_draw(u32 fi,u32 w,u32 h,const float mvp[16]) {
  s_loading_screen_on=(sp->argb>>24)>=250;
 }
 
+/* OBS/Window-Capture mirror of port modal panels (F6 items, F7 archives/maps,
+ * F2 title return): renders the panel's RGBA image into the D3D12 backbuffer
+ * at the same window position so Window Capture & Game Capture see it. */
+const rsx_ui_sprite* (*g_rsx_modal_hook)(uint32_t,uint32_t,const uint32_t**,uint32_t*,uint32_t*,uint64_t*);
+static void modal_overlay_draw(u32 fi,u32 w,u32 h,const float mvp[16]) {
+ if(!g_rsx_modal_hook)return;
+ const uint32_t* rgba=NULL;u32 aw=0,ah=0;u64 generation=0;
+ const rsx_ui_sprite* sp=g_rsx_modal_hook(w,h,&rgba,&aw,&ah,&generation);
+ if(!sp||!(sp->argb>>24)||!sprite_pso()||!rsx_ui_texture_upload(&s_modal_textures[fi],s_d3d.device,s_d3d.cmd_list,rgba,aw,ah,generation,4096,4096))return;
+ if(!quad_vb_reserve(fi,1,&s_modal_vbs))return;
+ UiVertex* vertices=(UiVertex*)s_modal_vbs.mapped[fi];static const unsigned order[6]={0,1,2,2,1,3};
+ for(unsigned k=0;k<6;k++){unsigned corner=order[k];UiVertex v={sp->x+((corner&2)?sp->w:0),sp->y+((corner&1)?sp->h:0),0,1,1,1,(sp->argb>>24)/255.f,(corner&2)?sp->u1:sp->u0,(corner&1)?sp->v1:sp->v0};vertices[k]=v;}
+ const u32 slot=SPRITE_SRV+3+FRAME_COUNT+fi;
+ srv_write(slot,s_modal_textures[fi].texture,DXGI_FORMAT_R8G8B8A8_UNORM,D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING);
+ ID3D12GraphicsCommandList* cl=s_d3d.cmd_list;D3D12_GPU_DESCRIPTOR_HANDLE handle;s_d3d.srv_heap->lpVtbl->GetGPUDescriptorHandleForHeapStart(s_d3d.srv_heap,&handle);handle.ptr+=(u64)slot*s_d3d.srv_inc;
+ cl->lpVtbl->SetDescriptorHeaps(cl,1,&s_d3d.srv_heap);cl->lpVtbl->SetGraphicsRootSignature(cl,s_d3d.root_signature);cl->lpVtbl->SetGraphicsRootDescriptorTable(cl,1,handle);
+ quad_vb_draw(fi,&s_modal_vbs,0,1,mvp,s_spr_pso);
+}
+
 /* The game's UI batch: logical 640x480, centred at 4:3. */
 static void ui_batch_draw(u32 fi)
 {
@@ -1091,6 +1114,7 @@ static void perf_overlay_draw(u32 fi)
     const rsx_ui_quad* quads=perf_overlay_quads(w,h,&count);
     if(count)quad_batch_draw(fi,quads,count,mvp,&s_ov_vbs);
     trophy_popup_draw(fi,w,h,mvp);
+    modal_overlay_draw(fi,w,h,mvp);
 }
 
 static float rs_for(u32 w, u32 h) { return (s_rs != 1.0f && (u64)w * h > 16384u) ? s_rs : 1.0f; }
@@ -13598,6 +13622,7 @@ skip_dump_consider: ;
     }
     if(s_fsr_ready&&s_fsr_depth_at==s_rb.count)
         rsx_fsr31_depth(s_d3d.cmd_list,s_d3d.depth_buffer,s_fsr_depth_w,s_fsr_depth_h);
+    if (s_rb.present) { s_last_presented_fi = fi; s_has_presented = 1; }
     if (s_rb.present && s_display) display_present(fi);
     if(s_rb.present){
         if(g_rsx_cap_request&&s_fsr_ready)rsx_fsr31_capture_next();
@@ -16710,6 +16735,8 @@ void rsx_d3d12_backend_shutdown(void)
         rsx_trophy_texture_release(&s_trophy_textures[i]);
         if(s_loading_vbs.vb[i])s_loading_vbs.vb[i]->lpVtbl->Release(s_loading_vbs.vb[i]);
         rsx_trophy_texture_release(&s_loading_textures[i]);
+        if(s_modal_vbs.vb[i])s_modal_vbs.vb[i]->lpVtbl->Release(s_modal_vbs.vb[i]);
+        rsx_trophy_texture_release(&s_modal_textures[i]);
     }
     if (s_d3d.depth_buffer) s_d3d.depth_buffer->lpVtbl->Release(s_d3d.depth_buffer);
     if (s_d3d.dsv_heap)     s_d3d.dsv_heap->lpVtbl->Release(s_d3d.dsv_heap);
@@ -16854,6 +16881,83 @@ void rsx_d3d12_backend_present(void)
     }
 }
 
+/* Re-present the frozen game frame with the current port modal overlay (F6/F7/F2)
+ * composited on top, while the game clock is paused. Called from the main loop
+ * thread only when the modal bitmap changed or closed. */
+void rsx_d3d12_present_modal(void)
+{
+    if (!s_d3d.initialized || !s_d3d.swap_chain || !s_d3d.cmd_list) return;
+    render_wait_idle();
+    wait_for_gpu();
+    const u32 fi = s_d3d.frame_index;
+    ID3D12GraphicsCommandList* cl = s_d3d.cmd_list;
+    s_d3d.cmd_allocators[fi]->lpVtbl->Reset(s_d3d.cmd_allocators[fi]);
+    cl->lpVtbl->Reset(cl, s_d3d.cmd_allocators[fi], NULL);
+    ID3D12Resource* out = NULL;
+    D3D12_CPU_DESCRIPTOR_HANDLE rtv;
+    u32 w = 0, h = 0;
+    if (s_display) {
+        u32 cw = s_disp_w, ch = s_disp_h;
+        if (window_client(&cw, &ch) && (cw != s_disp_w || ch != s_disp_h)) display_resize(cw, ch);
+        w = s_disp_w; h = s_disp_h;
+        const u32 di = s_d3d.swap_chain->lpVtbl->GetCurrentBackBufferIndex(s_d3d.swap_chain);
+        out = s_disp_bufs[di];
+        s_disp_rtv->lpVtbl->GetCPUDescriptorHandleForHeapStart(s_disp_rtv, &rtv);
+        rtv.ptr += (u64)di * s_d3d.rtv_descriptor_size;
+        if (out && w && h) {
+            aa_barrier(out, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+            ID3D12Resource* game = s_has_presented ? s_d3d.render_targets[s_last_presented_fi] : NULL;
+            if (game && s_disp_pso) {
+                aa_barrier(game, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+                const u32 slot = DISPLAY_SRV_BASE + fi * 5;
+                srv_write(slot, game, DXGI_FORMAT_R8G8B8A8_UNORM, D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING);
+                cl->lpVtbl->SetDescriptorHeaps(cl, 1, &s_d3d.srv_heap);
+                cl->lpVtbl->SetGraphicsRootSignature(cl, s_aa_rs);
+                const float k[12] = {0};
+                cl->lpVtbl->SetGraphicsRoot32BitConstants(cl, 0, 12, k, 0);
+                D3D12_GPU_DESCRIPTOR_HANDLE gh;
+                s_d3d.srv_heap->lpVtbl->GetGPUDescriptorHandleForHeapStart(s_d3d.srv_heap, &gh);
+                gh.ptr += (u64)slot * s_d3d.srv_inc;
+                cl->lpVtbl->SetGraphicsRootDescriptorTable(cl, 1, gh);
+                D3D12_VIEWPORT vp = {0, 0, (float)w, (float)h, 0.0f, 1.0f};
+                D3D12_RECT sc = {0, 0, (LONG)w, (LONG)h};
+                cl->lpVtbl->RSSetViewports(cl, 1, &vp);
+                cl->lpVtbl->RSSetScissorRects(cl, 1, &sc);
+                cl->lpVtbl->IASetPrimitiveTopology(cl, D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+                aa_draw(s_disp_pso, rtv, 0);
+                aa_barrier(game, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_PRESENT);
+            } else {
+                const float dark[4] = {0.03f, 0.03f, 0.04f, 1.0f};
+                cl->lpVtbl->ClearRenderTargetView(cl, rtv, dark, 0, NULL);
+            }
+            s_qb_display = 1; s_qb_rtv = rtv; s_qb_w = w; s_qb_h = h;
+            perf_overlay_draw(fi);
+            s_qb_display = 0;
+            aa_barrier(out, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+        }
+    } else {
+        out = s_d3d.render_targets[fi];
+        w = rs_dim(s_d3d.width, s_rs); h = rs_dim(s_d3d.height, s_rs);
+        s_d3d.rtv_heap->lpVtbl->GetCPUDescriptorHandleForHeapStart(s_d3d.rtv_heap, &rtv);
+        rtv.ptr += (u64)fi * s_d3d.rtv_descriptor_size;
+        if (out && w && h) {
+            aa_barrier(out, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+            const float dark[4] = {0.03f, 0.03f, 0.04f, 1.0f};
+            cl->lpVtbl->ClearRenderTargetView(cl, rtv, dark, 0, NULL);
+            s_qb_display = 0; s_qb_rtv = rtv; s_qb_w = w; s_qb_h = h;
+            perf_overlay_draw(fi);
+            aa_barrier(out, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+        }
+    }
+    rsx_fsr31_frame(cl, s_d3d.swap_chain, 0);
+    cl->lpVtbl->Close(cl);
+    ID3D12CommandList* lists[] = {(ID3D12CommandList*)cl};
+    s_d3d.cmd_queue->lpVtbl->ExecuteCommandLists(s_d3d.cmd_queue, 1, lists);
+    s_d3d.swap_chain->lpVtbl->Present(s_d3d.swap_chain, 1, 0);
+    move_to_next_frame();
+    g_rsx_watch_frames++; g_rsx_watch_draws = 0x7FFF;
+}
+
 #else /* !_WIN32 */
 
 #include <ps3emu/ps3types.h>   /* u32 (header includes above are inside the _WIN32 guard) */
@@ -16869,5 +16973,6 @@ int rsx_d3d12_backend_init(u32 w, u32 h, const char* t)
 void rsx_d3d12_backend_shutdown(void) {}
 int rsx_d3d12_backend_pump_messages(void) { return 0; }
 void rsx_d3d12_backend_present(void) {}
+void rsx_d3d12_present_modal(void) {}
 
 #endif /* _WIN32 */

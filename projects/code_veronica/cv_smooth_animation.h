@@ -37,14 +37,21 @@ bool native_scene_ready() {
     // Its overlay is not rebuilt by the extra scene pass; keep original frames.
     const bool scope_view=(control&0x00800000)||(vm_read32(system+0x6C)&0x000800C0);
     // 6C bits 0x100/0x200 mark rooms with special render paths and stay
-    // excluded, except in one room: rm_1050 (stage 1, room 5, any variant),
-    // where the alarm keeps 0x200 set while it flashes and the whole room fell
-    // back to 30 Hz. Only 0x200 is let through there; every other guard above
-    // (Game Over, monitor, scope, messages, loads) still applies.
-    const bool alarm_room=vm_read8(CV_SRT_ROOM)==1&&vm_read8(CV_SRT_ROOM+1)==5;
-    const uint32_t special_render=alarm_room?0x100u:0x300u;
+    // excluded, except in rooms where 0x200 stays set during normal gameplay
+    // and would drop the entire room to 30 Hz:
+    // - rm_1050 (stage 1, room 5): flashing alarm light keeps 0x200 set.
+    // - rm_703  (stage 7, room 3): Antarctica hall keeps 0x200 set in v0 for
+    //   the big monitor screen; allow 0x200 only during free gameplay so the
+    //   scripted zoom onto Alexia's monitor (camera_mode & 7 == 4) stays native
+    //   and never blanks the screen.
+    // Only 0x200 is let through there; every other guard above (Game Over,
+    // monitor, fader, scope, messages, loads, cutscenes) still applies.
+    const unsigned stage_id=vm_read8(CV_SRT_ROOM),room_id=vm_read8(CV_SRT_ROOM+1);
+    const bool allow_6c_200=(stage_id==1&&room_id==5)||
+        (stage_id==7&&room_id==3&&!(camera_mode&7));
+    const uint32_t special_render=allow_6c_200?0x100u:0x300u;
     return (tasks&0x80)&&!(tasks&0x1803F)&&(!(camera_mode&7)||scripted_camera)&&
-        !(control&0x1C040308)&&!(vm_read32(system+0x6C)&special_render)&&!scope_view;
+        !(control&0x5C040308)&&!(vm_read32(system+0x6C)&special_render)&&!scope_view;
 }
 // Room numbers and camera IDs can be reused after loading. Match the actual
 // scene resources as well, and never carry render endpoints across a transition.

@@ -129,7 +129,12 @@ void paint(HWND h) {
     const int w=std::max<int>(1,c.right),hh=std::max<int>(1,c.bottom);
     {Gdiplus::Bitmap back(w,hh,PixelFormat32bppARGB);
      {Gdiplus::Graphics g(&back);g.ScaleTransform(scale,scale);ui::draw(g,view);}
-     Gdiplus::Graphics out(dc);out.DrawImage(&back,Gdiplus::Rect(0,0,w,hh),0,0,w,hh,Gdiplus::UnitPixel);}
+     Gdiplus::Graphics out(dc);out.DrawImage(&back,Gdiplus::Rect(0,0,w,hh),0,0,w,hh,Gdiplus::UnitPixel);
+     Gdiplus::Rect lr(0,0,w,hh);Gdiplus::BitmapData bd{};
+     if(back.LockBits(&lr,Gdiplus::ImageLockModeRead,PixelFormat32bppARGB,&bd)==Gdiplus::Ok){
+         cv_port_modal::mirror_update(h,static_cast<const uint32_t*>(bd.Scan0),w,hh,bd.Stride);
+         back.UnlockBits(&bd);
+     }}
     EndPaint(h,&ps);
 }
 int id_at(int px,int py) {   // the last painted control under the point (back_rect comes from the paint)

@@ -51,5 +51,10 @@ void tick(unsigned bit,HWND w);            // from the window's timer: win the f
 void set_launcher(bool active);            // F5 launcher activated/deactivated
 void set_working(unsigned bit,bool on);    // the game may run under this window (a save being written)
 unsigned mask();
+// OBS / Window-Capture mirror: copy the painted BGRA bitmap of an open modal
+// panel so the D3D12 backend composites it into the game window's backbuffer.
+void mirror_update(HWND h,const uint32_t* bgra,int w,int h_px,int stride_bytes=0);
+void mirror_clear(HWND h);
+bool mirror_take_dirty();
 }
 #endif

@@ -81,6 +81,12 @@ extern "C" void cv_pc_settings_quick_read(void);
 extern "C" void cv_fps_register_game_update();
 #endif
 #ifdef _WIN32
+#ifdef _WIN32
+#include "cv_port_modal.h"
+extern "C" void rsx_d3d12_present_modal(void);
+extern "C" const rsx_ui_sprite* (*g_rsx_modal_hook)(uint32_t,uint32_t,const uint32_t**,uint32_t*,uint32_t*,uint64_t*);
+extern "C" const rsx_ui_sprite* cv_port_modal_mirror_hook(uint32_t,uint32_t,const uint32_t**,uint32_t*,uint32_t*,uint64_t*);
+#endif
 extern "C" int cv_focus_pause_poll(void);   /* cv_focus_pause.cpp */
 extern "C" void cv_launcher_relaunch(void);  /* launcher.cpp: the options window again */
 #endif
@@ -429,6 +435,11 @@ static DWORD WINAPI frame_clock(LPVOID)
             } else if (fc == 0) {
                 rsx_backend_present();
             }
+#ifdef _WIN32
+            else if (paused && cv_port_modal::mirror_take_dirty()) {
+                rsx_d3d12_present_modal();
+            }
+#endif
         }
     }
     return 0;
@@ -573,6 +584,7 @@ int main(int argc, char** argv)
     cellpad_gameplay_filters_set(cv_gameplay_filter_key,cv_gameplay_filter_buttons,cv_gameplay_filter_stick);
     g_rsx_srt_hook = cv_hud_overlay_quads;   /* combat HUD + countdown under native 60 FPS */
     g_rsx_srt_sprites_hook = cv_srt_sprites;
+    g_rsx_modal_hook = cv_port_modal_mirror_hook;   /* OBS/Window-Capture mirror of F6/F7/F2 modals */
 #ifndef CV_DISTRIBUTION
     g_rsx_spike_context = spike_context;   /* CV_DRAW_SPIKE log: room/state */
 #endif

@@ -375,6 +375,7 @@ void paint(HWND h){painted_hint_kind=hint_kind();PAINTSTRUCT ps;HDC dc=BeginPain
   {Gdiplus::Bitmap back(w,hh,w*4,PixelFormat32bppPARGB,abuf.bits);
    Gdiplus::Graphics g(&back);g.ScaleTransform(scale,scale);au::draw_foreground(g,view);}
   BitBlt(dc,0,0,w,hh,abuf.memdc,0,0,SRCCOPY);
+  cv_port_modal::mirror_update(h,reinterpret_cast<const uint32_t*>(abuf.bits),w,hh);
  }else{
   Gdiplus::Bitmap back(w,hh,PixelFormat32bppPARGB);
   {Gdiplus::Graphics g(&back);g.ScaleTransform(scale,scale);au::draw(g,view);}

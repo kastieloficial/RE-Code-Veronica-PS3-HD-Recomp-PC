@@ -926,6 +926,7 @@ void paint(HWND h) {
             draw_impl(g,view,game_root,false);
         }
         BitBlt(dc,0,0,w,hh,wbuf.memdc,0,0,SRCCOPY);
+        cv_port_modal::mirror_update(h,reinterpret_cast<const uint32_t*>(wbuf.bits),w,hh);
     } else {
         Bitmap back(w,hh,PixelFormat32bppPARGB);
         {Graphics g(&back);g.ScaleTransform(scale,scale);draw(g,view,game_root);}
