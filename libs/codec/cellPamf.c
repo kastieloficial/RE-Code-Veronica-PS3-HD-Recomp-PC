@@ -141,8 +141,9 @@ static s32 raw_type_to_sdk(u8 rawType)
  * ponytail: linear scan over 8 slots. A title juggling more PAMF readers than
  * that wants a hash; nothing has needed even two.
  * -----------------------------------------------------------------------*/
-#define PAMF_MAX_READERS 8
-static struct { u32 ea; int in_use; CellPamfReader r; } s_readers[PAMF_MAX_READERS];
+#define PAMF_MAX_READERS 64
+static struct { u32 ea; int in_use; u64 seq; CellPamfReader r; } s_readers[PAMF_MAX_READERS];
+static u64 s_reader_seq = 0;
 
 static CellPamfReader* pamf_host(CellPamfReader* guest_ea)
 {
@@ -150,16 +151,24 @@ static CellPamfReader* pamf_host(CellPamfReader* guest_ea)
     if (!ea)
         return NULL;
     for (int i = 0; i < PAMF_MAX_READERS; i++)
-        if (s_readers[i].in_use && s_readers[i].ea == ea)
-            return &s_readers[i].r;
-    for (int i = 0; i < PAMF_MAX_READERS; i++)
-        if (!s_readers[i].in_use) {
-            s_readers[i].in_use = 1;
-            s_readers[i].ea = ea;
-            memset(&s_readers[i].r, 0, sizeof(s_readers[i].r));
+        if (s_readers[i].in_use && s_readers[i].ea == ea) {
+            s_readers[i].seq = ++s_reader_seq;
             return &s_readers[i].r;
         }
-    return NULL;
+    int victim = 0;
+    for (int i = 0; i < PAMF_MAX_READERS; i++) {
+        if (!s_readers[i].in_use) {
+            victim = i;
+            break;
+        }
+        if (s_readers[i].seq < s_readers[victim].seq)
+            victim = i;
+    }
+    s_readers[victim].in_use = 1;
+    s_readers[victim].ea = ea;
+    s_readers[victim].seq = ++s_reader_seq;
+    memset(&s_readers[victim].r, 0, sizeof(s_readers[victim].r));
+    return &s_readers[victim].r;
 }
 
 /* --------------------------------------------------------------------------- 
