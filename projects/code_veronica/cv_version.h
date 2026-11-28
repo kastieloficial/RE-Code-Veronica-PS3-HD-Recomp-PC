@@ -40,6 +40,7 @@
 #define CV_SRT_RETRY         0x00BB3E42u
 #define CV_SRT_FAS           0x00BB3E40u
 #define CV_SRT_RDX           0x00BDE16Cu
+#define CV_SRT_DOOR_FLAG     0x00BB35FFu
 
 #define CV_TOC             0x00A7AE70u
 /* OPTION menu (native_pc_menu.cpp) */
@@ -94,6 +95,7 @@
 #define CV_SRT_RETRY         0x00BB3DC2u
 #define CV_SRT_FAS           0x00BB3DC0u
 #define CV_SRT_RDX           0x00BDE0ECu
+#define CV_SRT_DOOR_FLAG     0x00BB357Fu
 
 #define CV_TOC             0x00A7AE70u
 #define CV_MENU_CURSOR     0x00BAE610u
@@ -145,6 +147,7 @@
 #define CV_SRT_RETRY         0x00BC40C2u
 #define CV_SRT_FAS           0x00BC40C0u
 #define CV_SRT_RDX           0x00BEE3ECu
+#define CV_SRT_DOOR_FLAG     0x00BC387Fu
 
 #define CV_TOC             0x00A8AE70u
 #define CV_MENU_CURSOR     0x00BBE910u

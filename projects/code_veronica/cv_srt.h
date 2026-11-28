@@ -10,7 +10,8 @@ typedef struct { int id, quantity, wide, counted, infinite; } cv_srt_item;
 typedef struct { int type, hp, maximum, estimated; } cv_srt_enemy;
 typedef struct {
     int valid, character, hp, maximum, condition, room;
-    uint32_t seconds;
+    uint32_t seconds, lrt_seconds;
+    int loading;
     int saves, retry, fas, equipped, enemy_count;
     cv_srt_item inventory[CV_SRT_INVENTORY_SIZE];
     cv_srt_enemy enemies[CV_SRT_MAX_ENEMIES];

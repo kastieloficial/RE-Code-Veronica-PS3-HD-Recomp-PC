@@ -26,13 +26,13 @@
 using namespace Gdiplus;
 namespace {
 struct Config {
-    bool enabled=false,name=true,health=true,time=true,stats=true,inventory=false,inventory_below=false,window=false,border=true;
+    bool enabled=false,name=true,health=true,time=true,lrt=false,stats=true,inventory=false,inventory_below=false,window=false,border=true;
     bool free=false,separate=false;
     int inventory_scale=100,main_x=0,main_y=0,inv_x=1000,inv_y=0;
     cv_srt_i18n::Language lang=cv_srt_i18n::EN;
     int enemies=3,scale=100,corner=0,opacity=70,boss_bar=0;   // boss_bar: 0 in the panel, 1 top centre, 2 bottom centre
     std::wstring credit=L"by Kastiel",game_root;
-    std::array<std::wstring,17> words={L"Health",L"Game time",L"Saves",L"Retries",L"Enemies",L"Inventory",L"Equipped",L"Fine",L"Caution",L"Danger",L"Poison",L"Gas",L"Dead",L"Waiting for a game",L"Empty",L"Boss",L"Phase"};
+    std::array<std::wstring,18> words={L"Health",L"Game time",L"Saves",L"Retries",L"Enemies",L"Inventory",L"Equipped",L"Fine",L"Caution",L"Danger",L"Poison",L"Gas",L"Dead",L"Waiting for a game",L"Empty",L"Boss",L"Phase",L"LRT time"};
 };
 SRWLOCK config_lock=SRWLOCK_INIT;Config config;uint64_t generation=0;
 std::atomic<void(*)(void)> position_notify{nullptr};bool positions_pending=false;
@@ -473,8 +473,8 @@ void build(const cv_srt_state& st,const Config& cfg,uint32_t width,uint32_t heig
     std::stable_partition(shown.begin(),shown.end(),[](const cv_srt_enemy& e){return boss(e.type)!=nullptr;});
     const int count=cfg.enemies==99?int(shown.size()):std::min(int(shown.size()),cfg.enemies);
     int bosses=0;for(int i=0;i<count;i++)if(boss(shown[i].type))bosses++;
-    const bool panel_on=cfg.name||cfg.health||cfg.time||cfg.stats||cfg.enemies||cfg.inventory;
-    int h=16+(cfg.name?28:0)+(cfg.health?104:0)+(cfg.time?40:0)+(cfg.stats?45:0);
+    const bool panel_on=cfg.name||cfg.health||cfg.time||cfg.lrt||cfg.stats||cfg.enemies||cfg.inventory;
+    int h=16+(cfg.name?28:0)+(cfg.health?104:0)+(cfg.time?(cfg.lrt?36:40):0)+(cfg.lrt?40:0)+(cfg.stats?45:0);
     if(cfg.enemies)h+=28+std::max(1,count)*39+bosses*69;
     h+=credit_wrap?42:26;
     // The inventory goes beside the main panel, or under the enemies.
@@ -586,7 +586,7 @@ void build(const cv_srt_state& st,const Config& cfg,uint32_t width,uint32_t heig
         c.text(cfg.words[13],16,5,logical_width-32,14,c.cream,false,false,false,34);
     } else {
         if(cfg.name) {const float photo=c.character(st.character,18,y)?32.f:0.f;c.text(character_name(st.character),18+photo,y,268-photo,17,c.cream,true,false,false,24);c.line(18,y+25,286,y+25,Color(255,67,39,35));y+=28;}
-        static const uint32_t colors[]={0xff79bb91,0xffd7bd66,0xffdc914e,0xffe36461,0xffc41a94,0xffc41a94,0xffb65955};
+        static const uint32_t colors[]={0xff2fa85a,0xffd7bd66,0xffdc914e,0xffe36461,0xffc41a94,0xffc41a94,0xffb65955};
         const int condition=std::clamp(st.condition,0,6);const Color state_color(colors[condition]);
         if(cfg.health) {
             const float ratio=st.maximum>0?float(st.hp)/st.maximum:0;
@@ -602,11 +602,18 @@ void build(const cv_srt_state& st,const Config& cfg,uint32_t width,uint32_t heig
             for(int col=0;col<=10;col++)c.line(18+col*16.f,y+60,18+col*16.f,y+84,Color(25,110,120,110),.5f);
             y+=104;
         }
-        if(cfg.time) {
-            c.line(18,y,286,y,Color(255,67,39,35));
-            c.text(upper(cfg.words[1]),18,y+3,125,13,c.dim,true,false,false,30);
-            wchar_t time[40];swprintf(time,40,L"%02u:%02u:%02u",st.seconds/3600,(st.seconds/60)%60,st.seconds%60);
-            c.text(time,143,y+3,143,23,c.cream,false,true,true,30);y+=40;
+        if(cfg.time||cfg.lrt) {
+            if(cfg.name||cfg.health)c.line(18,y,286,y,Color(255,67,39,35));
+            if(cfg.time) {
+                c.text(upper(cfg.words[1]),18,y+3,125,13,c.dim,true,false,false,30);
+                wchar_t time[40];swprintf(time,40,L"%02u:%02u:%02u",st.seconds/3600,(st.seconds/60)%60,st.seconds%60);
+                c.text(time,143,y+3,143,23,c.cream,false,true,true,30);y+=cfg.lrt?36:40;
+            }
+            if(cfg.lrt) {
+                c.text(upper(cfg.words[17]),18,y+3,125,13,c.dim,true,false,false,30);
+                wchar_t lrt[40];swprintf(lrt,40,L"%02u:%02u:%02u",st.lrt_seconds/3600,(st.lrt_seconds/60)%60,st.lrt_seconds%60);
+                c.text(lrt,143,y+3,143,23,st.loading?c.dim:c.gold,false,true,true,30);y+=40;
+            }
         }
         if(cfg.stats) {
             const int n[]={st.saves,st.retry,st.fas};const std::wstring names[]={cfg.words[2],cfg.words[3],L"F.A.S."};
@@ -936,7 +943,7 @@ void hide() {main_panel.hide();inventory_panel.hide();}
 }
 extern "C" void cv_srt_configure_env() {
     Config c;c.game_root=utf8(std::getenv("PS3_VFS_ROOT"));c.enabled=env_int("SRT",0)!=0;c.name=env_int("SRT_NAME",1)!=0;c.health=env_int("SRT_HEALTH",1)!=0;
-    c.time=env_int("SRT_TIME",1)!=0;c.stats=env_int("SRT_STATS",1)!=0;c.inventory=env_int("SRT_INVENTORY",0)!=0;
+    c.time=env_int("SRT_TIME",1)!=0;c.lrt=env_int("SRT_LRT",0)!=0;c.stats=env_int("SRT_STATS",1)!=0;c.inventory=env_int("SRT_INVENTORY",0)!=0;
     if(const char* where=std::getenv("SRT_INVENTORY_POS"))c.inventory_below=!strcmp(where,"below");
     c.enemies=std::clamp(env_int("SRT_ENEMIES",3),0,99);if(c.enemies>5&&c.enemies!=99)c.enemies=5;
     c.opacity=std::clamp(env_int("SRT_OPACITY",70),0,100);
@@ -967,7 +974,7 @@ const rsx_ui_quad* design(const cv_srt_state* state,uint32_t width,uint32_t heig
     Config cfg;uint64_t gen;
     AcquireSRWLockShared(&config_lock);cfg=config;gen=generation;ReleaseSRWLockShared(&config_lock);
     if(!gen) {cv_srt_configure_env();return design(state,width,height,count,with_panel,with_centre,with_inventory);}
-    if(!cfg.enabled||(!cfg.name&&!cfg.health&&!cfg.time&&!cfg.stats&&!cfg.enemies&&!cfg.inventory&&!cfg.boss_bar))return nullptr;
+    if(!cfg.enabled||(!cfg.name&&!cfg.health&&!cfg.time&&!cfg.lrt&&!cfg.stats&&!cfg.enemies&&!cfg.inventory&&!cfg.boss_bar))return nullptr;
     static cv_srt_state previous{};static uint64_t built=0;static uint32_t w=0,h=0;
     if(built!=gen||w!=width||h!=height||std::memcmp(&previous,state,sizeof previous)) {
         build(*state,cfg,width,height);previous=*state;w=width;h=height;built=gen;
@@ -1010,7 +1017,7 @@ extern "C" int cv_srt_take_positions(int* mx,int* my,int* ix,int* iy) {
 }
 extern "C" void cv_srt_pointer(float x,float y,int down,int active) {
     bool allowed;
-    AcquireSRWLockShared(&config_lock);allowed=config.enabled&&config.free&&!config.window&&(config.name||config.health||config.time||config.stats||config.enemies||config.inventory);ReleaseSRWLockShared(&config_lock);
+    AcquireSRWLockShared(&config_lock);allowed=config.enabled&&config.free&&!config.window&&(config.name||config.health||config.time||config.lrt||config.stats||config.enemies||config.inventory);ReleaseSRWLockShared(&config_lock);
     if(!allowed||!active||!layout_width||!layout_height){finish_pointer_drag();mouse_drag.down=down!=0;return;}
     if(down&&!mouse_drag.down) {
         // Inventory is drawn last, so it also gets the click in an overlap.

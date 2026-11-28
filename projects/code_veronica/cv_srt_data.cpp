@@ -52,11 +52,12 @@ bool has_quantity(int id) {
 }
 struct Seen { int type=0,slot=0,hp=0,alive=0; };
 Seen seen[CV_SRT_MAX_ENEMIES];int previous_room=-1,previous_character=-1;
+int64_t lrt_delta=0,lrt_last=-1;
 cv_srt_enemy_hold::Cache enemy_display;
 }
 static int sample_current(cv_srt_state* out) {
     *out={};
-    if(!readable(CV_SRT_CHARACTER,0x900)||!readable(CV_SRT_RDX,0xa00))return 0;
+    if(!readable(CV_SRT_DOOR_FLAG,0x920)||!readable(CV_SRT_RDX,0xa00))return 0;
     const int character=vm_read8(CV_SRT_CHARACTER);
     if(character>3)return 0;
     static const uint32_t rdx[]={0x3D650,0x3C4FC,0x3A4D0,0x3E814};
@@ -71,7 +72,17 @@ static int sample_current(cv_srt_state* out) {
     const int hp=int32_t(vm_read32(CV_SRT_HEALTH));
     if(hp < -10000 || hp>10000)return 0;
     out->valid=1;out->character=character;out->room=room;out->maximum=maxhp;
-    out->hp=std::max(0,hp);out->seconds=vm_read32(CV_SRT_TIME)/60;
+    const uint32_t igt=vm_read32(CV_SRT_TIME);
+    const bool loading=(vm_read8(CV_SRT_DOOR_FLAG)&1)!=0;
+    if(igt==0)lrt_delta=0;
+    if(lrt_last>=0&&loading) {
+        const int64_t add=int64_t(igt)-lrt_last-lrt_delta;
+        if(add>0)lrt_delta+=add;
+    }
+    if(int64_t(igt)-lrt_delta<lrt_last)lrt_delta=0;
+    const int64_t lrt_ticks=std::max<int64_t>(0,int64_t(igt)-lrt_delta);
+    lrt_last=lrt_ticks;
+    out->hp=std::max(0,hp);out->seconds=igt/60;out->lrt_seconds=uint32_t(lrt_ticks/60);out->loading=loading?1:0;
     out->saves=std::max(0,int32_t(vm_read32(CV_SRT_SAVES)));
     out->retry=std::max(0,int(int16_t(vm_read16(CV_SRT_RETRY))));
     out->fas=std::max(0,int(int16_t(vm_read16(CV_SRT_FAS))));

@@ -311,7 +311,7 @@ struct Settings {
     bool check_updates=true; // look for a newer GitHub release when the launcher opens (cv_updater.h)
     bool discord=true; // "Playing ..." on the player's Discord profile (cv_discord.cpp)
     bool srt=false;
-    bool srt_parts[5]={true,true,true,true,false}; // name, health, time, stats, inventory
+    bool srt_parts[6]={true,true,true,true,false,false}; // name, health, time, stats, inventory, lrt
     bool srt_border=true;
     bool srt_free=false,srt_separate=false;
     int srt_inventory_scale=100,srt_main_x=0,srt_main_y=0,srt_inv_x=1000,srt_inv_y=0;
@@ -622,8 +622,8 @@ Settings load_settings()
         }
     }
     s.srt = _wtoi(ini_get(L"srt", L"mostrar", L"0").c_str()) != 0;
-    { const wchar_t* keys[]={L"nome",L"vida",L"tempo",L"contadores",L"inventario"};
-      for(int i=0;i<5;i++)s.srt_parts[i]=_wtoi(ini_get(L"srt",keys[i],i<4?L"1":L"0").c_str())!=0; }
+    { const wchar_t* keys[]={L"nome",L"vida",L"tempo",L"contadores",L"inventario",L"lrt"};
+      for(int i=0;i<6;i++)s.srt_parts[i]=_wtoi(ini_get(L"srt",keys[i],i<4?L"1":L"0").c_str())!=0; }
     s.srt_enemies=std::clamp(_wtoi(ini_get(L"srt",L"inimigos",L"3").c_str()),0,99);
     if(s.srt_enemies>5&&s.srt_enemies!=99)s.srt_enemies=5;
     s.srt_corner=std::clamp(_wtoi(ini_get(L"srt",L"posicao",L"0").c_str()),0,3);
@@ -752,8 +752,8 @@ void save_settings(const Settings& s)
     ini_set(L"launcher",L"procurar_atualizacoes",s.check_updates?L"1":L"0");
     ini_set(L"launcher",L"discord",s.discord?L"1":L"0");
     ini_set(L"srt", L"mostrar",s.srt?L"1":L"0");
-    { const wchar_t* keys[]={L"nome",L"vida",L"tempo",L"contadores",L"inventario"};
-      for(int i=0;i<5;i++)ini_set(L"srt",keys[i],s.srt_parts[i]?L"1":L"0"); }
+    { const wchar_t* keys[]={L"nome",L"vida",L"tempo",L"contadores",L"inventario",L"lrt"};
+      for(int i=0;i<6;i++)ini_set(L"srt",keys[i],s.srt_parts[i]?L"1":L"0"); }
     ini_set(L"srt",L"inimigos",std::to_wstring(s.srt_enemies));
     ini_set(L"srt",L"posicao",std::to_wstring(s.srt_corner));
     ini_set(L"srt",L"mover_livremente",s.srt_free?L"1":L"0");
@@ -1858,15 +1858,19 @@ void draw_enhancement(Graphics& gr,float x,float& y,float w,int option,const Fon
                 enhancement_text(g_lang,option,false),enhancement_text(g_lang,option,true),body,fsm);
     y+=62;
 }
-/* Door skip 4-mode mutually-exclusive selector: Off / Classic / Fast / Supreme. */
+/* Door skip 4-mode mutually-exclusive selector (Off / Classic / Fast / Supreme)
+ * paired with the independent elevator/submarine skip toggle in the same card. */
 void door_skip_card(Graphics& gr, float x, float y, float w, const Font& body, const Font& fsm)
 {
-    const float h = 94.0f;
+    const float h = 152.0f;
     const int mode = std::clamp(g.s.door_skip_mode, 0, 3);
+    const bool skip_on = g.s.enhancements[E_SKIP_TRANSITIONS] != 0;
+    const bool skip_usable = !g.running;
+    const int skip_id = ID_ENHANCEMENT + E_SKIP_TRANSITIONS;
     RectF card(x, y, w, h);
     GraphicsPath* cp = round_rect(card, 6);
     SolidBrush cb(C_PANEL); gr.FillPath(&cb, cp);
-    Pen cbd(mode > 0 ? C_RED : C_FIELD_BD, 1); gr.DrawPath(&cbd, cp); delete cp;
+    Pen cbd((mode > 0 || skip_on) ? C_RED : C_FIELD_BD, 1); gr.DrawPath(&cbd, cp); delete cp;
 
     const Color foot_c(255, 120, 110, 104);
     text(gr, T(S_PATCH_DOOR_T), x + 14, y + 6, body, C_TEXT, StringAlignmentNear, w - 260, 22);
@@ -1900,6 +1904,25 @@ void door_skip_card(Graphics& gr, float x, float y, float w, const Font& body, c
     text(gr, credit, x + w - 14 - credit_w, y + 68, fsm, foot_c, StringAlignmentFar, credit_w, 20);
     text(gr, cv_door_skip_text::desc(g_lang, mode), x + 14, y + 68, fsm, C_DIM,
          StringAlignmentNear, w - 28 - credit_w - 12, 20);
+
+    /* Independent elevator & submarine animation skip toggle inside the same card */
+    const float ty = y + 96.0f, th = 50.0f;
+    const bool skip_hot = skip_usable && g.hover == skip_id;
+    if (skip_hot) {
+        RectF hr(x + 4.0f, ty, w - 8.0f, th);
+        GraphicsPath* hp = round_rect(hr, 4);
+        SolidBrush hb(C_HOVER); gr.FillPath(&hb, hp); delete hp;
+    }
+    RectF sw(x + w - 56, ty + (th - 22) / 2, 40, 22);
+    GraphicsPath* sp = round_rect(sw, 11);
+    SolidBrush sb(skip_on ? C_RED : skip_usable ? Color(255, 60, 52, 52) : Color(255, 40, 36, 36)); gr.FillPath(&sb, sp); delete sp;
+    SolidBrush knob(skip_usable ? C_TEXT : Color(255, 90, 84, 84));
+    gr.FillEllipse(&knob, skip_on ? sw.X + sw.Width - 19 : sw.X + 3, sw.Y + 3, 16.0f, 16.0f);
+    text(gr, enhancement_text(g_lang, E_SKIP_TRANSITIONS, false), x + 14, ty + 5, body,
+         skip_usable ? C_TEXT : C_DIM, StringAlignmentNear, w - 90, 22);
+    text(gr, enhancement_text(g_lang, E_SKIP_TRANSITIONS, true), x + 14, ty + 26, fsm, C_DIM,
+         StringAlignmentNear, w - 90, 20);
+    if (skip_usable) hit(x + 4.0f, ty, w - 8.0f, th, skip_id);
 }
 
 void draw_patches(Graphics& gr, const Font& head, const Font& body, const Font& fsm)
@@ -1915,7 +1938,7 @@ void draw_patches(Graphics& gr, const Font& head, const Font& body, const Font& 
         if (is_cheat(i)) continue;   /* on the Cheats page */
         if (i == 0) {
             door_skip_card(gr, x, y, w, body, fsm);
-            y += 100;
+            y += 158;
             continue;
         }
         patch_card(gr, x, y, w, 50, g.s.patch[i], true, ID_PATCH + i, T(k_patches[i].title), T(k_patches[i].desc),
@@ -1923,7 +1946,6 @@ void draw_patches(Graphics& gr, const Font& head, const Font& body, const Font& 
         y += 56;
     }
     draw_enhancement(gr,x,y,w,E_NOTICES,body,fsm);
-    draw_enhancement(gr,x,y,w,E_SKIP_TRANSITIONS,body,fsm);
     /* patches from files: made by the player or shared by others */
     y += 10;
     section(gr, T(S_PATCH_CUSTOM_T), x, y, w, head);
@@ -2527,16 +2549,17 @@ void draw_srt(Graphics& gr,const Font& head,const Font& body,const Font& fsm)
     auto label3=[&](const std::wstring& t,float left,float top){text(gr,t,left,top,fsm,C_DIM,StringAlignmentNear,c3,20);};
     float y=156;
     heading(slt(st::SEC_SHOW),y);y+=38;
-    const int names[]={S_SRT_NAME,S_SRT_HEALTH,S_SRT_TIME,S_SRT_STATS,S_SRT_INVENTORY};
-    for(int i=0;i<5;i++)option_card(gr,cols3[i%3],y+(i/3)*42.f,c3,36,g.s.srt_parts[i],ID_SRT_PART+i,T(names[i]),L"",body,fsm);
+    const int names[]={S_SRT_NAME,S_SRT_HEALTH,S_SRT_TIME,S_SRT_STATS,S_SRT_INVENTORY,S_SRT_LRT};
+    const int order[]={0,1,2,5,3,4};
+    for(int k=0;k<6;k++){int i=order[k];option_card(gr,cols3[k%3],y+(k/3)*42.f,c3,36,g.s.srt_parts[i],ID_SRT_PART+i,T(names[i]),L"",body,fsm);}
     {
-        const float top=y+42,dw=std::min(110.f,c3*0.4f);
-        RectF card(x3,top,c3,36);GraphicsPath* cp=round_rect(card,6);
+        const float top=y+84,dw=std::min(110.f,c3*0.4f);
+        RectF card(x,top,c3,36);GraphicsPath* cp=round_rect(card,6);
         SolidBrush cb(C_PANEL);gr.FillPath(&cb,cp);Pen cbd(C_FIELD_BD,1);gr.DrawPath(&cbd,cp);delete cp;
-        text(gr,T(S_SRT_ENEMIES),x3+14,top,body,C_TEXT,StringAlignmentNear,c3-dw-34,36);
-        dropdown(gr,RectF(x3+c3-10-dw,top+3,dw,30),srt_enemy_value(g.s.srt_enemies),ID_DD_SRT_ENEMIES,body);
+        text(gr,T(S_SRT_ENEMIES),x+14,top,body,C_TEXT,StringAlignmentNear,c3-dw-34,36);
+        dropdown(gr,RectF(x+c3-10-dw,top+3,dw,30),srt_enemy_value(g.s.srt_enemies),ID_DD_SRT_ENEMIES,body);
     }
-    y+=92;
+    y+=134;
     heading(slt(st::SEC_LOOK),y);y+=38;
     label3(T(S_SRT_LANGUAGE),x,y);
     dropdown(gr,RectF(x,y+21,c3,30),srt_language_value(),ID_DD_SRT_LANGUAGE,body);
@@ -3528,7 +3551,7 @@ void click(int id)
         changed();
     }
     else if(id==ID_SRT)toggle_srt();
-    else if(id>=ID_SRT_PART&&id<ID_SRT_PART+5) {g.s.srt_parts[id-ID_SRT_PART]^=true;set_srt_env();changed();}
+    else if(id>=ID_SRT_PART&&id<ID_SRT_PART+6) {g.s.srt_parts[id-ID_SRT_PART]^=true;set_srt_env();changed();}
     else if(id==ID_SRT_FREE){g.s.srt_free=!g.s.srt_free;if(!g.s.srt_free)g.s.srt_separate=false;set_srt_env();changed();}
     else if(id==ID_SRT_SEPARATE){g.s.srt_separate=!g.s.srt_separate;if(g.s.srt_separate){g.s.srt_free=true;g.s.srt_parts[4]=true;}set_srt_env();changed();}
     else if(id==ID_SRT_RESET){g.s.srt_main_x=0;g.s.srt_main_y=0;g.s.srt_inv_x=1000;g.s.srt_inv_y=0;set_env("SRT_RESET_WINDOWS","1");set_srt_env();set_env("SRT_RESET_WINDOWS","");changed();}
@@ -3902,8 +3925,8 @@ void set_srt_env()
 {
     const int lang=cv_srt_i18n::selection(g.s.srt_language,g_lang);
     set_env("SRT",g.s.srt?"1":"0");
-    const char* keys[]={"SRT_NAME","SRT_HEALTH","SRT_TIME","SRT_STATS","SRT_INVENTORY"};
-    for(int i=0;i<5;i++)set_env(keys[i],g.s.srt_parts[i]?"1":"0");
+    const char* keys[]={"SRT_NAME","SRT_HEALTH","SRT_TIME","SRT_STATS","SRT_INVENTORY","SRT_LRT"};
+    for(int i=0;i<6;i++)set_env(keys[i],g.s.srt_parts[i]?"1":"0");
     set_env("SRT_OPACITY",std::to_string(g.s.srt_opacity));
     set_env("SRT_INVENTORY_POS",g.s.srt_inventory_below?"below":"side");
     set_env("SRT_WINDOW",g.s.srt_window?"1":"0");
@@ -3919,7 +3942,7 @@ void set_srt_env()
     const std::wstring credit=srt_credit_text(lang);
     set_env("SRT_CREDIT",save_utf8(fs::path(credit)));
     const int ids[]={S_SRT_HEALTH,S_SRT_TIME,S_SRT_SAVE,S_SRT_RETRY,S_SRT_ENEMIES,S_SRT_INVENTORY,S_SRT_EQUIPPED,
-        S_SRT_FINE,S_SRT_CAUTION,S_SRT_DANGER,S_SRT_POISON,S_SRT_GAS,S_SRT_DEAD,S_SRT_WAIT,S_SRT_EMPTY,S_SRT_BOSS,S_SRT_PHASE};
+        S_SRT_FINE,S_SRT_CAUTION,S_SRT_DANGER,S_SRT_POISON,S_SRT_GAS,S_SRT_DEAD,S_SRT_WAIT,S_SRT_EMPTY,S_SRT_BOSS,S_SRT_PHASE,S_SRT_LRT};
     std::wstring words;for(int id:ids) {if(!words.empty())words+=L"|";words+=k_str[lang][id];}
     set_env("SRT_TEXT",save_utf8(fs::path(words)));cv_srt_configure_env();
 }

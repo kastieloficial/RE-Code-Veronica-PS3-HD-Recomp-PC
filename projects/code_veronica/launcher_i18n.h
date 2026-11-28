@@ -83,6 +83,7 @@ enum StrId {
     S_FPS_NOTE_30, S_FPS_NOTE_60, S_FPS_NOTE_FG,
     S_VSYNC, S_VSYNC_OFF, S_VSYNC_ON, S_FPS_NOTE_VSYNC,
     S_CHEAT_OHK_T, S_CHEAT_OHK_D,
+    S_SRT_LRT,
     S_COUNT
 };
 
@@ -300,6 +301,7 @@ static const wchar_t* const k_str_pt[] = {
     L"30 FPS é o original: a mesma experiência do PlayStation 3, onde o jogo roda a 30 FPS em 720p.", L"60 FPS ativa automaticamente as anima\u00e7\u00f5es e transi\u00e7\u00f5es suaves. Com gera\u00e7\u00e3o de quadros FSR 3.1, a sa\u00edda pode chegar a 120 FPS.", L"Com a geração de quadros (FSR 3.1), se o PC mantiver os 60 FPS, o jogo pode chegar a até 120 FPS.",
     L"VSync", L"Desligado", L"Ligado", L"Com VSync, a imagem não rasga; se o PC não mantiver os 60 FPS, alguns quadros esperam a próxima atualização da tela. Não funciona junto com a geração de quadros.",
     L"Matar com um golpe", L"Derrota inimigos com um único ataque de qualquer arma ou faca. Pode ligar e desligar durante a partida.",
+    L"Tempo LRT",
 };
 static_assert(sizeof k_str_pt / sizeof k_str_pt[0] == S_COUNT, "k_str_pt: one text per StrId");
 
@@ -517,6 +519,7 @@ static const wchar_t* const k_str_en[] = {
     L"30 FPS is the original: the same experience as on PlayStation 3, where the game runs at 30 FPS in 720p.", L"60 FPS automatically enables smooth animations and transitions. FSR 3.1 Frame Generation can raise output up to 120 FPS.", L"With frame generation (FSR 3.1), if your PC holds 60 FPS, the game can reach up to 120 FPS.",
     L"VSync", L"Off", L"On", L"With VSync the image never tears; if the PC can't hold 60 FPS, some frames wait for the next screen refresh. It can't be used with frame generation.",
     L"One-hit kill", L"Defeats enemies in a single hit from any weapon or knife. Can be toggled during gameplay.",
+    L"LRT time",
 };
 static_assert(sizeof k_str_en / sizeof k_str_en[0] == S_COUNT, "k_str_en: one text per StrId");
 
@@ -734,6 +737,7 @@ static const wchar_t* const k_str_es[] = {
     L"30 FPS es el original: la misma experiencia que en PlayStation 3, donde el juego va a 30 FPS en 720p.", L"60 FPS activa autom\u00e1ticamente las animaciones y transiciones suaves. La generaci\u00f3n de fotogramas FSR 3.1 permite hasta 120 FPS.", L"Con la generación de fotogramas (FSR 3.1), si el PC mantiene los 60 FPS, el juego puede llegar a hasta 120 FPS.",
     L"VSync", L"Desactivado", L"Activado", L"Con VSync la imagen no se corta; si el PC no mantiene los 60 FPS, algunos fotogramas esperan al siguiente refresco de la pantalla. No funciona junto con la generación de fotogramas.",
     L"Matar de un golpe", L"Derrota a los enemigos de un solo ataque con cualquier arma o cuchillo. Se puede activar o desactivar durante la partida.",
+    L"Tiempo LRT",
 };
 static_assert(sizeof k_str_es / sizeof k_str_es[0] == S_COUNT, "k_str_es: one text per StrId");
 
@@ -951,6 +955,7 @@ static const wchar_t* const k_str_ja[] = {
     L"30 FPSはオリジナルです。PlayStation 3と同じ体験で、ゲームは720p・30 FPSで動作します。", L"60 FPS\u3067\u306f\u30a2\u30cb\u30e1\u30fc\u30b7\u30e7\u30f3\u3068\u753b\u9762\u9077\u79fb\u306e\u6ed1\u3089\u304b\u3055\u304c\u81ea\u52d5\u7684\u306b\u5411\u4e0a\u3057\u307e\u3059\u3002FSR 3.1\u30d5\u30ec\u30fc\u30e0\u751f\u6210\u3067\u6700\u5927120 FPS\u306e\u51fa\u529b\u304c\u53ef\u80fd\u3067\u3059\u3002", L"フレーム生成（FSR 3.1）を使うと、PCが60 FPSを保てれば、ゲームは最大120 FPSに達します。",
     L"垂直同期", L"オフ", L"オン", L"垂直同期をオンにすると画面の裂け（ティアリング）がなくなります。PCが60 FPSを維持できない場合、一部のフレームは次の画面更新を待ちます。フレーム生成とは併用できません。",
     L"一撃必殺", L"あらゆる武器やナイフの一撃で敵を倒します。プレイ中でも切り替えられます。",
+    L"LRTタイム",
 };
 static_assert(sizeof k_str_ja / sizeof k_str_ja[0] == S_COUNT, "k_str_ja: one text per StrId");
 
@@ -1222,6 +1227,7 @@ static const wchar_t* const k_str_fr[] = {
     L"30 FPS est l'original : la même expérience que sur PlayStation 3, où le jeu tourne à 30 FPS en 720p.", L"60 FPS active automatiquement les animations et transitions fluides. La g\u00e9n\u00e9ration d\u2019images FSR 3.1 permet une sortie jusqu\u2019\u00e0 120 FPS.", L"Avec la génération d'images (FSR 3.1), si le PC tient 60 FPS, le jeu peut atteindre jusqu'à 120 FPS.",
     L"VSync", L"Désactivée", L"Activée", L"Avec la VSync, l'image ne se déchire plus ; si le PC ne tient pas 60 FPS, certaines images attendent le rafraîchissement suivant de l'écran. Incompatible avec la génération d'images.",
     L"Élimination en un coup", L"Élimine les ennemis en un seul coup avec n'importe quelle arme ou le couteau. Activé ou désactivé en cours de partie.",
+    L"Temps LRT",
 };
 static_assert(sizeof k_str_fr / sizeof k_str_fr[0] == S_COUNT, "k_str_fr: one text per StrId");
 
@@ -1493,6 +1499,7 @@ static const wchar_t* const k_str_de[] = {
     L"30 FPS ist das Original: dasselbe Erlebnis wie auf der PlayStation 3, wo das Spiel mit 30 FPS in 720p läuft.", L"60 FPS aktiviert automatisch fl\u00fcssige Animationen und \u00dcberg\u00e4nge. FSR 3.1 Frame-Generierung erm\u00f6glicht eine Ausgabe mit bis zu 120 FPS.", L"Mit Frame-Generierung (FSR 3.1) kann das Spiel bis zu 120 FPS erreichen, wenn der PC 60 FPS hält.",
     L"VSync", L"Aus", L"An", L"Mit VSync reißt das Bild nicht mehr; hält der PC keine 60 FPS, warten manche Bilder auf die nächste Bildschirmaktualisierung. Nicht zusammen mit der Bildgenerierung nutzbar.",
     L"Mit einem Treffer töten", L"Besiegt Gegner mit einem einzigen Treffer jeder Waffe oder des Messers. Kann im Spiel umgeschaltet werden.",
+    L"LRT-Zeit",
 };
 static_assert(sizeof k_str_de / sizeof k_str_de[0] == S_COUNT, "k_str_de: one text per StrId");
 
@@ -1764,6 +1771,7 @@ static const wchar_t* const k_str_it[] = {
     L"30 FPS è l'originale: la stessa esperienza di PlayStation 3, dove il gioco gira a 30 FPS in 720p.", L"60 FPS attiva automaticamente animazioni e transizioni fluide. La generazione dei fotogrammi FSR 3.1 permette fino a 120 FPS in uscita.", L"Con la generazione dei fotogrammi (FSR 3.1), se il PC mantiene i 60 FPS, il gioco può arrivare fino a 120 FPS.",
     L"VSync", L"Disattivato", L"Attivato", L"Con il VSync l'immagine non si strappa; se il PC non mantiene i 60 FPS, alcuni fotogrammi attendono il successivo aggiornamento dello schermo. Non funziona insieme alla generazione di fotogrammi.",
     L"Uccisione con un colpo", L"Sconfigge i nemici con un solo colpo di qualsiasi arma o coltello. Attivabile e disattivabile durante la partita.",
+    L"Tempo LRT",
 };
 static_assert(sizeof k_str_it / sizeof k_str_it[0] == S_COUNT, "k_str_it: one text per StrId");
 
@@ -2035,6 +2043,7 @@ static const wchar_t* const k_str_pl[] = {
     L"30 FPS to oryginał: to samo doświadczenie co na PlayStation 3, gdzie gra działa w 30 FPS i 720p.", L"60 FPS automatycznie w\u0142\u0105cza p\u0142ynne animacje i przej\u015bcia. Generowanie klatek FSR 3.1 umo\u017cliwia wy\u015bwietlanie do 120 FPS.", L"Z generowaniem klatek (FSR 3.1), jeśli PC utrzyma 60 FPS, gra może osiągnąć do 120 FPS.",
     L"VSync", L"Wyłączona", L"Włączona", L"Z VSync obraz się nie rwie; jeśli komputer nie utrzyma 60 FPS, niektóre klatki czekają na kolejne odświeżenie ekranu. Nie działa razem z generowaniem klatek.",
     L"Zabójstwo jednym ciosem", L"Pokonuje wrogów jednym trafieniem dowolną bronią lub nożem. Można włączać i wyłączać w trakcie gry.",
+    L"Czas LRT",
 };
 static_assert(sizeof k_str_pl / sizeof k_str_pl[0] == S_COUNT, "k_str_pl: one text per StrId");
 
@@ -2306,6 +2315,7 @@ static const wchar_t* const k_str_tr[] = {
     L"30 FPS orijinaldir: oyunun 720p'de 30 FPS çalıştığı PlayStation 3 ile aynı deneyim.", L"60 FPS, ak\u0131c\u0131 animasyonlar\u0131 ve ge\u00e7i\u015fleri otomatik a\u00e7ar. FSR 3.1 kare olu\u015fturma ile \u00e7\u0131k\u0131\u015f 120 FPS\u2019ye ula\u015fabilir.", L"Kare oluşturma (FSR 3.1) ile PC 60 FPS'yi korursa oyun 120 FPS'ye kadar çıkabilir.",
     L"VSync", L"Kapalı", L"Açık", L"VSync ile görüntü yırtılmaz; bilgisayar 60 FPS'yi koruyamazsa bazı kareler ekranın bir sonraki yenilemesini bekler. Kare oluşturma ile birlikte kullanılamaz.",
     L"Tek vuruşta öldürme", L"Herhangi bir silah veya bıçakla düşmanları tek vuruşta yener. Oyun sırasında açılıp kapatılabilir.",
+    L"LRT süresi",
 };
 static_assert(sizeof k_str_tr / sizeof k_str_tr[0] == S_COUNT, "k_str_tr: one text per StrId");
 
@@ -2577,6 +2587,7 @@ static const wchar_t* const k_str_ar[] = {
     L"30 FPS هو الأصلي: نفس تجربة PlayStation 3 حيث تعمل اللعبة بدقة 720p و30 إطارًا في الثانية.", L"\u064a\u064f\u0641\u0639\u0651\u0644 \u0648\u0636\u0639 60 FPS \u0627\u0644\u0631\u0633\u0648\u0645 \u0627\u0644\u0645\u062a\u062d\u0631\u0643\u0629 \u0648\u0627\u0644\u0627\u0646\u062a\u0642\u0627\u0644\u0627\u062a \u0627\u0644\u0633\u0644\u0633\u0629 \u062a\u0644\u0642\u0627\u0626\u064a\u064b\u0627. \u0642\u062f \u064a\u0635\u0644 \u0627\u0644\u0639\u0631\u0636 \u0625\u0644\u0649 120 FPS \u0628\u0627\u0633\u062a\u062e\u062f\u0627\u0645 \u062a\u0648\u0644\u064a\u062f \u0627\u0644\u0625\u0637\u0627\u0631\u0627\u062a FSR 3.1.", L"مع توليد الإطارات (FSR 3.1)، إذا حافظ الحاسوب على 60 FPS يمكن أن تصل اللعبة إلى 120 FPS.",
     L"المزامنة العمودية", L"متوقفة", L"مفعّلة", L"مع المزامنة العمودية لا تتمزق الصورة؛ وإذا لم يحافظ الحاسوب على 60 إطارًا في الثانية فإن بعض الإطارات تنتظر التحديث التالي للشاشة. لا تعمل مع توليد الإطارات.",
     L"القتل بضربة واحدة", L"يقضي على الأعداء بضربة واحدة بأي سلاح أو سكين. يمكن تشغيله وإيقافه أثناء اللعب.",
+    L"وقت LRT",
 };
 static_assert(sizeof k_str_ar / sizeof k_str_ar[0] == S_COUNT, "k_str_ar: one text per StrId");
 
@@ -2848,6 +2859,7 @@ static const wchar_t* const k_str_zh[] = {
     L"30 FPS 是原版：与 PlayStation 3 相同的体验，游戏以 720p、30 FPS 运行。", L"\u9009\u62e960 FPS\u4f1a\u81ea\u52a8\u542f\u7528\u6d41\u7545\u52a8\u753b\u548c\u8fc7\u6e21\u3002\u4f7f\u7528FSR 3.1\u5e27\u751f\u6210\uff0c\u8f93\u51fa\u6700\u9ad8\u53ef\u8fbe120 FPS\u3002", L"开启帧生成（FSR 3.1）后，如果电脑能稳定在 60 FPS，游戏最高可达 120 FPS。",
     L"垂直同步", L"关闭", L"开启", L"开启垂直同步后画面不会撕裂；如果电脑无法保持 60 FPS，部分帧会等待屏幕的下一次刷新。不能与帧生成同时使用。",
     L"一击必杀", L"使用任何武器或匕首一击击败敌人。可在游戏过程中随时开关。",
+    L"LRT 时间",
 };
 static_assert(sizeof k_str_zh / sizeof k_str_zh[0] == S_COUNT, "k_str_zh: one text per StrId");
 
@@ -3119,6 +3131,7 @@ static const wchar_t* const k_str_ko[] = {
     L"30 FPS는 원본입니다. 게임이 720p, 30 FPS로 실행되는 PlayStation 3과 같은 경험입니다.", L"60 FPS\ub97c \uc120\ud0dd\ud558\uba74 \ubd80\ub4dc\ub7ec\uc6b4 \uc560\ub2c8\uba54\uc774\uc158\uacfc \uc804\ud658\uc774 \uc790\ub3d9\uc73c\ub85c \uc801\uc6a9\ub429\ub2c8\ub2e4. FSR 3.1 \ud504\ub808\uc784 \uc0dd\uc131\uc73c\ub85c \ucd5c\ub300 120 FPS \ucd9c\ub825\uc774 \uac00\ub2a5\ud569\ub2c8\ub2e4.", L"프레임 생성(FSR 3.1)을 켜면 PC가 60 FPS를 유지할 경우 게임이 최대 120 FPS까지 나올 수 있습니다.",
     L"수직 동기화", L"끔", L"켬", L"수직 동기화를 켜면 화면이 찢어지지 않습니다. PC가 60 FPS를 유지하지 못하면 일부 프레임은 다음 화면 갱신을 기다립니다. 프레임 생성과 함께 사용할 수 없습니다.",
     L"한 방에 처치", L"모든 무기나 나이프로 적을 한 방에 처치합니다. 게임 중 언제든 켜고 끌 수 있습니다.",
+    L"LRT 시간",
 };
 static_assert(sizeof k_str_ko / sizeof k_str_ko[0] == S_COUNT, "k_str_ko: one text per StrId");
 
@@ -3390,6 +3403,7 @@ static const wchar_t* const k_str_ru[] = {
     L"30 FPS — оригинал: тот же опыт, что на PlayStation 3, где игра идёт в 720p при 30 FPS.", L"60 FPS \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438 \u0432\u043a\u043b\u044e\u0447\u0430\u0435\u0442 \u043f\u043b\u0430\u0432\u043d\u044b\u0435 \u0430\u043d\u0438\u043c\u0430\u0446\u0438\u0438 \u0438 \u043f\u0435\u0440\u0435\u0445\u043e\u0434\u044b. \u0413\u0435\u043d\u0435\u0440\u0430\u0446\u0438\u044f \u043a\u0430\u0434\u0440\u043e\u0432 FSR 3.1 \u043f\u043e\u0437\u0432\u043e\u043b\u044f\u0435\u0442 \u0432\u044b\u0432\u043e\u0434\u0438\u0442\u044c \u0434\u043e 120 FPS.", L"С генерацией кадров (FSR 3.1), если ПК держит 60 FPS, игра может достигать 120 FPS.",
     L"VSync", L"Выкл.", L"Вкл.", L"С VSync изображение не разрывается; если ПК не держит 60 FPS, некоторые кадры ждут следующего обновления экрана. Не работает вместе с генерацией кадров.",
     L"Убийство с одного удара", L"Уничтожает врагов с одного попадания любым оружием или ножом. Можно включать и выключать во время игры.",
+    L"Время LRT",
 };
 static_assert(sizeof k_str_ru / sizeof k_str_ru[0] == S_COUNT, "k_str_ru: one text per StrId");
 
@@ -3431,7 +3445,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"Profundidade de campo",L"Remove o desfoque de profundidade original."},
             {L"Contador de munição legível",L"Exibe munição carregada e reserva abaixo da arma. Reinicie o jogo."},
             {L"Ocultar launcher ao jogar",L"Oculta ao jogar ou retomar. As configurações continuam acessíveis; reaparece ao sair."},
-            {L"Pular cenas de transição",L"Pula as viagens dos elevadores e do submarino; você chega direto ao destino. Reinicie o jogo."},
+            {L"Pular animações de elevadores e submarino",L"Você chega direto ao destino sem esperar a cena dos elevadores e do submarino. Reinicie o jogo."},
         },
         {
             {L"Smooth 60 FPS animation",L"Cameras, actors, objects and cutscenes. Also select 60 FPS."},
@@ -3440,7 +3454,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"Depth of field",L"Remove the original depth-of-field blur."},
             {L"Readable ammunition counter",L"Show loaded rounds and carried reserve below the weapon. Restart the game."},
             {L"Hide launcher while playing",L"Hide on Play or Resume. Settings remain accessible; the launcher returns after exiting."},
-            {L"Skip transition scenes",L"Skip the elevator, lift and submarine rides; you arrive straight at the destination. Restart the game."},
+            {L"Skip elevator and submarine animations",L"Arrive straight at the destination without waiting for elevator, lift, or submarine rides. Restart the game."},
         },
         {
             {L"Animaciones fluidas a 60 FPS",L"Cámaras, personajes, objetos y escenas. Selecciona también 60 FPS."},
@@ -3449,7 +3463,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"Profundidad de campo",L"Elimina el desenfoque de profundidad original."},
             {L"Contador de munición legible",L"Muestra la munición cargada y la reserva bajo el arma. Reinicia el juego."},
             {L"Ocultar launcher al jugar",L"Se oculta al jugar o reanudar. Los ajustes siguen accesibles; reaparece al salir."},
-            {L"Omitir escenas de transición",L"Omite los viajes de los ascensores y del submarino; llegas directo al destino. Reinicia el juego."},
+            {L"Omitir animaciones de ascensores y submarino",L"Llegas directo al destino sin esperar las escenas de los ascensores y del submarino. Reinicia el juego."},
         },
         {
             {L"滑らかな60 FPSアニメーション",L"カメラ、キャラクター、オブジェクト、イベントシーン。フレーム上限も60 FPSに設定してください。"},
@@ -3458,7 +3472,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"被写界深度",L"元の被写界深度によるぼかしを除去します。"},
             {L"見やすい弾数表示",L"装填済みの弾数と所持する予備弾数を武器の下に表示します。ゲームの再起動が必要です。"},
             {L"プレイ中はランチャーを隠す",L"開始・再開時に非表示にします。設定は引き続き開けます。終了後に再表示されます。"},
-            {L"移動シーンをスキップ",L"各エレベーターと潜水艇の移動をスキップし、目的地へ直接到着します。ゲームの再起動が必要です。"},
+            {L"エレベーターと潜水艇の移動演出をスキップ",L"エレベーターや潜水艇の移動シーンを待たずに目的地へ直接到着します。ゲームの再起動が必要です。"},
         },
         {
             {L"Animations fluides à 60 FPS",L"Caméras, personnages, objets et cinématiques. Sélectionnez aussi 60 FPS."},
@@ -3467,7 +3481,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"Profondeur de champ",L"Supprime le flou de profondeur de champ d’origine."},
             {L"Compteur de munitions lisible",L"Affiche les munitions chargées et la réserve sous l’arme. Redémarrez le jeu."},
             {L"Masquer le lanceur en jouant",L"Masqué au lancement et à la reprise. Les réglages restent accessibles ; il revient après la fermeture du jeu."},
-            {L"Passer les scènes de transition",L"Passe les trajets des ascenseurs et du sous-marin ; vous arrivez directement à destination. Redémarrez le jeu."},
+            {L"Passer les animations d’ascenseurs et du sous-marin",L"Arrivez directement à destination sans attendre les trajets des ascenseurs et du sous-marin. Redémarrez le jeu."},
         },
         {
             {L"Flüssige 60-FPS-Animationen",L"Kamera, Figuren, Objekte und Zwischensequenzen. Zusätzlich 60 FPS auswählen."},
@@ -3476,7 +3490,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"Tiefenunschärfe",L"Den ursprünglichen Tiefenunschärfeeffekt entfernen."},
             {L"Lesbare Munitionsanzeige",L"Geladene Munition und mitgeführte Reserve unter der Waffe anzeigen. Spielneustart nötig."},
             {L"Launcher beim Spielen ausblenden",L"Beim Starten und Fortsetzen ausblenden. Einstellungen bleiben erreichbar; nach Spielende erscheint er wieder."},
-            {L"Übergangsszenen überspringen",L"Überspringt die Fahrten mit den Aufzügen und dem U-Boot; man kommt direkt am Ziel an. Spielneustart nötig."},
+            {L"Aufzug- und U-Boot-Animationen überspringen",L"Komme direkt am Ziel an, ohne auf die Fahrten der Aufzüge und des U-Boots zu warten. Spielneustart nötig."},
         },
         {
             {L"Animazioni fluide a 60 FPS",L"Telecamere, personaggi, oggetti e filmati di gioco. Seleziona anche 60 FPS."},
@@ -3485,7 +3499,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"Profondità di campo",L"Rimuove la sfocatura della profondità di campo originale."},
             {L"Contatore munizioni leggibile",L"Mostra munizioni caricate e riserva sotto l’arma. Riavvia il gioco."},
             {L"Nascondi launcher durante il gioco",L"Si nasconde all’avvio e alla ripresa. Le impostazioni restano accessibili; riappare all’uscita."},
-            {L"Salta le scene di transizione",L"Salta i viaggi degli ascensori e del sottomarino; arrivi direttamente a destinazione. Riavvia il gioco."},
+            {L"Salta le animazioni di ascensori e sottomarino",L"Arrivi direttamente a destinazione senza aspettare i viaggi di ascensori e sottomarino. Riavvia il gioco."},
         },
         {
             {L"Płynne animacje 60 FPS",L"Kamery, postacie, obiekty i przerywniki. Wybierz również 60 FPS."},
@@ -3494,7 +3508,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"Głębia ostrości",L"Usuwa oryginalne rozmycie głębi ostrości."},
             {L"Czytelny licznik amunicji",L"Pokazuje załadowaną amunicję i zapas pod bronią. Uruchom grę ponownie."},
             {L"Ukryj launcher podczas gry",L"Ukrywa przy starcie i wznowieniu. Ustawienia pozostają dostępne; launcher wraca po wyjściu."},
-            {L"Pomiń sceny przejścia",L"Pomija jazdy windami i rejs łodzią podwodną; trafiasz od razu do celu. Uruchom grę ponownie."},
+            {L"Pomiń animacje wind i łodzi podwodnej",L"Trafiasz od razu do celu bez czekania na jazdy windami i rejs łodzią podwodną. Uruchom grę ponownie."},
         },
         {
             {L"Akıcı 60 FPS animasyonlar",L"Kameralar, karakterler, nesneler ve ara sahneler. Ayrıca 60 FPS seçin."},
@@ -3503,7 +3517,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"Alan derinliği",L"Orijinal alan derinliği bulanıklığını kaldırır."},
             {L"Okunaklı mühimmat sayacı",L"Silahtaki mühimmatı ve taşınan yedeği silahın altında gösterir. Oyunu yeniden başlatın."},
             {L"Oynarken başlatıcıyı gizle",L"Başlatırken ve devam ederken gizlenir. Ayarlar erişilebilir kalır; çıkışta yeniden görünür."},
-            {L"Geçiş sahnelerini atla",L"Asansör ve denizaltı yolculuklarını atlar; doğrudan hedefe varırsınız. Oyunu yeniden başlatın."},
+            {L"Asansör ve denizaltı animasyonlarını atla",L"Asansör ve denizaltı sahnelerini beklemeden doğrudan hedefe varırsınız. Oyunu yeniden başlatın."},
         },
         {
             {L"حركة سلسة بمعدل 60 FPS",L"الكاميرات والشخصيات والعناصر والمشاهد. اختر أيضًا حد 60 FPS."},
@@ -3512,7 +3526,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"عمق المجال",L"يزيل ضبابية عمق المجال الأصلية."},
             {L"عداد ذخيرة واضح",L"يعرض الذخيرة المحشوة والاحتياطية أسفل السلاح. أعد تشغيل اللعبة."},
             {L"إخفاء المشغّل أثناء اللعب",L"يختفي عند البدء والاستئناف. تبقى الإعدادات متاحة ويظهر مجددًا بعد الخروج."},
-            {L"تخطي مشاهد الانتقال",L"يتخطى رحلات المصاعد والغواصة لتصل مباشرة إلى الوجهة. أعد تشغيل اللعبة."},
+            {L"تخطي رسوم المصاعد والغواصة",L"تصل مباشرة إلى الوجهة دون انتظار مشاهد المصاعد والغواصة. أعد تشغيل اللعبة."},
         },
         {
             {L"流畅的60 FPS动画",L"摄像机、角色、物件和即时演算过场。请同时将帧率上限设为60 FPS。"},
@@ -3521,7 +3535,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"景深",L"移除原版景深模糊效果。"},
             {L"清晰的弹药计数",L"在武器下方显示已装填弹药和携带的备用弹药。需要重启游戏。"},
             {L"游戏时隐藏启动器",L"开始或继续游戏时隐藏。仍可打开设置，退出游戏后会重新显示。"},
-            {L"跳过过渡场景",L"跳过各部电梯和潜艇的行程，直接到达目的地。需要重启游戏。"},
+            {L"跳过电梯和潜艇动画",L"无需等待电梯和潜艇的过场行程，直接到达目的地。需要重启游戏。"},
         },
         {
             {L"부드러운 60 FPS 애니메이션",L"카메라, 캐릭터, 사물 및 실시간 컷신. 프레임 제한도 60 FPS로 설정하세요."},
@@ -3530,7 +3544,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"피사계 심도",L"원래의 피사계 심도 흐림 효과를 제거합니다."},
             {L"읽기 쉬운 탄약 표시",L"무기 아래에 장전된 탄약과 소지한 예비 탄약을 표시합니다. 게임을 재시작하세요."},
             {L"플레이 중 런처 숨기기",L"시작하거나 재개할 때 숨깁니다. 설정은 계속 열 수 있으며 게임 종료 후 다시 표시됩니다."},
-            {L"전환 장면 건너뛰기",L"엘리베이터들과 잠수정 이동을 건너뛰고 바로 목적지에 도착합니다. 게임을 재시작하세요."},
+            {L"엘리베이터 및 잠수정 애니메이션 건너뛰기",L"엘리베이터와 잠수정 이동 장면을 기다리지 않고 바로 목적지에 도착합니다. 게임을 재시작하세요."},
         },
         {
             {L"Плавные анимации 60 FPS",L"Камеры, персонажи, объекты и игровые сцены. Также выберите 60 FPS."},
@@ -3539,7 +3553,7 @@ inline const wchar_t* enhancement_text(int language,int option,bool description)
             {L"Глубина резкости",L"Убирает исходное размытие глубины резкости."},
             {L"Читаемый счётчик патронов",L"Показывает заряженные патроны и запас под оружием. Перезапустите игру."},
             {L"Скрывать лаунчер во время игры",L"Скрывает при запуске и продолжении. Настройки остаются доступны; после выхода лаунчер возвращается."},
-            {L"Пропуск сцен перехода",L"Пропускает поездки на лифтах и подводной лодке; вы сразу оказываетесь на месте. Перезапустите игру."},
+            {L"Пропуск анимаций лифтов и подлодки",L"Вы сразу оказываетесь на месте, не дожидаясь сцен поездок на лифтах и подлодке. Перезапустите игру."},
         },
     };
     if(language<0||language>=LANG_COUNT)language=LANG_EN;
